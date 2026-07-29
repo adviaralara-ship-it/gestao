@@ -1,0 +1,218 @@
+import React, { useState } from 'react'
+import { Shield, User, Lock, Mail, ArrowRight, CheckCircle, Phone, Building, DoorOpen, Layers, Check } from 'lucide-react'
+import { collection, addDoc, serverTimestamp, getDocs, query, where } from 'firebase/firestore'
+import { db } from '../firebase'
+import { sindicoPerms, porteiroPerms, moradorPerms } from '../context/AuthContext'
+
+const rolesOptions = [
+  { value: 'Morador',     label: 'Morador' },
+  { value: 'Síndico',    label: 'Síndico' },
+  { value: 'Subsíndico', label: 'Subsíndico' },
+  { value: 'Conselheiro',label: 'Conselheiro' },
+  { value: 'Porteiro',   label: 'Porteiro' },
+]
+
+const needsLocation = ['Morador','Síndico','Subsíndico','Conselheiro','Porteiro']
+const addToMoradores = ['Morador','Síndico','Subsíndico','Conselheiro']
+
+// Módulos de acesso que o morador recebe automaticamente (fixos / visíveis no cadastro)
+const modulosMorador = [
+  { icon: '⚠️', label: 'Ocorrências' },
+  { icon: '📋', label: 'Regimento Interno e Externo' },
+  { icon: '💰', label: 'Boletos' },
+  { icon: '🏛️', label: 'Assembleia e Atas' },
+  { icon: '📅', label: 'Reservas de Espaços' },
+  { icon: '🛡️', label: 'Seguro do Condomínio' },
+  { icon: '👥', label: 'Moradores e Familiares' },
+  { icon: '🧾', label: 'Notas Fiscais' },
+  { icon: '🚪', label: 'Portaria & Manutenção' },
+]
+
+export default function Cadastro() {
+  const [form, setForm] = useState({ nome:'', email:'', telefone:'', cpf:'', senha:'', confirmar:'', condominio:'', bloco:'', unidade:'', role:'Morador' })
+  const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [error, setError]     = useState('')
+  const set = (k,v) => setForm(f=>({...f,[k]:v}))
+  const requiresLocation = needsLocation.includes(form.role)
+
+  const handleSubmit = async () => {
+    setError('')
+    if (!form.nome||!form.email||!form.senha||!form.telefone||!form.cpf) { setError('Preencha todos os campos obrigatórios.'); return }
+    if (form.telefone.replace(/\D/g, '').length < 10) { setError('Informe um telefone válido com DDD.'); return }
+    if (form.cpf.replace(/\D/g, '').length !== 11) { setError('Informe um CPF válido com 11 dígitos.'); return }
+    if (form.senha!==form.confirmar)          { setError('As senhas não coincidem.'); return }
+    if (form.senha.length<6)                  { setError('A senha deve ter pelo menos 6 caracteres.'); return }
+    if (requiresLocation&&!form.condominio)   { setError('Informe o nome do condomínio.'); return }
+    if (requiresLocation&&form.role!=='Porteiro'&&!form.unidade) { setError('Informe a unidade / apartamento.'); return }
+
+    setLoading(true)
+    try {
+      const q = query(collection(db,'usuarios'),where('email','==',form.email.toLowerCase().trim()))
+      const snap = await getDocs(q)
+      if (!snap.empty) { setError('Este e-mail já está cadastrado.'); setLoading(false); return }
+
+      const localInfo = requiresLocation
+        ? { condominio:form.condominio.trim().toUpperCase(), bloco:form.bloco.trim(), unidade:form.unidade.trim() }
+        : { condominio:'', bloco:'', unidade:'' }
+
+      const rolePerms = form.role === 'Síndico' || form.role === 'Subsíndico' ? sindicoPerms : 
+                        form.role === 'Porteiro' ? porteiroPerms : moradorPerms
+
+      await addDoc(collection(db,'usuarios'),{
+        nome:form.nome.trim(), email:form.email.toLowerCase().trim(),
+        telefone:form.telefone.trim(),
+        senha: form.senha, // Salva temporariamente para migração na primeira vez que logar
+        ...localInfo, role:form.role,
+        permissoes: rolePerms,
+        ativo:true, _createdAt:serverTimestamp()
+      })
+
+      if (addToMoradores.includes(form.role)) {
+        await addDoc(collection(db,'moradores'),{
+          nome:form.nome.trim(), email:form.email.toLowerCase().trim(),
+          tel:form.telefone.trim(), condominio:localInfo.condominio,
+          bloco:localInfo.bloco, apt:localInfo.unidade, cpf:form.cpf.replace(/\D/g,''),
+          status:form.role==='Morador'?'Proprietário':form.role,
+          origem:'auto-cadastro', _createdAt:serverTimestamp()
+        })
+      }
+
+      const aptLabel = localInfo.unidade
+        ? ` – ${localInfo.condominio}${localInfo.bloco?` Bl.${localInfo.bloco}`:''} Apt ${localInfo.unidade}` : ''
+
+      await addDoc(collection(db,'notificacoes'),{
+        text:`Novo ${form.role} cadastrado no sistema – ${form.nome.trim()}${aptLabel}`,
+        time:new Date().toISOString(), tipo:'morador', lida:false, _createdAt:serverTimestamp()
+      })
+
+      setSuccess(true)
+    } catch { setError('Erro ao cadastrar. Tente novamente.') }
+    setLoading(false)
+  }
+
+  if (success) return (
+    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-cream-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-xl p-10 max-w-md w-full text-center">
+        <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCircle size={32} className="text-emerald-500"/></div>
+        <h2 className="text-xl font-bold text-gray-800 mb-2">Cadastro concluído!</h2>
+        <p className="text-gray-500 text-sm mb-6">Seu cadastro foi realizado com sucesso. Você já pode fazer login usando seu e-mail e senha.</p>
+        <a href="/" className="btn-primary w-full justify-center">Ir para o Login</a>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-cream-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-xl p-8 max-w-lg w-full">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center"><Shield size={20} className="text-white"/></div>
+          <div><p className="font-bold text-gray-800">Alpha Admin SC</p><p className="text-xs text-gray-400">Cadastro de Usuário</p></div>
+        </div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-1">Criar conta</h2>
+        <p className="text-sm text-gray-500 mb-6">Preencha os dados abaixo para solicitar acesso ao sistema.</p>
+
+        <div className="flex flex-col gap-4">
+          {/* Perfil */}
+          <div>
+            <label className="label">Perfil de acesso *</label>
+            <select className="input" value={form.role} onChange={e=>set('role',e.target.value)}>
+              {rolesOptions.map(r=><option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+
+          {/* Nome */}
+          <div>
+            <label className="label">Nome completo *</label>
+            <div className="relative"><User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+              <input className="input pl-9" value={form.nome} onChange={e=>set('nome',e.target.value)} placeholder="Seu nome completo"/>
+            </div>
+          </div>
+
+          {/* Email + Telefone */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><label className="label">E-mail *</label>
+              <div className="relative"><Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                <input type="email" className="input pl-9" value={form.email} onChange={e=>set('email',e.target.value)} placeholder="seu@email.com"/>
+              </div>
+            </div>
+            <div><label className="label">Telefone / WhatsApp *</label>
+              <div className="relative"><Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                <input type="tel" className="input pl-9" value={form.telefone} onChange={e=>set('telefone',e.target.value)} placeholder="(00) 00000-0000"/>
+              </div>
+            </div>
+          </div>
+
+          {/* CPF */}
+          <div>
+            <label className="label">CPF * (Apenas números)</label>
+            <div className="relative">
+              <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+              <input type="text" className="input pl-9" value={form.cpf} onChange={e=>set('cpf',e.target.value.replace(/\D/g,'').slice(0,11))} placeholder="00000000000"/>
+            </div>
+          </div>
+
+          {/* Senha */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><label className="label">Senha *</label>
+              <div className="relative"><Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                <input type="password" className="input pl-9" value={form.senha} onChange={e=>set('senha',e.target.value)} placeholder="Mín. 6 caracteres"/>
+              </div>
+            </div>
+            <div><label className="label">Confirmar senha *</label>
+              <div className="relative"><Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                <input type="password" className="input pl-9" value={form.confirmar} onChange={e=>set('confirmar',e.target.value)} placeholder="Repetir senha"/>
+              </div>
+            </div>
+          </div>
+
+          {/* Localização */}
+          {requiresLocation && (
+            <div className="flex flex-col gap-3 p-4 bg-cream-50 border border-cream-300 rounded-2xl">
+              <p className="text-xs font-bold text-brand-700 flex items-center gap-1"><Building size={12}/> Dados do Condomínio</p>
+              <div><label className="label">Nome do Condomínio *</label>
+                <div className="relative"><Building size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                  <input className="input pl-9" value={form.condominio} onChange={e=>set('condominio',e.target.value)} placeholder="Ex: Residencial das Flores"/>
+                </div>
+              </div>
+              {form.role !== 'Porteiro' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="label">Bloco / Torre</label>
+                    <div className="relative"><Layers size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                      <input className="input pl-9" value={form.bloco} onChange={e=>set('bloco',e.target.value)} placeholder="Ex: A, B, 1..."/>
+                    </div>
+                  </div>
+                  <div><label className="label">Unidade / Apto *</label>
+                    <div className="relative"><DoorOpen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                      <input className="input pl-9" value={form.unidade} onChange={e=>set('unidade',e.target.value)} placeholder="Ex: 204, 101-A"/>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Módulos de acesso – sempre visíveis (fixos para morador) */}
+          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+            <p className="text-xs font-bold text-emerald-800 mb-3 flex items-center gap-1.5">✅ Módulos incluídos no seu acesso</p>
+            <div className="grid grid-cols-2 gap-2">
+              {modulosMorador.map(m=>(
+                <div key={m.label} className="flex items-center gap-2">
+                  <div className="w-5 h-5 bg-emerald-100 rounded-full flex items-center justify-center shrink-0"><Check size={10} className="text-emerald-600"/></div>
+                  <span className="text-xs text-emerald-900 font-medium">{m.icon} {m.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {error && <div className="p-3 bg-red-50 border border-red-300 rounded-xl text-sm text-red-600">{error}</div>}
+
+          <button onClick={handleSubmit} disabled={loading} className="btn-primary w-full justify-center mt-2">
+            {loading ? 'Enviando...' : <><ArrowRight size={16}/>Solicitar Cadastro</>}
+          </button>
+          <p className="text-center text-xs text-gray-400">Já tem conta? <a href="/" className="text-brand-600 hover:underline">Fazer login</a></p>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,94 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    @apply bg-cream-300 text-gray-800 font-sans antialiased;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-cream-200;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-brand-400 rounded-full;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white border border-cream-400 rounded-2xl p-5 animate-fade-in shadow-sm;
+  }
+  .btn-primary {
+    @apply bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white font-semibold px-4 py-2.5 rounded-lg transition-all duration-200 flex items-center gap-2 text-sm;
+  }
+  .btn-secondary {
+    @apply bg-cream-200 hover:bg-cream-300 text-gray-700 font-medium px-4 py-2.5 rounded-lg transition-all duration-200 flex items-center gap-2 text-sm border border-cream-400;
+  }
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-2.5 rounded-lg transition-all duration-200 flex items-center gap-2 text-sm;
+  }
+  .btn-success {
+    @apply bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2.5 rounded-lg transition-all duration-200 flex items-center gap-2 text-sm;
+  }
+  .input {
+    @apply w-full bg-white border border-cream-400 rounded-lg px-3 py-2.5 text-gray-800 placeholder-gray-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-400 transition-all text-sm;
+  }
+  .label {
+    @apply block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5;
+  }
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+  .badge-green  { @apply badge bg-emerald-100 text-emerald-700 border border-emerald-300; }
+  .badge-red    { @apply badge bg-red-100 text-red-700 border border-red-300; }
+  .badge-yellow { @apply badge bg-amber-100 text-amber-700 border border-amber-300; }
+  .badge-blue   { @apply badge bg-brand-100 text-brand-700 border border-brand-300; }
+  .badge-purple { @apply badge bg-purple-100 text-purple-700 border border-purple-300; }
+  .stat-card {
+    @apply card flex flex-col gap-3;
+  }
+  .table-head {
+    @apply text-xs font-semibold text-gray-500 uppercase tracking-wider py-3 px-4 text-left;
+  }
+  .table-cell {
+    @apply text-sm text-gray-700 py-3 px-4;
+  }
+  .table-row {
+    @apply border-b border-cream-300 hover:bg-pale-100 transition-colors;
+  }
+  .section-title {
+    @apply text-lg font-bold text-gray-800 mb-1;
+  }
+  .section-sub {
+    @apply text-sm text-gray-500;
+  }
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-cream-400;
+  }
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer;
+  }
+  .nav-item-active {
+    @apply nav-item bg-brand-600 text-white shadow-md shadow-brand-600/20;
+  }
+  .nav-item-inactive {
+    @apply nav-item text-gray-600 hover:bg-pale-200 hover:text-brand-700;
+  }
+  .page-header {
+    @apply flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6;
+  }
+  .modal-overlay {
+    @apply fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4;
+  }
+  .modal-content {
+    @apply bg-white border border-cream-400 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl;
+  }
+}
