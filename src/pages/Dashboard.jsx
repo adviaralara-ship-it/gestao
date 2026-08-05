@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts'
-import { TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck, CreditCard, DollarSign, Smartphone, LogIn, LogOut, FileText, Bell, Clock } from 'lucide-react'
+import { TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck, CreditCard, DollarSign, Smartphone, LogIn, LogOut, FileText, Bell, Clock, DoorOpen } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useFirestore } from '../hooks/useFirestore'
 import { Link } from 'react-router-dom'
