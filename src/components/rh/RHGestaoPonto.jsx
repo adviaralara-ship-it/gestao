@@ -85,30 +85,48 @@ export default function RHGestaoPonto() {
   const handleSalvarAjuste = async (e) => {
     e.preventDefault()
     setSaving(true)
-    const { dataIso, tipo } = modalAjuste
+    const { dataIso, tipo, hora, marcacaoTipo } = modalAjuste
     try {
       const colabInfo = colabs.find(c => c.id === selectedColab)
       const loc = { lat: 0, lng: 0, isFallback: true }
       
+      let dataFinalISO
+      let pontoTipo
+      let isAjusteStatus = false
+      let ajusteTipoVal = null
+      
+      if (tipo === 'Marcacao') {
+         // Gambiarra rápida para salvar a hora local como se fosse UTC para não mudar de dia na exibição
+         dataFinalISO = `${dataIso}T${hora || '08:00'}:00.000Z`
+         pontoTipo = marcacaoTipo || 'Entrada'
+      } else {
+         dataFinalISO = `${dataIso}T12:00:00.000Z`
+         pontoTipo = 'Ajuste'
+         isAjusteStatus = true
+         ajusteTipoVal = tipo
+      }
+      
       await addDoc(collection(db, 'pontos'), {
         colabId: selectedColab,
         colabNome: colabInfo.nome,
-        tipo: 'Ajuste', // 'Entrada', 'Saída' ou 'Ajuste'
+        tipo: pontoTipo,
         location: loc,
         photoBase64: null,
         timestamp: serverTimestamp(),
-        dataISO: `${dataIso}T12:00:00.000Z`,
-        isAjuste: true,
-        ajusteTipo: tipo
+        dataISO: dataFinalISO,
+        isAjuste: isAjusteStatus,
+        ajusteTipo: ajusteTipoVal,
+        manual: true
       })
       
-      // Refresh local state (simplificado)
       setPontos(prev => [...prev, {
         id: Date.now().toString(),
         colabId: selectedColab,
-        dataISO: `${dataIso}T12:00:00.000Z`,
-        isAjuste: true,
-        ajusteTipo: tipo
+        dataISO: dataFinalISO,
+        tipo: pontoTipo,
+        isAjuste: isAjusteStatus,
+        ajusteTipo: ajusteTipoVal,
+        manual: true
       }])
       
       setModalAjuste(null)
@@ -261,7 +279,7 @@ export default function RHGestaoPonto() {
             </div>
             <form onSubmit={handleSalvarAjuste} className="p-5">
               <div className="mb-4">
-                <label className="label">Status do Dia</label>
+                <label className="label">Status do Dia / Ajuste</label>
                 <select 
                   className="input" 
                   value={modalAjuste.tipo} 
@@ -270,8 +288,24 @@ export default function RHGestaoPonto() {
                   <option value="Folga">Folga (DSR)</option>
                   <option value="Falta">Falta Injustificada</option>
                   <option value="Atestado">Atestado Médico</option>
+                  <option value="Marcacao">Adicionar Marcação Manual</option>
                 </select>
               </div>
+              {modalAjuste.tipo === 'Marcacao' && (
+                <div className="mb-4 flex gap-4">
+                  <div className="flex-1">
+                    <label className="label">Tipo</label>
+                    <select className="input" value={modalAjuste.marcacaoTipo || 'Entrada'} onChange={e => setModalAjuste({...modalAjuste, marcacaoTipo: e.target.value})}>
+                      <option value="Entrada">Entrada</option>
+                      <option value="Saída">Saída</option>
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label className="label">Horário</label>
+                    <input type="time" className="input" value={modalAjuste.hora || '08:00'} onChange={e => setModalAjuste({...modalAjuste, hora: e.target.value})} required />
+                  </div>
+                </div>
+              )}
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setModalAjuste(null)} className="btn-secondary">Cancelar</button>
                 <button type="submit" disabled={saving} className="btn-primary">
