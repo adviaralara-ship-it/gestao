@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
-import { DoorOpen, Plus, Trash2, Search, CheckCircle2, XCircle, ShieldAlert } from 'lucide-react'
+import { DoorOpen, Plus, Trash2, Search, CheckCircle2, XCircle, ShieldAlert, QrCode, X } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { notificarAdm } from '../emailjs.config'
 import { useAuth } from '../context/AuthContext'
 import Manutencoes from './Manutencoes'
+import { Html5QrcodeScanner } from 'html5-qrcode'
 
 const tipoBadge  = t=>({Visitante:'badge-blue',Entrega:'badge-yellow','Serviço':'badge-purple'}[t]||'badge-blue')
 const statusBadge2 = s=>({'No local':'badge-green',Saiu:'badge-blue',Aguardando:'badge-yellow'}[s]||'badge-blue')
@@ -16,6 +17,8 @@ export default function Portaria() {
   const [tab,    setTab]    = useState('visitantes')
   const [form,   setForm]   = useState({ nome:'', destino:'', tipo:'Visitante', autorizadoPor:'' })
   const [search, setSearch] = useState('')
+  const [showScanner, setShowScanner] = useState(false)
+  const [scanResult, setScanResult] = useState(null)
 
   const registrarEntrada = async () => {
     if (!form.nome) {
@@ -62,6 +65,102 @@ export default function Portaria() {
     }
   }
 
+  // Effect for QR Scanner
+  React.useEffect(() => {
+    let scanner = null;
+    if (showScanner) {
+      scanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: { width: 250, height: 250 } }, false);
+      scanner.render((text) => {
+        scanner.clear();
+        setShowScanner(false);
+        handleQRScanned(text);
+      }, (err) => {
+        // ignore scan errors
+      });
+    }
+    return () => {
+      if (scanner) {
+        scanner.clear().catch(e=>console.error("Failed to clear scanner", e));
+      }
+    };
+  }, [showScanner]);
+
+  const handleQRScanned = async (text) => {
+    try {
+      setScanResult({ type: 'loading', msg: 'Verificando...' })
+      const { doc, getDoc, updateDoc } = await import('firebase/firestore')
+
+      if (text.includes('/valida-convidado/')) {
+        const conviteId = text.split('/valida-convidado/')[1];
+        const convRef = doc(db, 'eventos_convidados', conviteId)
+        const snap = await getDoc(convRef)
+        if (snap.exists()) {
+          const conv = snap.data()
+          if (conv.checkin) {
+            setScanResult({ type: 'error', msg: 'Atenção: Este convite já foi utilizado (Check-in já realizado).' })
+          } else {
+            // Registra entrada imediata na portaria
+            const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+            await addVisit({
+              nome: conv.nome || 'Convidado (QR Code)', 
+              destino: 'Evento', 
+              tipo: 'Visitante', 
+              autorizadoPor: 'QR Code',
+              entrada: hora, 
+              saida: '—',
+              data: new Date().toLocaleDateString('pt-BR'),
+              status: 'No local', 
+              autorizado: true,
+              condominio: user?.condominio || ''
+            })
+            
+            await updateDoc(convRef, { checkin: true, checkinAt: new Date().toISOString() })
+            setScanResult({ type: 'success', msg: `Sucesso! Entrada de ${conv.nome} liberada e registrada.` })
+            setTimeout(() => setScanResult(null), 4000)
+          }
+        } else {
+          setScanResult({ type: 'error', msg: 'QR Code inválido ou não encontrado no sistema.' })
+        }
+      } else if (text.includes('/visitantes/valida/')) {
+        const visitanteId = text.split('/visitantes/valida/')[1];
+        const visRef = doc(db, 'visitantes', visitanteId)
+        const snap = await getDoc(visRef)
+        if (snap.exists()) {
+          const vis = snap.data()
+          if (vis.status === 'Cancelado') {
+             setScanResult({ type: 'error', msg: 'Atenção: Este passe foi CANCELADO pelo morador.' })
+          } else if (vis.status === 'Finalizado' || vis.checkin) {
+             setScanResult({ type: 'error', msg: 'Atenção: Este passe já foi utilizado ou está finalizado.' })
+          } else {
+            const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+            await addVisit({
+              nome: vis.nome || 'Visitante (QR Code)', 
+              destino: `${vis.condominio||''} ${vis.bloco?'Bl '+vis.bloco:''} ${vis.unidade?'Apt '+vis.unidade:''}`.trim(), 
+              tipo: vis.tipo || 'Visitante', 
+              autorizadoPor: 'Morador (QR Code)',
+              entrada: hora, 
+              saida: '—',
+              data: new Date().toLocaleDateString('pt-BR'),
+              status: 'No local', 
+              autorizado: true,
+              condominio: user?.condominio || ''
+            })
+            await updateDoc(visRef, { checkin: true, status: 'Ativo', checkinAt: new Date().toISOString() })
+            setScanResult({ type: 'success', msg: `Sucesso! Entrada de ${vis.nome} liberada.` })
+            setTimeout(() => setScanResult(null), 4000)
+          }
+        } else {
+          setScanResult({ type: 'error', msg: 'QR Code de visitante inválido ou não encontrado.' })
+        }
+      } else {
+         setScanResult({ type: 'error', msg: 'Formato de QR Code desconhecido.' })
+      }
+    } catch (err) {
+      console.error(err)
+      setScanResult({ type: 'error', msg: 'Erro ao processar QR Code.' })
+    }
+  }
+
   const visitFiltrados = visitantes.filter(v=>v.nome?.toLowerCase().includes(search.toLowerCase())||v.destino?.toLowerCase().includes(search.toLowerCase()))
 
   return (
@@ -95,9 +194,19 @@ export default function Portaria() {
               </div>
               <div><label className="label">Autorizado por</label><input className="input" placeholder="Nome do morador/porteiro" value={form.autorizadoPor} onChange={e=>setForm(f=>({...f,autorizadoPor:e.target.value}))}/></div>
             </div>
-            <div className="mt-3">
+            <div className="mt-3 flex gap-2">
               <button onClick={registrarEntrada} className="btn-primary"><Plus size={14}/>Registrar Entrada</button>
+              <button onClick={() => setShowScanner(true)} className="btn-secondary text-brand-600 bg-brand-50 border-brand-200 hover:bg-brand-100"><QrCode size={14}/>Ler QR Code</button>
             </div>
+            
+            {scanResult && (
+              <div className={`mt-3 p-3 rounded-xl flex items-center gap-2 ${scanResult.type==='success'?'bg-green-50 text-green-800 border-green-200':scanResult.type==='error'?'bg-red-50 text-red-800 border-red-200':'bg-blue-50 text-blue-800 border-blue-200'} border`}>
+                {scanResult.type==='success'?<CheckCircle2 size={16}/>:scanResult.type==='error'?<XCircle size={16}/>:<Search size={16} className="animate-spin"/>}
+                <p className="text-sm font-medium">{scanResult.msg}</p>
+                {scanResult.type==='error' && <button onClick={()=>setScanResult(null)} className="ml-auto text-red-500"><X size={14}/></button>}
+              </div>
+            )}
+
             {form.tipo==='Serviço' && (
               <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2">
                 <ShieldAlert size={15} className="text-amber-600 shrink-0"/>
@@ -152,6 +261,21 @@ export default function Portaria() {
 
       {tab==='manutenção' && (
         <Manutencoes />
+      )}
+
+      {showScanner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden relative shadow-2xl">
+            <div className="p-4 bg-brand-600 text-white flex justify-between items-center">
+              <h3 className="font-bold flex items-center gap-2"><QrCode size={18}/> Escanear QR Code</h3>
+              <button onClick={()=>setShowScanner(false)} className="text-white/80 hover:text-white"><X size={20}/></button>
+            </div>
+            <div className="p-6 bg-gray-50 flex flex-col items-center">
+              <div id="qr-reader" className="w-full max-w-[300px] overflow-hidden rounded-xl bg-black"></div>
+              <p className="text-sm text-gray-500 mt-4 text-center">Aponte a câmera para o QR Code do visitante para validar o acesso.</p>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

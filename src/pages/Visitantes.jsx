@@ -87,7 +87,7 @@ export default function Visitantes() {
                     <td className="table-cell">
                       <div className="flex items-center gap-3">
                         {v.foto && (
-                          <img src={v.foto} alt="Bio" className="w-8 h-8 rounded-full object-cover border border-gray-200" title="Biometria Cadastrada" />
+                          <img onClick={() => setModal({ type: 'foto', data: v.foto })} src={v.foto} alt="Bio" className="w-8 h-8 rounded-full object-cover border border-brand-200 cursor-pointer hover:scale-110 hover:shadow-md transition-all" title="Ver Biometria" />
                         )}
                         <div>
                           <p className="font-bold text-gray-800">{v.nome}</p>
@@ -123,6 +123,15 @@ export default function Visitantes() {
 
       {modal?.type === 'form' && <ModalVisitanteForm data={modal.data} onClose={() => setModal(false)} onSave={handleSave} />}
       {modal?.type === 'convite' && <ModalConviteQr data={modal.data} onClose={() => setModal(false)} />}
+      
+      {modal?.type === 'foto' && (
+        <div className="modal-overlay" onClick={() => setModal(false)}>
+          <div className="relative p-2 animate-fade-in" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setModal(false)} className="absolute -top-4 -right-4 bg-white rounded-full p-2 shadow-lg text-gray-500 hover:text-red-500 z-10"><X size={20} /></button>
+            <img src={modal.data} alt="Biometria Ampliada" className="max-w-[90vw] max-h-[80vh] rounded-2xl shadow-2xl border-4 border-white object-contain" />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

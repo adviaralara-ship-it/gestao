@@ -36,6 +36,15 @@ import Manutencoes from './pages/Manutencoes'
 import Veiculos from './pages/Veiculos'
 import Cameras from './pages/Cameras'
 import Calculadora from './pages/Calculadora'
+import PontoEletronico from './pages/PontoEletronico'
+import Conferencias from './pages/Conferencias'
+import Recrutamento from './pages/Recrutamento'
+import Mural from './pages/Mural'
+import AlphaAI from './components/AlphaAI'
+import MonitoramentoIA from './pages/MonitoramentoIA'
+import Inadimplencia from './pages/Inadimplencia'
+import Locacao from './pages/Locacao'
+import GeradorContratos from './pages/GeradorContratos'
 
 // Spinner de carregamento enquanto o Firebase Auth verifica a sessão
 function AuthLoader() {
@@ -52,7 +61,14 @@ function AuthLoader() {
 function PrivateRoute({ children }) {
   const { user, authLoading } = useAuth()
   if (authLoading) return <AuthLoader />
-  return user ? children : <Navigate to="/login" replace />
+  return user ? (
+    <>
+      {children}
+      <AlphaAI />
+    </>
+  ) : (
+    <Navigate to="/login" replace />
+  )
 }
 
 function AuthorizedRoute({ module, children }) {
@@ -67,7 +83,10 @@ function AuthorizedRoute({ module, children }) {
   }
 
   // Verifica se o usuário tem permissão para a rota específica
-  if (!user.permissoes?.includes(module)) {
+  let hasPerm = user.permissoes?.includes(module) || user.role === 'Administrador'
+  if ((module === 'conferencias' || module === 'recrutamento') && user.permissoes?.includes('rh')) hasPerm = true
+  
+  if (!hasPerm) {
     if (user.permissoes?.length > 0) return <Navigate to={`/${user.permissoes[0]}`} replace />
     return <Navigate to="/login" replace />
   }
@@ -86,7 +105,7 @@ function WhatsAppButton() {
       rel="noreferrer"
       onMouseEnter={() => setTooltip(true)}
       onMouseLeave={() => setTooltip(false)}
-      className="fixed bottom-5 right-5 z-50 flex items-center gap-2 group"
+      className="fixed bottom-36 right-5 z-50 flex items-center gap-2 group"
     >
       {tooltip && (
         <div className="bg-white border border-cream-400 text-gray-700 text-xs font-medium px-3 py-2 rounded-xl shadow-lg whitespace-nowrap animate-fade-in">
@@ -113,6 +132,7 @@ function AppRoutes() {
         <Route path="/cadastro" element={user ? <Navigate to="/dashboard" replace /> : <Cadastro />} />
         <Route path="/visitantes/valida/:id" element={<ValidaVisitante />} />
         <Route path="/eventos/valida/:id" element={<ValidaConvidado />} />
+        <Route path="/ponto" element={<PontoEletronico />} />
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<AuthorizedRoute module=""><span /></AuthorizedRoute>} />
           <Route path="dashboard" element={<AuthorizedRoute module="dashboard"><Dashboard /></AuthorizedRoute>} />
@@ -125,11 +145,18 @@ function AppRoutes() {
           <Route path="condominios" element={<AuthorizedRoute module="condominios"><Condominios /></AuthorizedRoute>} />
           <Route path="moradores" element={<AuthorizedRoute module="moradores"><Moradores /></AuthorizedRoute>} />
           <Route path="rh" element={<AuthorizedRoute module="rh"><RH /></AuthorizedRoute>} />
+          <Route path="conferencias" element={<AuthorizedRoute module="conferencias"><Conferencias /></AuthorizedRoute>} />
+          <Route path="recrutamento" element={<AuthorizedRoute module="recrutamento"><Recrutamento /></AuthorizedRoute>} />
+          <Route path="mural" element={<AuthorizedRoute module="mural"><Mural /></AuthorizedRoute>} />
+          <Route path="monitoramento-ia" element={<AuthorizedRoute module="monitoramento-ia"><MonitoramentoIA /></AuthorizedRoute>} />
           <Route path="prestadores" element={<AuthorizedRoute module="prestadores"><Prestadores /></AuthorizedRoute>} />
           <Route path="usuarios" element={<AuthorizedRoute module="usuarios"><Usuarios /></AuthorizedRoute>} />
           <Route path="financeiro" element={<AuthorizedRoute module="financeiro"><Financeiro /></AuthorizedRoute>} />
           <Route path="boletos" element={<AuthorizedRoute module="boletos"><Boletos /></AuthorizedRoute>} />
           <Route path="notas-fiscais" element={<AuthorizedRoute module="notas-fiscais"><NotasFiscais /></AuthorizedRoute>} />
+          <Route path="inadimplencia" element={<AuthorizedRoute module="inadimplencia"><Inadimplencia /></AuthorizedRoute>} />
+          <Route path="locacao" element={<AuthorizedRoute module="locacao"><Locacao /></AuthorizedRoute>} />
+          <Route path="contratos" element={<AuthorizedRoute module="contratos"><GeradorContratos /></AuthorizedRoute>} />
           <Route path="assembleias" element={<AuthorizedRoute module="assembleias"><Assembleias /></AuthorizedRoute>} />
           <Route path="eventos" element={<AuthorizedRoute module="eventos"><Eventos /></AuthorizedRoute>} />
           <Route path="ocorrencias" element={<AuthorizedRoute module="ocorrencias"><Ocorrencias /></AuthorizedRoute>} />

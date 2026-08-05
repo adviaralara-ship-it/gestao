@@ -114,19 +114,13 @@ export function useFirestore(colName) {
     }
   }
 
-  const checkThrottle = () => {
-    const now = Date.now()
-    const lastCall = requestLocks[colName] || 0
-    if (now - lastCall < 400) {
-      showToast('⚠️ Aguarde um momento antes de salvar novamente.', 'error')
-      throw new Error('Rate limit excedido')
-    }
-    requestLocks[colName] = now
+  const checkThrottle = (skip = false) => {
+    // Disabled aggressive throttling to prevent user errors
   }
 
-  const addItem = async (data) => {
+  const addItem = async (data, skipThrottle = false) => {
     try {
-      checkThrottle()
+      checkThrottle(skipThrottle)
       const { id: _ignore, ...clean } = data
       const docRef = await addDoc(collection(db, colName), {
         ...processOutgoingData(clean),
@@ -144,9 +138,9 @@ export function useFirestore(colName) {
     }
   }
 
-  const updateItem = async (id, data) => {
+  const updateItem = async (id, data, skipThrottle = false) => {
     try {
-      checkThrottle()
+      checkThrottle(skipThrottle)
       const { id: _ignore, _createdAt: _ts, ...clean } = data
       await updateDoc(doc(db, colName, id), processOutgoingData(clean))
       await logAudit('UPDATE', id)
@@ -157,9 +151,9 @@ export function useFirestore(colName) {
     }
   }
 
-  const deleteItem = async (id) => {
+  const deleteItem = async (id, skipThrottle = false) => {
     try {
-      checkThrottle()
+      checkThrottle(skipThrottle)
       await deleteDoc(doc(db, colName, id))
       await logAudit('DELETE', id)
     } catch (err) {

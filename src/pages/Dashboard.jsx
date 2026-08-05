@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts'
-import { TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck, CreditCard, DollarSign, Smartphone, LogIn, LogOut, FileText, Bell } from 'lucide-react'
+import { TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck, CreditCard, DollarSign, Smartphone, LogIn, LogOut, FileText, Bell, Clock } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useFirestore } from '../hooks/useFirestore'
 import { Link } from 'react-router-dom'
@@ -151,6 +151,23 @@ export default function Dashboard() {
 
   return (
     <div className="animate-fade-in h-full">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
+        <div className="page-header mb-0">
+          <div>
+            <h2 className="section-title text-2xl font-black bg-gradient-to-r from-brand-600 to-brand-400 bg-clip-text text-transparent">
+              Olá, {user?.nome?.split(' ')[0] || 'Usuário'}
+            </h2>
+            <p className="text-gray-500">Acompanhe as principais métricas do condomínio hoje.</p>
+          </div>
+        </div>
+        <button 
+          onClick={() => window.open('/ponto', '_blank')}
+          className="hidden md:flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-xl shadow-lg transition-all"
+        >
+          <Clock size={16} /> Bater Ponto
+        </button>
+      </div>
+
       {/* ─── VISÃO MOBILE (APP STYLE) ─── */}
       <div className="md:hidden flex flex-col min-h-screen -m-4 sm:-m-6 bg-[#C9CCDB] p-4 sm:p-6 pb-24 gap-6">
         <div className="text-center mt-4">
@@ -160,6 +177,7 @@ export default function Dashboard() {
         
         <div className="grid grid-cols-2 gap-4">
           {[
+            { label: 'Bater Ponto', icon: Clock, to: '/ponto', bg: 'bg-[#A4B6BA]' },
             { label: 'Câmeras', icon: Video, to: '/cameras', bg: 'bg-[#A4B6BA]' },
             { label: 'Reservas', icon: CalendarCheck, to: '/reservas', bg: 'bg-[#D1D3DF]' },
             { label: 'Boletos', icon: Receipt, to: '/boletos', bg: 'bg-[#D1D3DF]' },

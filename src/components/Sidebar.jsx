@@ -5,7 +5,7 @@ import {
   CreditCard, FileText, Receipt, Gavel, AlertTriangle, CalendarCheck,
   DoorOpen, Shield, BookOpen, FolderOpen, MessageSquare, ChevronDown,
   ChevronRight, X, Building, CheckSquare, Package, QrCode, PieChart, ShoppingBag,
-  Car, Video, Calculator, MessageCircleCode, Mail
+  Car, Video, Calculator, MessageCircleCode, Mail, Megaphone, Bot, Scale
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -24,10 +24,15 @@ const navGroups = [
     label: 'Gestão',
     items: [
       { to: '/rh', label: 'Recursos Humanos', icon: UserCog },
-      { to: '/prestadores', label: 'Prestadores', icon: Briefcase },
+      { to: '/notas-fiscais', label: 'Notas Fiscais', icon: Receipt },
+      { to: '/recrutamento', label: 'Recrutamento', icon: Users },
       { to: '/usuarios', label: 'Usuários', icon: Users },
+      { to: '/conferencias', label: 'Conferências', icon: Video },
+      { to: '/prestadores', label: 'Prestadores', icon: Briefcase },
       { to: '/ocorrencias', label: 'Ocorrências', icon: AlertTriangle },
       { to: '/tarefas', label: 'Tarefas & Agenda', icon: CheckSquare },
+      { to: '/monitoramento-ia', label: 'Monitoramento IA', icon: Bot },
+      { to: '/eventos', label: 'Eventos & Check-in', icon: CalendarCheck },
     ]
   },
   {
@@ -35,13 +40,14 @@ const navGroups = [
     items: [
       { to: '/financeiro', label: 'Receitas & Despesas', icon: CreditCard },
       { to: '/boletos', label: 'Boletos & Fundo', icon: FileText },
-      { to: '/notas-fiscais', label: 'Notas Fiscais', icon: Receipt },
+      { to: '/inadimplencia', label: 'Inadimplência & Jurídico', icon: Scale },
+      { to: '/calculadora', label: 'Calculadora (Comercial)', icon: Calculator },
+      { to: '/locacao', label: 'Locação & Aluguéis', icon: Building },
     ]
   },
   {
     label: 'Operacional',
     items: [
-      { to: '/eventos', label: 'Eventos & Check-in', icon: CalendarCheck },
       { to: '/reservas', label: 'Reservas', icon: CalendarCheck },
       { to: '/portaria', label: 'Portaria & Rondas', icon: DoorOpen },
       { to: '/encomendas', label: 'Encomendas', icon: Package },
@@ -54,11 +60,12 @@ const navGroups = [
   {
     label: 'Administrativo',
     items: [
-      { to: '/calculadora', label: 'Calculadora (Comercial)', icon: Calculator },
       { to: '/seguro', label: 'Seguro', icon: Shield },
       { to: '/regime', label: 'Regime Interno/Externo', icon: BookOpen },
       { to: '/documentos', label: 'Documentos', icon: FolderOpen },
+      { to: '/contratos', label: 'Gerador de Documentos', icon: FileText },
       { to: '/comunicacao', label: 'Comunicação', icon: MessageSquare },
+      { to: '/mural', label: 'Mural de Recados', icon: Megaphone },
       { to: '/enquetes', label: 'Enquetes', icon: PieChart },
       { to: '/classificados', label: 'Classificados', icon: ShoppingBag },
       { to: '/relatorios', label: 'Relatórios', icon: FileText },
@@ -126,7 +133,11 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }) 
     items: group.items.filter(item => {
       // Esconder Notas Fiscais para quem não for Administrador/Financeiro
       if (item.to === '/notas-fiscais' && user?.role !== 'Administrador' && user?.role !== 'Financeiro') return false
-      return userPerms.includes(item.to.replace('/', ''))
+      
+      let reqPerm = item.to.replace('/', '')
+      if (reqPerm === 'conferencias' || reqPerm === 'recrutamento') reqPerm = 'rh'
+      
+      return userPerms.includes(reqPerm) || user?.role === 'Administrador'
     }).map(item => ({
       ...item,
       label: item.to === '/boletos' && (user?.role === 'Morador' || user?.role === 'Síndico') ? 'Boletos' : item.label

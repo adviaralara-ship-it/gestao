@@ -5,6 +5,8 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { allModulesPerms, sindicoPerms, financeiroPerms, porteiroPerms, moradorPerms } from '../context/AuthContext'
 import { enviarEmail } from '../emailjs.config'
+import { secondaryAuth } from '../firebase'
+import { createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth'
 
 const MORADOR_ROLES = ['Morador', 'Síndico', 'Subsíndico', 'Conselheiro']
 
@@ -99,26 +101,50 @@ function Modal({ data, onClose, onSave }) {
               <label className="label">E-mail (usado para login)</label>
               <input type="email" className="input" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@exemplo.com" />
             </div>
-            <div>
-              <label className="label">{isEdit ? 'Nova Senha (deixe em branco para manter)' : 'Senha'}</label>
-              <div className="relative">
-                <KeyRound size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type={showSenha ? 'text' : 'password'}
-                  className="input pl-9 pr-10"
-                  value={form.senha}
-                  onChange={e => set('senha', e.target.value)}
-                  placeholder={isEdit ? '••••••• (opcional)' : 'Mínimo 6 caracteres'}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowSenha(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-600 transition-colors"
-                >
-                  {showSenha ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
+            {!isEdit ? (
+              <div>
+                <label className="label">Senha</label>
+                <div className="relative">
+                  <KeyRound size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type={showSenha ? 'text' : 'password'}
+                    className="input pl-9 pr-10"
+                    value={form.senha}
+                    onChange={e => set('senha', e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSenha(s => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-600 transition-colors"
+                  >
+                    {showSenha ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div>
+                <label className="label">Redefinir Senha</label>
+                <div className="p-3 bg-cream-50 border border-cream-300 rounded-xl flex items-center justify-between">
+                  <span className="text-sm text-gray-500 font-medium truncate mr-2">Senha protegida</span>
+                  <button 
+                    type="button" 
+                    onClick={async () => {
+                      if(window.confirm('Enviar e-mail de redefinição de senha para ' + form.email + '?')) {
+                        try {
+                          await sendPasswordResetEmail(secondaryAuth, form.email)
+                          alert('E-mail de redefinição enviado com sucesso para ' + form.email + '!')
+                        } catch(err) {
+                          alert('Erro ao enviar e-mail: ' + err.message)
+                        }
+                      }
+                    }}
+                    className="text-xs font-bold text-brand-600 hover:text-brand-700 bg-white border border-brand-200 px-3 py-1.5 rounded-lg shadow-sm transition-all whitespace-nowrap shrink-0">
+                    Enviar Link
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="label">Perfil Base</label>
@@ -223,6 +249,16 @@ export default function Usuarios() {
 
   const handleSave = async (form) => {
     if (modal === 'new') {
+      try {
+        await createUserWithEmailAndPassword(secondaryAuth, form.email, form.senha)
+        await signOut(secondaryAuth)
+      } catch (err) {
+        if (err.code !== 'auth/email-already-in-use') {
+          alert('Erro ao criar acesso (Auth): ' + err.message)
+          return
+        }
+      }
+
       const novo = {
         ...form,
         ativo: form.status === 'Ativo',

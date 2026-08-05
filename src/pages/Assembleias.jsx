@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
-import { Gavel, Plus, Trash2, Download, FileText, Search } from 'lucide-react'
+import { Gavel, Plus, Trash2, Download, FileText, Search, Video, X, BarChart3, Clock, CheckCircle2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { notificarAdm } from '../emailjs.config'
+import { useAuth } from '../context/AuthContext'
 
 function ModalAssembleia({ onClose, onSave }) {
   const [form, setForm] = useState({ titulo:'', data:'', hora:'', local:'', tipo:'Ordinária', pauta:'' })
@@ -61,10 +62,12 @@ function ModalAta({ assembleia, onClose, onSave }) {
 }
 
 export default function Assembleias() {
+  const { user } = useAuth()
   const { items: assembleias, addItem: addAssembleia, deleteItem: delAssembleia, updateItem: updAssembleia } = useFirestore('assembleias')
   const { items: atas, addItem: addAta, deleteItem: delAta } = useFirestore('atas')
   const [tab,    setTab]   = useState('assembleias')
   const [modal,  setModal] = useState(null)
+  const [salaVirtual, setSalaVirtual] = useState(null)
   const [search, setSearch] = useState('')
 
   const filtAssembleias = assembleias.filter(a=>a.titulo?.toLowerCase().includes(search.toLowerCase())||a.local?.toLowerCase().includes(search.toLowerCase()))
@@ -142,9 +145,14 @@ export default function Assembleias() {
                     <p className="text-xs text-gray-500">📅 {a.data} às {a.hora} · 📍 {a.local}</p>
                     {a.pauta&&<p className="text-xs text-gray-500 mt-1 line-clamp-2">Pauta: {a.pauta}</p>}
                   </div>
-                  <div className="flex gap-2 items-center">
-                    <button onClick={()=>setModal(a)} className="btn-secondary py-1.5 text-xs"><FileText size={12}/>Registrar Ata</button>
-                    <button onClick={()=>delAssembleia(a.id)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={12}/></button>
+                  <div className="flex gap-2 items-center flex-wrap justify-end">
+                    <button onClick={()=>setSalaVirtual(a)} className="btn-primary py-1.5 text-xs bg-brand-600 hover:bg-brand-700 border-none"><Video size={12}/> Sala Virtual</button>
+                    {['Administrador', 'Síndico'].includes(user?.role) && (
+                      <>
+                        <button onClick={()=>setModal(a)} className="btn-secondary py-1.5 text-xs"><FileText size={12}/>Registrar Ata</button>
+                        <button onClick={()=>delAssembleia(a.id)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={12}/></button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -178,6 +186,102 @@ export default function Assembleias() {
       {modal&&modal!=='new'&&(
         <ModalAta assembleia={modal} onClose={()=>setModal(null)} onSave={texto=>handleNovaAta(modal,texto)}/>
       )}
+      {salaVirtual && <SalaVirtualAssembleia assembleia={salaVirtual} onClose={() => setSalaVirtual(null)} />}
     </div>
   )
 }
+
+function SalaVirtualAssembleia({ assembleia, onClose }) {
+  const { user } = useAuth()
+  const isAdmin = ['Administrador', 'Síndico'].includes(user?.role)
+  const { items: enquetes, updateItem } = useFirestore('enquetes')
+  const activeEnquetes = enquetes.filter(e => e.status === 'Aberta').sort((a,b) => new Date(b._createdAt || 0) - new Date(a._createdAt || 0))
+
+  const handleVotar = async (e, opcaoIndex) => {
+    const confirmacao = window.confirm(`Confirmar voto em: "${e.opcoes[opcaoIndex]}"?`)
+    if (!confirmacao) return
+    const novosVotos = { ...e.votos, [user.id]: opcaoIndex }
+    await updateItem(e.id, { votos: novosVotos })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-gray-100 flex flex-col animate-fade-in">
+      <div className="bg-brand-700 text-white p-4 flex items-center justify-between shadow-md">
+        <div>
+          <h2 className="font-bold text-lg flex items-center gap-2"><Video size={20}/> Assembleia Virtual: {assembleia.titulo}</h2>
+          <p className="text-brand-100 text-sm">Pauta: {assembleia.pauta}</p>
+        </div>
+        <button onClick={onClose} className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors">Sair da Sala <X size={18}/></button>
+      </div>
+
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        <div className="flex-1 bg-black relative">
+          <iframe 
+            src={`https://meet.jit.si/AlphaCondominio-${assembleia.id}`} 
+            allow="camera; microphone; fullscreen; display-capture"
+            className="absolute inset-0 w-full h-full border-0"
+          ></iframe>
+        </div>
+        <div className="w-full lg:w-96 bg-white border-l border-cream-300 flex flex-col shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+          <div className="p-4 border-b border-cream-200 bg-gray-50 flex items-center gap-2">
+            <BarChart3 className="text-brand-600" size={18}/>
+            <h3 className="font-bold text-gray-800">Painel de Votação Ao Vivo</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+            {activeEnquetes.length === 0 ? (
+              <p className="text-gray-400 text-sm text-center py-10">Nenhuma votação ativa no momento.</p>
+            ) : (
+              activeEnquetes.map(e => {
+                const totalVotos = Object.keys(e.votos || {}).length
+                const jaVotou = e.votos && e.votos[user?.id] !== undefined
+                const contagem = e.opcoes.map((_, i) => Object.values(e.votos || {}).filter(v => v === i).length)
+
+                return (
+                  <div key={e.id} className="border border-cream-300 rounded-xl overflow-hidden shadow-sm">
+                    <div className="p-3 bg-gray-50 border-b border-cream-200">
+                      <h4 className="font-bold text-gray-800 text-sm mb-1">{e.pergunta}</h4>
+                      <p className="text-xs text-gray-500 flex items-center gap-1"><Clock size={11}/> {totalVotos} votos</p>
+                    </div>
+                    <div className="p-3 bg-white flex flex-col gap-2">
+                      {!jaVotou ? (
+                        e.opcoes.map((opcao, i) => (
+                          <button key={i} onClick={() => handleVotar(e, i)} className="w-full text-left p-2 rounded-lg border border-cream-200 hover:border-brand-400 hover:bg-brand-50 text-sm font-medium text-gray-700 transition-colors">
+                            {opcao}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="flex flex-col gap-3">
+                          {e.opcoes.map((opcao, i) => {
+                            const pct = totalVotos === 0 ? 0 : Math.round((contagem[i] / totalVotos) * 100)
+                            const isVencedor = pct > 0 && pct === Math.max(...contagem.map((v,j) => totalVotos ? Math.round((v/totalVotos)*100) : 0))
+                            return (
+                              <div key={i} className="relative">
+                                <div className="flex justify-between text-[11px] font-bold mb-1 px-1">
+                                  <span className={isVencedor ? 'text-gray-800' : 'text-gray-500'}>{opcao} {e.votos[user.id] === i && '✓'}</span>
+                                  <span className={isVencedor ? 'text-brand-600' : 'text-gray-400'}>{pct}%</span>
+                                </div>
+                                <div className="w-full bg-cream-100 rounded-full h-1.5"><div className={`h-1.5 rounded-full ${isVencedor ? 'bg-brand-500' : 'bg-gray-300'}`} style={{ width: `${pct}%` }} /></div>
+                              </div>
+                            )
+                          })}
+                          <p className="text-xs text-emerald-600 font-bold flex items-center justify-center gap-1 mt-1"><CheckCircle2 size={12}/> Voto registrado</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+          {isAdmin && (
+            <div className="p-4 border-t border-cream-200 bg-gray-50 text-center">
+              <p className="text-xs text-gray-500 mb-2">Para gerenciar enquetes, acesse o menu</p>
+              <a href="/enquetes" target="_blank" rel="noreferrer" className="btn-secondary w-full justify-center text-xs">Abrir Painel de Enquetes</a>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+

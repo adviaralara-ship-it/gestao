@@ -319,7 +319,7 @@ export default function Comunicacao() {
               title: `Novo ${a.tipo}: ${a.titulo}`, 
               message: a.texto,
               targetUserIds: targetEmails,
-              targetUrl: window.location.origin + '/comunicacao'
+              targetUrl: window.location.origin + '/mural'
             })
           }).catch(e => console.error("Push erro", e))
 

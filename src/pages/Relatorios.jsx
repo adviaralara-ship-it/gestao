@@ -95,6 +95,30 @@ export default function Relatorios() {
 
       let startY = 45
 
+      // NOVO: Quadro Resumo
+      const totalOcorrencias = ocorrencias.length
+      const solucionadas = ocorrencias.filter(o => o.status === 'Resolvida' || o.status === 'Solucionada' || o.status === 'Fechada').length
+      const abertas = totalOcorrencias - solucionadas
+
+      doc.setFontSize(14)
+      doc.setTextColor(3, 22, 56)
+      doc.text('Resumo Geral (Dashboard)', 14, startY)
+      autoTable(doc, {
+        startY: startY + 5,
+        head: [['Total de Ocorrências', 'Solucionadas', 'Em Andamento / Abertas', 'Total Reservas', 'Total Tarefas']],
+        body: [[
+          totalOcorrencias.toString(),
+          solucionadas.toString(),
+          abertas.toString(),
+          reservas.length.toString(),
+          tarefas.length.toString()
+        ]],
+        theme: 'grid',
+        headStyles: { fillColor: [26, 43, 78], halign: 'center' },
+        bodyStyles: { halign: 'center', fontStyle: 'bold' }
+      })
+      startY = doc.lastAutoTable.finalY + 15
+
       // 1. Ocorrências
       if (ocorrencias.length > 0) {
         doc.setFontSize(14)

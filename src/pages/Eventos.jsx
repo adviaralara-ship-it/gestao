@@ -70,6 +70,7 @@ function ModalEvento({ data, condominios, onClose, onSave }) {
 function GerenciarConvidados({ evento, convidados, addConvidado, updateConvidado, deleteConvidado, onVoltar, addNotificacao }) {
   const [nome, setNome] = useState('')
   const [qrModal, setQrModal] = useState(null)
+  const [fotoModal, setFotoModal] = useState(null)
   
   const handleAdd = () => {
     if (!nome.trim()) return
@@ -86,10 +87,17 @@ function GerenciarConvidados({ evento, convidados, addConvidado, updateConvidado
       const names = text.split('\n').map(line => line.split(',')[0].trim()).filter(n => n.length > 0)
       if (names.length > 0) {
         if (window.confirm(`Foram encontrados ${names.length} nomes no arquivo. Deseja importar todos?`)) {
-          names.forEach((n, idx) => {
-             addConvidado({ nome: n, eventoId: evento.id, checkin: false, codigo: `EVT-${evento.id}-${Date.now()}-${idx}` })
-          })
-          alert('Convidados importados com sucesso!')
+          const importarLista = async () => {
+            for (let idx = 0; idx < names.length; idx++) {
+              try {
+                await addConvidado({ nome: names[idx], eventoId: evento.id, checkin: false, codigo: `EVT-${evento.id}-${Date.now()}-${idx}` }, true)
+              } catch (e) {
+                console.error("Erro ao importar", names[idx], e)
+              }
+            }
+            alert('Convidados importados com sucesso!')
+          }
+          importarLista()
         }
       } else {
         alert('Nenhum nome válido encontrado no arquivo.')
@@ -167,7 +175,7 @@ function GerenciarConvidados({ evento, convidados, addConvidado, updateConvidado
                 <td className="table-cell font-medium">
                   <div className="flex items-center gap-3">
                     {c.foto && (
-                      <img src={c.foto} alt="Bio" className="w-8 h-8 rounded-full object-cover border border-gray-200" title="Biometria Cadastrada" />
+                      <img onClick={() => setFotoModal(c.foto)} src={c.foto} alt="Bio" className="w-8 h-8 rounded-full object-cover border border-brand-200 cursor-pointer hover:scale-110 hover:shadow-md transition-all" title="Ver Biometria" />
                     )}
                     <span>{c.nome}</span>
                   </div>
@@ -183,9 +191,9 @@ function GerenciarConvidados({ evento, convidados, addConvidado, updateConvidado
                   <div className="flex gap-2">
                     <button onClick={() => setQrModal(c)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1"><QrCode size={12}/> Gerar QR</button>
                     {!c.checkin && (
-                       <button onClick={() => updateConvidado(c.id, { checkin: true })} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1"><CheckCircle size={12}/> Marcar Chegada</button>
+                       <button onClick={() => updateConvidado(c.id, { checkin: true }, true)} className="btn-secondary py-1 px-2 text-xs flex items-center gap-1"><CheckCircle size={12}/> Marcar Chegada</button>
                     )}
-                    <button onClick={() => deleteConvidado(c.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded"><Trash2 size={14}/></button>
+                    <button onClick={() => deleteConvidado(c.id, true)} className="p-1.5 text-red-500 hover:bg-red-50 rounded"><Trash2 size={14}/></button>
                   </div>
                 </td>
               </tr>
@@ -221,6 +229,15 @@ function GerenciarConvidados({ evento, convidados, addConvidado, updateConvidado
                 <Bell size={18} /> Enviar Push para o Morador
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {fotoModal && (
+        <div className="modal-overlay" onClick={() => setFotoModal(null)}>
+          <div className="relative p-2 animate-fade-in" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setFotoModal(null)} className="absolute -top-4 -right-4 bg-white rounded-full p-2 shadow-lg text-gray-500 hover:text-red-500 z-10"><X size={20} /></button>
+            <img src={fotoModal} alt="Biometria Ampliada" className="max-w-[90vw] max-h-[80vh] rounded-2xl shadow-2xl border-4 border-white object-contain" />
           </div>
         </div>
       )}

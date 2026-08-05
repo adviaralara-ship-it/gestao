@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// A chave foi fornecida pelo usuário no chat
-const API_KEY = 'AQ.Ab8RN6KqertMDuONt55SmWpseAN6pPPfTQUI_zPLwqYbhKHpXg';
+// A chave deve ser fornecida pelo ambiente (Vercel Env Vars)
+const API_KEY = 'AQ.Ab8RN6LisZ8KdMGE-dFm_AGrkrJiB7U5pdx8CiJZq_lqxdSz8Q';
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 export const config = {
@@ -49,7 +49,7 @@ export default async function handler(req, res) {
       }`;
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
     const result = await model.generateContent([
       prompt,

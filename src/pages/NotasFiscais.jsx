@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Receipt, Search, ExternalLink, RefreshCw, Plus, Trash2, Edit2, X } from 'lucide-react'
+import { Receipt, Search, ExternalLink, RefreshCw, Plus, Trash2, Edit2, X, Eye } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage'
@@ -141,11 +141,33 @@ export default function NotasFiscais() {
   const consultar = async () => {
     if (!cnpjConsulta) return
     setLoading(true)
-    // Abre o site da Receita Federal para consulta real
-    window.open(`https://www.sefaz.rs.gov.br/NFE/NfeConsultaPublica.aspx`, '_blank')
+    const cnpjLimpo = cnpjConsulta.replace(/\D/g, '')
+    window.open(`https://cnpj.biz/${cnpjLimpo}`, '_blank')
     await new Promise(r => setTimeout(r, 800))
     setResultado({ cnpj: cnpjConsulta, info: 'Consulta aberta na aba da SEFAZ.' })
     setLoading(false)
+  }
+
+  const visualizarNota = (url) => {
+    if (url.startsWith('data:')) {
+      const newWin = window.open('', '_blank');
+      if (newWin) {
+        newWin.document.write("<html><head><title>Visualizando Nota...</title></head><body style='margin:0;display:flex;justify-content:center;align-items:center;height:100vh;background:#f5f5f5;font-family:sans-serif;'><h2>Preparando documento...</h2></body></html>");
+        fetch(url)
+          .then(res => res.blob())
+          .then(blob => {
+            const objUrl = URL.createObjectURL(blob);
+            newWin.location.href = objUrl;
+          })
+          .catch(() => {
+            newWin.document.body.innerHTML = "<h2 style='color:red;'>Erro ao processar o arquivo.</h2>";
+          });
+      } else {
+        alert("Permita os pop-ups neste site para visualizar o anexo.");
+      }
+    } else {
+      window.open(url, '_blank');
+    }
   }
 
   const handleSave = async (form) => {
@@ -218,7 +240,7 @@ export default function NotasFiscais() {
                     <td className="table-cell font-medium text-gray-500">{n.tipo || 'Nota Fiscal'}</td>
                     <td className="table-cell font-mono text-brand-600 font-semibold">
                       {n.numero}
-                      {n.arquivoUrl && <a href={n.arquivoUrl} target="_blank" rel="noreferrer" className="block text-[10px] text-blue-500 underline mt-1">Ver anexo</a>}
+                      {n.arquivoUrl && <button onClick={(e) => { e.preventDefault(); visualizarNota(n.arquivoUrl); }} className="block text-[10px] text-blue-500 underline mt-1 text-left">Ver anexo</button>}
                     </td>
                     <td className="table-cell"><p className="font-medium text-gray-800">{n.prestador}</p><p className="text-xs text-gray-400">{n.cnpj}</p></td>
                     <td className="table-cell text-gray-500">{n.servico} <span className="text-[10px] text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded border border-brand-100 ml-1 block w-fit mt-1">{n.condominio||'Sem condomínio'}</span></td>
@@ -226,12 +248,17 @@ export default function NotasFiscais() {
                     <td className="table-cell text-gray-500">{n.data}</td>
                     <td className="table-cell"><span className={statusBadge(n.status)}>{n.status}</span></td>
                     <td className="table-cell">
-                      {user?.role !== 'Morador' && (
-                        <div className="flex gap-2">
-                          <button onClick={() => setModal(n)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={12} /></button>
-                          <button onClick={() => deleteItem(n.id)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={12} /></button>
-                        </div>
-                      )}
+                      <div className="flex gap-2">
+                        {n.arquivoUrl && (
+                          <button onClick={() => visualizarNota(n.arquivoUrl)} title="Visualizar Nota" className="p-1.5 rounded-lg bg-cream-100 hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-all"><Eye size={12} /></button>
+                        )}
+                        {user?.role !== 'Morador' && (
+                          <>
+                            <button onClick={() => setModal(n)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={12} /></button>
+                            <button onClick={() => deleteItem(n.id)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={12} /></button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app'
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore'
+import { getFirestore } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
+import { getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,7 +13,10 @@ const firebaseConfig = {
 }
 
 export const app = initializeApp(firebaseConfig)
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-})
+export const db = getFirestore(app)
 export const auth = getAuth(app)
+export const storage = getStorage(app)
+
+// Secondary app to create users without signing out the current admin
+export const secondaryApp = initializeApp(firebaseConfig, 'SecondaryApp')
+export const secondaryAuth = getAuth(secondaryApp)

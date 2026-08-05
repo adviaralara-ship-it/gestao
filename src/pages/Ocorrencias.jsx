@@ -131,7 +131,10 @@ export default function Ocorrencias() {
     if (i.visibilidade === 'Apenas Adm' && user?.role !== 'Administrador') {
       return false
     }
-    return i.titulo?.toLowerCase().includes(search.toLowerCase()) || i.categoria?.toLowerCase().includes(search.toLowerCase())
+    const searchLower = search.toLowerCase()
+    const matchTitulo = i.titulo ? i.titulo.toLowerCase().includes(searchLower) : false
+    const matchCat = i.categoria ? i.categoria.toLowerCase().includes(searchLower) : false
+    return matchTitulo || matchCat || (searchLower === '')
   })
 
   const handleSave = async form => {

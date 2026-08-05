@@ -44,7 +44,7 @@ function Modal({ data, user, onClose, onSave, onDelete }) {
           <div className="grid grid-cols-2 gap-4">
             <div><label className="label">Status</label>
               <select className="input" value={form.status} onChange={e=>set('status',e.target.value)}>
-                <option>Pendente</option><option>Confirmada</option><option>Cancelada</option>
+                <option>Pendente</option><option>Aguardando Pagamento</option><option>Confirmada</option><option>Cancelada</option>
               </select>
             </div>
             <div>
@@ -84,25 +84,48 @@ export default function Reservas() {
 
   const handleSave = async form => {
     if (form.status !== 'Cancelada') {
+      const finalCondominio = form.condominio || user?.condominio || ''
       const overlap = items.some(i => {
         if (i.id === form.id || i.espaco !== form.espaco || i.data !== form.data || i.status === 'Cancelada') return false
         
-        // Verifica sobreposição de horários
-        const h1 = (i.horario || '').toLowerCase().replace('as', '-').replace('às', '-')
-        const h2 = (form.horario || '').toLowerCase().replace('as', '-').replace('às', '-')
+        const c1 = (i.condominio || '').trim().toLowerCase()
+        const c2 = (finalCondominio || '').trim().toLowerCase()
+        if (c1 && c2 && c1 !== c2) return false
         
-        const parseTime = t => { const m = t.match(/(\d{1,2})[:h](\d{2})?/); return m ? parseInt(m[1])*60 + (parseInt(m[2])||0) : null }
-        const times1 = h1.split('-').map(parseTime)
-        const times2 = h2.split('-').map(parseTime)
-        
-        if (times1.length >= 2 && times2.length >= 2 && times1[0] !== null && times2[0] !== null) {
-          const [start1, end1] = times1
-          const [start2, end2] = times2
-          return (start1 < end2 && start2 < end1) // Sobreposição
+        const extractTimes = str => {
+          const regex = /(\d{1,2})(?:[:h]\s*(\d{2}))?/g;
+          const matches = [];
+          let match;
+          while ((match = regex.exec(str)) !== null) {
+            matches.push(parseInt(match[1], 10) * 60 + (match[2] ? parseInt(match[2], 10) : 0));
+          }
+          return matches;
         }
-        return i.horario === form.horario // Fallback para strings exatas
+        
+        const times1 = extractTimes(i.horario || '')
+        const times2 = extractTimes(form.horario || '')
+        
+        let start1, end1, start2, end2;
+        if (times1.length > 0) {
+          start1 = times1[0];
+          end1 = times1.length > 1 ? times1[1] : start1 + 240; 
+          if (start1 > end1) { const t = start1; start1 = end1; end1 = t; }
+        }
+        if (times2.length > 0) {
+          start2 = times2[0];
+          end2 = times2.length > 1 ? times2[1] : start2 + 240;
+          if (start2 > end2) { const t = start2; start2 = end2; end2 = t; }
+        }
+
+        if (times1.length > 0 && times2.length > 0) {
+          if (end1 <= start2 || end2 <= start1) {
+            return false;
+          }
+        }
+        
+        return true
       })
-      if (overlap) { alert('Já existe uma reserva conflitante neste horário!'); return }
+      if (overlap) { alert('Já existe uma reserva conflitante neste dia/horário! Verifique o calendário.'); return }
     }
     if (!form.id) {
       const finalForm = {
@@ -117,10 +140,35 @@ export default function Reservas() {
         time:new Date().toISOString(),tipo:'reserva',lida:false, condominio: finalForm.condominio, _createdAt:serverTimestamp()
       })
     } else {
+      const oldItem = items.find(i => i.id === form.id)
       await updateItem(form.id, {
          ...form,
          valor: form.valor ? (typeof form.valor === 'string' ? parseFloat(form.valor.replace(/\./g,'').replace(',','.')) : form.valor) : 0
       })
+      
+      // Se acabou de ser confirmada vindo de Aguardando Pagamento (PIX)
+      if (oldItem && oldItem.status === 'Aguardando Pagamento' && form.status === 'Confirmada') {
+        const val = form.valor ? (typeof form.valor === 'string' ? parseFloat(form.valor.replace(/\./g,'').replace(',','.')) : form.valor) : 0
+        if (val > 0) {
+          try {
+            await addDoc(collection(db, 'financeiro'), {
+              tipo: 'Receita',
+              descricao: `Reserva PIX - ${form.espaco} (Apt ${form.apt})`,
+              valor: val,
+              data: new Date().toLocaleDateString('pt-BR'),
+              categoria: 'Taxa de Reserva',
+              condominio: form.condominio || user?.condominio || '',
+              pago: true,
+              comprovante: '',
+              anexos: [],
+              _createdAt: serverTimestamp()
+            })
+            alert('Pagamento confirmado e lançado no Financeiro automaticamente!')
+          } catch (e) {
+            console.error(e)
+          }
+        }
+      }
     }
     setModal(null)
   }
@@ -202,8 +250,8 @@ export default function Reservas() {
             const isToday=dayStr===todayStr
             return (
               <div key={d} onClick={()=>setModal({espaco:selectedEspaco==='Todos'?'Salão de Festas':selectedEspaco,condominio:user?.condominio||'',morador:user?.nome||'',apt:user?.apt||'',data:dayStr,horario:'',pessoas:'',status:'Pendente'})}
-                className={`bg-white min-h-[120px] p-2 transition-all hover:bg-brand-50 cursor-pointer group flex flex-col gap-1.5 relative ${isToday?'bg-blue-50/30':''}`}>
-                <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-all ${isToday?'bg-brand-600 text-white ring-4 ring-brand-100':'text-gray-400 group-hover:text-brand-600 group-hover:bg-brand-100'}`}>{d}</span>
+                className={`bg-white min-h-[120px] p-2 transition-all hover:bg-brand-50 hover:scale-[1.02] hover:z-10 hover:shadow-lg cursor-pointer group flex flex-col gap-1.5 relative border border-transparent hover:border-brand-300 rounded-lg m-0.5 ${isToday?'bg-blue-50/30 border-blue-200':''}`}>
+                <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-all ${isToday?'bg-brand-600 text-white shadow-md':'text-gray-400 group-hover:text-brand-600 group-hover:bg-brand-100'}`}>{d}</span>
                 <div className="flex flex-col gap-1.5 mt-1 flex-1 overflow-y-auto custom-scrollbar pr-1 max-h-[100px]">
                   {dayRes.map(res=>(
                     <div key={res.id} onClick={e=>{e.stopPropagation();setModal(res)}}

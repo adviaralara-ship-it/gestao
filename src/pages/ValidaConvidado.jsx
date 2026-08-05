@@ -43,6 +43,12 @@ export default function ValidaConvidado() {
     loadDados()
   }, [id])
 
+  useEffect(() => {
+    if (showCamera && videoRef.current && stream) {
+      videoRef.current.srcObject = stream
+    }
+  }, [showCamera, stream])
+
   if (loading) {
     return (
       <div className="min-h-screen bg-brand-50 flex items-center justify-center p-4">
@@ -75,12 +81,6 @@ export default function ValidaConvidado() {
       alert('Não foi possível acessar a câmera. Verifique as permissões do navegador.')
     }
   }
-
-  useEffect(() => {
-    if (showCamera && videoRef.current && stream) {
-      videoRef.current.srcObject = stream
-    }
-  }, [showCamera, stream])
 
   const closeCamera = () => {
     if (stream) {
@@ -126,7 +126,7 @@ export default function ValidaConvidado() {
           <div className={`p-8 pb-10 text-center text-white relative ${isValid ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : 'bg-gradient-to-br from-gray-600 to-gray-700'}`}>
             <ShieldCheck size={48} className={`mx-auto mb-4 ${isValid ? 'text-emerald-100' : 'text-gray-300'}`} />
             <p className="text-sm font-bold uppercase tracking-widest text-white/80 mb-1">Passe de Evento</p>
-            <h1 className="text-3xl font-black mb-1">Alpha Condomínios</h1>
+            <h1 className="text-3xl font-black mb-1">Alpha Soluções Condominiais</h1>
           </div>
 
           {/* Ticket recortes */}

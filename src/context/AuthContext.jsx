@@ -14,7 +14,7 @@ const AuthContext = createContext(null)
 export const allModulesPerms = ['dashboard','whatsapp','email','condominios','moradores','rh','prestadores','usuarios','financeiro','boletos','notas-fiscais','assembleias','ocorrencias','reservas','eventos','portaria','veiculos','cameras','calculadora','encomendas','visitantes','enquetes','classificados','seguro','regime','documentos','comunicacao','tarefas','relatorios','propostas']
 export const sindicoPerms    = ['dashboard','moradores','notas-fiscais','ocorrencias','portaria','regime','comunicacao','boletos','assembleias','reservas','eventos','seguro','documentos','relatorios','visitantes','encomendas']
 export const financeiroPerms = ['dashboard','financeiro','boletos','notas-fiscais','prestadores','documentos']
-export const porteiroPerms   = ['dashboard','moradores','prestadores','notas-fiscais','ocorrencias','portaria','regime','comunicacao','usuarios','assembleias','reservas','eventos','seguro','documentos','visitantes','encomendas']
+export const porteiroPerms   = ['dashboard','moradores','portaria','veiculos','comunicacao','reservas','eventos','visitantes','encomendas']
 export const moradorPerms    = ['dashboard','moradores','notas-fiscais','ocorrencias','regime','comunicacao','boletos','assembleias','reservas','eventos','seguro','documentos','portaria','visitantes','encomendas']
 
 // ─── Perfis de usuários master (dados de perfil, SEM senha) ───────────────
