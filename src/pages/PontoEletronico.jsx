@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { MapPin, Camera, Clock, CheckCircle2, User, Loader2 } from 'lucide-react'
+import { MapPin, Camera, Clock, CheckCircle2, User, Loader2, AlertCircle } from 'lucide-react'
 import { collection, addDoc, getDocs, serverTimestamp, query, where } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth'
@@ -13,6 +13,8 @@ export default function PontoEletronico() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [modalAjuste, setModalAjuste] = useState(false)
+  const [ajusteForm, setAjusteForm] = useState({ data: '', hora: '', tipo: 'Entrada', justificativa: '' })
 
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
@@ -137,6 +139,41 @@ export default function PontoEletronico() {
     }
   }
 
+  const handleSolicitarAjuste = async (e) => {
+    e.preventDefault()
+    if (!selectedColab) return setErrorMsg('Selecione quem você é primeiro.')
+    
+    setLoading(true)
+    setErrorMsg('')
+    try {
+      const colabData = colabs.find(c => c.id === selectedColab)
+      
+      await addDoc(collection(db, 'solicitacoes_ajuste'), {
+        colabId: selectedColab,
+        colabNome: colabData.nome,
+        data: ajusteForm.data,
+        hora: ajusteForm.hora,
+        tipoMarcacao: ajusteForm.tipo,
+        justificativa: ajusteForm.justificativa,
+        status: 'Pendente',
+        timestamp: serverTimestamp()
+      })
+
+      setSuccess(true)
+      setModalAjuste(false)
+      setAjusteForm({ data: '', hora: '', tipo: 'Entrada', justificativa: '' })
+      
+      setTimeout(() => {
+        setSuccess(false)
+      }, 3000)
+
+    } catch (err) {
+      setErrorMsg(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   if (success) {
     return (
       <div className="min-h-screen bg-cream-50 flex items-center justify-center p-6">
@@ -220,18 +257,25 @@ export default function PontoEletronico() {
             <button 
               onClick={() => handleBaterPonto('Entrada')} 
               disabled={loading || !photo || !selectedColab}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
             >
               {loading ? <Loader2 size={20} className="animate-spin" /> : 'Bater ENTRADA'}
             </button>
             <button 
               onClick={() => handleBaterPonto('Saída')} 
               disabled={loading || !photo || !selectedColab}
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
             >
               {loading ? <Loader2 size={20} className="animate-spin" /> : 'Bater SAÍDA'}
             </button>
           </div>
+          
+          <button 
+            onClick={() => setModalAjuste(true)}
+            className="w-full text-center text-brand-600 text-sm font-bold hover:underline flex items-center justify-center gap-1 mt-2"
+          >
+            <AlertCircle size={14} /> Bateu errado ou esqueceu? Solicitar Ajuste
+          </button>
 
           <div className="text-center flex justify-center items-center gap-1 text-xs text-gray-400">
             <MapPin size={12} />
@@ -239,6 +283,55 @@ export default function PontoEletronico() {
           </div>
         </div>
       </div>
+      {/* Modal Solicitar Ajuste */}
+      {modalAjuste && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-cream-300">
+              <h3 className="font-bold text-gray-800 text-lg">Solicitar Ajuste de Ponto</h3>
+              <p className="text-sm text-gray-500">Seu pedido será enviado ao RH para aprovação.</p>
+            </div>
+            <form onSubmit={handleSolicitarAjuste} className="p-5 space-y-4">
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="label">Data</label>
+                  <input type="date" className="input" value={ajusteForm.data} onChange={e => setAjusteForm({...ajusteForm, data: e.target.value})} required />
+                </div>
+                <div className="flex-1">
+                  <label className="label">Horário</label>
+                  <input type="time" className="input" value={ajusteForm.hora} onChange={e => setAjusteForm({...ajusteForm, hora: e.target.value})} required />
+                </div>
+              </div>
+              
+              <div>
+                <label className="label">Tipo de Marcação</label>
+                <select className="input" value={ajusteForm.tipo} onChange={e => setAjusteForm({...ajusteForm, tipo: e.target.value})}>
+                  <option value="Entrada">Entrada</option>
+                  <option value="Saída">Saída</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="label">Justificativa (Por que está solicitando ajuste?)</label>
+                <textarea 
+                  className="input min-h-[80px]" 
+                  placeholder="Ex: Esqueci de bater o ponto, celular sem bateria..." 
+                  value={ajusteForm.justificativa} 
+                  onChange={e => setAjusteForm({...ajusteForm, justificativa: e.target.value})}
+                  required
+                ></textarea>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button type="button" onClick={() => setModalAjuste(false)} className="px-4 py-2 text-gray-500 font-bold hover:bg-gray-100 rounded-lg">Cancelar</button>
+                <button type="submit" disabled={loading} className="btn-primary">
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : 'Enviar Solicitação'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
