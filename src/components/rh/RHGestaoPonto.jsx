@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { collection, query, where, getDocs, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore'
+import { useFirestore } from '../../hooks/useFirestore'
 import { db } from '../../firebase'
 import { Calendar, Search, Loader2, Save, AlertTriangle, Plus } from 'lucide-react'
 

@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { UserCog, Plus, Search, Edit2, Trash2, Briefcase, FileText, Loader2, MapPin, Clock, CheckSquare, CheckCircle } from 'lucide-react'
-import { useFirestore } from '../hooks/useFirestore'
+import { useAuth } from '../../context/AuthContext'
+import { useFirestore } from '../../hooks/useFirestore'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
-import { storage, db } from '../firebase'
+import { storage, db } from '../../firebase'
 
 
 function ColabModal({ data, onClose, onSave }) {

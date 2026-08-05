@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../firebase'
+import { useFirestore } from '../../hooks/useFirestore'
 import { Search, Loader2, Plus, Trash2, Printer, CheckCircle } from 'lucide-react'
 
 // Utilidades de Cálculo (Tabelas 2024/2025/2026 Brasil)
