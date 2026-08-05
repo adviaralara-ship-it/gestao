@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { collection, query, where, getDocs, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { useFirestore } from '../../hooks/useFirestore'
 import { db } from '../../firebase'
-import { Calendar, Search, Loader2, Save, AlertTriangle, Plus } from 'lucide-react'
+import { Calendar, Search, Loader2, Save, AlertTriangle, Plus, Edit2, Trash2 } from 'lucide-react'
 
 export default function RHGestaoPonto() {
   const [colabs, setColabs] = useState([])
@@ -14,6 +14,10 @@ export default function RHGestaoPonto() {
   
   // Para dias de folga/falta/ajuste
   const [modalAjuste, setModalAjuste] = useState(null)
+  
+  // Para edição de registro individual
+  const [modalEditarRegistro, setModalEditarRegistro] = useState(null)
+  const [editHora, setEditHora] = useState('')
 
   useEffect(() => {
     const fetchColabs = async () => {
@@ -137,6 +141,44 @@ export default function RHGestaoPonto() {
     }
   }
 
+  const handleEditarRegistro = async (e, acao) => {
+    e.preventDefault()
+    if (!modalEditarRegistro) return
+    setSaving(true)
+    try {
+      if (acao === 'excluir') {
+        if(!window.confirm('Tem certeza que deseja excluir esta marcação?')) {
+          setSaving(false)
+          return
+        }
+        await updateDoc(doc(db, 'pontos', modalEditarRegistro.id), {
+          deletado: true, // Soft delete ou podemos fazer deleteDoc
+          atualizadoEm: serverTimestamp()
+        })
+        // Atualiza estado local
+        setPontos(prev => prev.filter(p => p.id !== modalEditarRegistro.id))
+      } else {
+        // Atualizar hora
+        const oldData = new Date(modalEditarRegistro.dataISO)
+        const datePart = oldData.toISOString().split('T')[0]
+        const newDataISO = `${datePart}T${editHora}:00.000Z`
+        
+        await updateDoc(doc(db, 'pontos', modalEditarRegistro.id), {
+          dataISO: newDataISO,
+          atualizadoEm: serverTimestamp(),
+          editadoManualmente: true
+        })
+        
+        setPontos(prev => prev.map(p => p.id === modalEditarRegistro.id ? { ...p, dataISO: newDataISO } : p))
+      }
+      setModalEditarRegistro(null)
+    } catch(err) {
+      alert('Erro ao editar registro: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleFecharPonto = async () => {
     if(!window.confirm(`Tem certeza que deseja FECHAR O PONTO de ${mesAno} para este colaborador?\nIsso consolidará os dados para a Folha de Pagamento.`)) return
     
@@ -235,8 +277,14 @@ export default function RHGestaoPonto() {
                         {dia.registros.length > 0 ? (
                           <div className="flex gap-2 flex-wrap">
                             {dia.registros.map(r => (
-                              <span key={r.id} className={`px-2 py-1 rounded text-xs font-bold ${r.tipo === 'Entrada' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                              <span key={r.id} className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-bold ${r.tipo === 'Entrada' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                                 {new Date(r.dataISO).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
+                                <button onClick={() => {
+                                  setModalEditarRegistro(r)
+                                  setEditHora(new Date(r.dataISO).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}))
+                                }} className="hover:opacity-70 ml-1">
+                                  <Edit2 size={12} />
+                                </button>
                               </span>
                             ))}
                           </div>
@@ -316,6 +364,37 @@ export default function RHGestaoPonto() {
           </div>
         </div>
       )}
+      {/* Modal Editar Registro Individual */}
+      {modalEditarRegistro && (
+        <div className="modal-overlay" onClick={() => setModalEditarRegistro(null)}>
+          <div className="modal-content max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-cream-300 flex justify-between items-center">
+              <h3 className="font-bold text-gray-800">Editar Marcação</h3>
+              <span className={`px-2 py-1 rounded text-xs font-bold ${modalEditarRegistro.tipo === 'Entrada' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                {modalEditarRegistro.tipo}
+              </span>
+            </div>
+            <form onSubmit={e => handleEditarRegistro(e, 'salvar')} className="p-5">
+              <div className="mb-4">
+                <label className="label">Horário Registrado</label>
+                <input type="time" className="input" value={editHora} onChange={e => setEditHora(e.target.value)} required />
+              </div>
+              <div className="flex justify-between items-center pt-2 mt-4 border-t border-cream-200">
+                <button type="button" onClick={e => handleEditarRegistro(e, 'excluir')} disabled={saving} className="text-red-500 hover:text-red-700 flex items-center gap-1 text-sm font-bold">
+                  <Trash2 size={16} /> Excluir
+                </button>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setModalEditarRegistro(null)} className="btn-secondary">Cancelar</button>
+                  <button type="submit" disabled={saving} className="btn-primary">
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : 'Salvar'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
