@@ -203,94 +203,111 @@ export default function Dashboard() {
           <span className="badge badge-green px-3 py-1.5 text-xs">● Sistema Online</span>
         </div>
 
-      {/* Stats Gerais — dados reais */}
+      {/* Stats Gerais */}
       <div className="grid grid-cols-2 xl:grid-cols-4 lg:grid-cols-4 gap-4">
         <StatCard label="Moradores" value={totalMoradores||0} sub="Cadastrados no sistema" icon={Users} color="bg-brand-600"/>
-        <StatCard label="Reservas Futuras" value={reservasFuturas||0} sub="Próximos agendamentos" icon={CalendarCheck} color="bg-purple-700"/>
-        <StatCard label="Receitas do Mês" value={`R$ ${(mesAtualData.receitas/1000).toFixed(1)}k`} sub="Lançadas este mês" icon={TrendingUp} color="bg-emerald-600"/>
-        <StatCard label="Despesas do Mês" value={`R$ ${(mesAtualData.despesas/1000).toFixed(1)}k`} sub="Lançadas este mês" icon={TrendingDown} color="bg-red-600"/>
+        
+        {user?.role === 'Porteiro' ? (
+          <>
+            <StatCard label="Visitantes no Local" value={visNoLocal||0} sub="Pessoas atualmente no prédio" icon={DoorOpen} color="bg-amber-600"/>
+            <StatCard label="Ocorrências" value={ocPendentes||0} sub="Pendentes de resolução" icon={AlertTriangle} color="bg-red-600"/>
+            <StatCard label="Reservas do Dia" value={reservasFuturas||0} sub="Próximos agendamentos" icon={CalendarCheck} color="bg-purple-700"/>
+          </>
+        ) : (
+          <>
+            <StatCard label="Reservas Futuras" value={reservasFuturas||0} sub="Próximos agendamentos" icon={CalendarCheck} color="bg-purple-700"/>
+            <StatCard label="Receitas do Mês" value={`R$ ${(mesAtualData.receitas/1000).toFixed(1)}k`} sub="Lançadas este mês" icon={TrendingUp} color="bg-emerald-600"/>
+            <StatCard label="Despesas do Mês" value={`R$ ${(mesAtualData.despesas/1000).toFixed(1)}k`} sub="Lançadas este mês" icon={TrendingDown} color="bg-red-600"/>
+          </>
+        )}
       </div>
 
-      {/* Cards de boletos */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="card text-center">
-          <p className="text-2xl font-black text-emerald-400">{boletos.filter(b=>b.status==='Pago').length}</p>
-          <p className="text-xs text-gray-400 mt-1">Boletos Pagos</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-2xl font-black text-amber-400">{boletosPendentes}</p>
-          <p className="text-xs text-gray-400 mt-1">Boletos Pendentes</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-2xl font-black text-red-400">{boletosVencidos}</p>
-          <p className="text-xs text-gray-400 mt-1">Boletos Vencidos</p>
-        </div>
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="card lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <div><p className="section-title">Receitas vs Despesas</p><p className="section-sub">Histórico lançado</p></div>
-            <div className="flex gap-3 text-xs text-gray-400">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-brand-500"/> Receitas</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"/>Despesas</span>
-            </div>
+      {/* Cards de boletos (Apenas para Gestão/Financeiro/Síndico) */}
+      {(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
+        <div className="grid grid-cols-3 gap-4">
+          <div className="card text-center">
+            <p className="text-2xl font-black text-emerald-400">{boletos.filter(b=>b.status==='Pago').length}</p>
+            <p className="text-xs text-gray-400 mt-1">Boletos Pagos</p>
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={chartData.length?chartData:[{mes:'—',receitas:0,despesas:0}]} margin={{top: 10, right: 10, left: -20, bottom: 0}}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false}/>
-              <XAxis dataKey="mes" tick={{fill:'#64748b',fontSize:12,fontWeight:600}} axisLine={false} tickLine={false} dy={10}/>
-              <YAxis tick={{fill:'#94a3b8',fontSize:11}} axisLine={false} tickLine={false} tickFormatter={v=>`R$${(v/1000).toFixed(0)}k`}/>
-              <Tooltip cursor={{fill: '#f8fafc'}} content={<CustomTooltip/>}/>
-              <Bar dataKey="receitas" name="Receitas" fill="#10b981" radius={[4,4,0,0]} barSize={32}/>
-              <Bar dataKey="despesas" name="Despesas" fill="#ef4444" radius={[4,4,0,0]} barSize={32}/>
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="card text-center">
+            <p className="text-2xl font-black text-amber-400">{boletosPendentes}</p>
+            <p className="text-xs text-gray-400 mt-1">Boletos Pendentes</p>
+          </div>
+          <div className="card text-center">
+            <p className="text-2xl font-black text-red-400">{boletosVencidos}</p>
+            <p className="text-xs text-gray-400 mt-1">Boletos Vencidos</p>
+          </div>
         </div>
+      )}
 
-        <div className="card flex flex-col">
-          <p className="section-title">Inadimplência</p>
-          <p className="section-sub mb-4">Baseado em cobranças (R$)</p>
-          <div className="flex-1 flex items-center justify-center">
-            <ResponsiveContainer width="100%" height={160}>
-              <PieChart>
-                <Pie data={adimplenciaData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" paddingAngle={3}>
-                  {adimplenciaData.map((e,i)=><Cell key={i} fill={e.color}/>)}
-                </Pie>
-                <Tooltip formatter={v=>`${v}%`} contentStyle={{background:'#111827',border:'1px solid #374151',borderRadius:8,fontSize:12}}/>
-              </PieChart>
+      {/* Charts (Apenas para Gestão/Financeiro/Síndico) */}
+      {(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="card lg:col-span-2">
+            <div className="flex items-center justify-between mb-4">
+              <div><p className="section-title">Receitas vs Despesas</p><p className="section-sub">Histórico lançado</p></div>
+              <div className="flex gap-3 text-xs text-gray-400">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-brand-500"/> Receitas</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"/>Despesas</span>
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={chartData.length?chartData:[{mes:'—',receitas:0,despesas:0}]} margin={{top: 10, right: 10, left: -20, bottom: 0}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false}/>
+                <XAxis dataKey="mes" tick={{fill:'#64748b',fontSize:12,fontWeight:600}} axisLine={false} tickLine={false} dy={10}/>
+                <YAxis tick={{fill:'#94a3b8',fontSize:11}} axisLine={false} tickLine={false} tickFormatter={v=>`R$${(v/1000).toFixed(0)}k`}/>
+                <Tooltip cursor={{fill: '#f8fafc'}} content={<CustomTooltip/>}/>
+                <Bar dataKey="receitas" name="Receitas" fill="#10b981" radius={[4,4,0,0]} barSize={32}/>
+                <Bar dataKey="despesas" name="Despesas" fill="#ef4444" radius={[4,4,0,0]} barSize={32}/>
+              </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex flex-col gap-2 mt-2">
-            {adimplenciaData.map(d=>(
-              <div key={d.name} className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{background:d.color}}/><span className="text-gray-600">{d.name}</span></span>
-                <span className="font-bold text-gray-800">{d.value}%</span>
-              </div>
-            ))}
+
+          <div className="card flex flex-col">
+            <p className="section-title">Inadimplência</p>
+            <p className="section-sub mb-4">Baseado em cobranças (R$)</p>
+            <div className="flex-1 flex items-center justify-center">
+              <ResponsiveContainer width="100%" height={160}>
+                <PieChart>
+                  <Pie data={adimplenciaData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" paddingAngle={3}>
+                    {adimplenciaData.map((e,i)=><Cell key={i} fill={e.color}/>)}
+                  </Pie>
+                  <Tooltip formatter={v=>`${v}%`} contentStyle={{background:'#111827',border:'1px solid #374151',borderRadius:8,fontSize:12}}/>
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex flex-col gap-2 mt-2">
+              {adimplenciaData.map(d=>(
+                <div key={d.name} className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{background:d.color}}/><span className="text-gray-600">{d.name}</span></span>
+                  <span className="font-bold text-gray-800">{d.value}%</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Balanço + Atividades reais + WhatsApp */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="card">
-          <p className="section-title mb-4">Balanço Global (Caixa)</p>
-          <div className="flex flex-col gap-3">
-            {[
-              {label:'Receita Total Lançada', val:`R$ ${balancoGeral.recGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, icon:TrendingUp, color:'text-emerald-400'},
-              {label:'Despesa Total Lançada', val:`R$ ${balancoGeral.desGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, icon:TrendingDown, color:'text-red-400'},
-              {label:'A Receber (Inadimplência)', val:`R$ ${balancoGeral.pendente.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, icon:CreditCard, color:'text-amber-500'},
-              {label:'Saldo Estimado', val:`R$ ${balancoGeral.saldo.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, icon:DollarSign, color:balancoGeral.saldo>=0?'text-emerald-400':'text-red-500'},
-            ].map(item=>(
-              <div key={item.label} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
-                <div className="flex items-center gap-2 text-sm text-gray-400"><item.icon size={14} className={item.color}/>{item.label}</div>
-                <span className={`text-sm font-bold ${item.color}`}>{item.val}</span>
-              </div>
-            ))}
+        {(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
+          <div className="card">
+            <p className="section-title mb-4">Balanço Global (Caixa)</p>
+            <div className="flex flex-col gap-3">
+              {[
+                {label:'Receita Total Lançada', val:`R$ ${balancoGeral.recGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, icon:TrendingUp, color:'text-emerald-400'},
+                {label:'Despesa Total Lançada', val:`R$ ${balancoGeral.desGlobal.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, icon:TrendingDown, color:'text-red-400'},
+                {label:'A Receber (Inadimplência)', val:`R$ ${balancoGeral.pendente.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, icon:CreditCard, color:'text-amber-500'},
+                {label:'Saldo Estimado', val:`R$ ${balancoGeral.saldo.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, icon:DollarSign, color:balancoGeral.saldo>=0?'text-emerald-400':'text-red-500'},
+              ].map(item=>(
+                <div key={item.label} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
+                  <div className="flex items-center gap-2 text-sm text-gray-400"><item.icon size={14} className={item.color}/>{item.label}</div>
+                  <span className={`text-sm font-bold ${item.color}`}>{item.val}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Atividades recentes — dados reais de notificacoes */}
         <div className="card max-h-[300px] overflow-y-auto custom-scrollbar flex flex-col">
@@ -311,33 +328,35 @@ export default function Dashboard() {
         </div>
 
         {/* WhatsApp */}
-        <div className="card bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
-          <div className="flex items-center justify-between mb-4">
-            <p className="section-title text-green-800 flex items-center gap-2"><Smartphone size={16}/>Integração WhatsApp</p>
-            <span className={`badge ${waConectado?'badge-green':'badge-yellow'} px-2 py-0.5 text-[10px]`}>{waConectado?'Conectado':'Aguardando'}</span>
+        {(user?.role === 'Administrador' || user?.role === 'Síndico') && (
+          <div className="card bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+            <div className="flex items-center justify-between mb-4">
+              <p className="section-title text-green-800 flex items-center gap-2"><Smartphone size={16}/>Integração WhatsApp</p>
+              <span className={`badge ${waConectado?'badge-green':'badge-yellow'} px-2 py-0.5 text-[10px]`}>{waConectado?'Conectado':'Aguardando'}</span>
+            </div>
+            {!waConectado?(
+              <div className="flex flex-col items-center justify-center text-center gap-3 py-2">
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-green-100 mb-1 inline-block opacity-50 pointer-events-none">
+                  <QRCodeSVG value="demo-qr-code" size={120} level="M"/>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-800">Modo Demonstração</p>
+                  <p className="text-[11px] text-gray-500 max-w-[200px] mt-1 leading-tight">Para ativar, conecte uma API oficial (Z-API, Evolution API ou Meta).</p>
+                </div>
+                <button onClick={()=>setWaConectado(true)} className="btn-primary bg-green-600 hover:bg-green-700 w-full justify-center text-xs mt-2">Simular Leitura</button>
+              </div>
+            ):(
+              <div className="flex flex-col items-center justify-center text-center gap-4 py-6">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-2"><Smartphone size={32}/></div>
+                <div>
+                  <p className="text-sm font-bold text-green-800">Aparelho Conectado!</p>
+                  <p className="text-xs text-green-600 mt-1">Sistema de disparos automáticos ativo.</p>
+                </div>
+                <button onClick={()=>setWaConectado(false)} className="btn-secondary text-xs text-red-500 hover:bg-red-50 hover:text-red-600 w-full justify-center">Desconectar</button>
+              </div>
+            )}
           </div>
-          {!waConectado?(
-            <div className="flex flex-col items-center justify-center text-center gap-3 py-2">
-              <div className="bg-white p-3 rounded-xl shadow-sm border border-green-100 mb-1 inline-block opacity-50 pointer-events-none">
-                <QRCodeSVG value="demo-qr-code" size={120} level="M"/>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-gray-800">Modo Demonstração</p>
-                <p className="text-[11px] text-gray-500 max-w-[200px] mt-1 leading-tight">Para ativar, conecte uma API oficial (Z-API, Evolution API ou Meta).</p>
-              </div>
-              <button onClick={()=>setWaConectado(true)} className="btn-primary bg-green-600 hover:bg-green-700 w-full justify-center text-xs mt-2">Simular Leitura</button>
-            </div>
-          ):(
-            <div className="flex flex-col items-center justify-center text-center gap-4 py-6">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-2"><Smartphone size={32}/></div>
-              <div>
-                <p className="text-sm font-bold text-green-800">Aparelho Conectado!</p>
-                <p className="text-xs text-green-600 mt-1">Sistema de disparos automáticos ativo.</p>
-              </div>
-              <button onClick={()=>setWaConectado(false)} className="btn-secondary text-xs text-red-500 hover:bg-red-50 hover:text-red-600 w-full justify-center">Desconectar</button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Divulgação do App + Portaria */}
