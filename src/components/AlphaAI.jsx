@@ -94,9 +94,9 @@ Se o morador pedir para abrir uma ocorrência ou registrar um problema (ex: lâm
 [CRIAR_OCORRENCIA: Resumo do Problema]
 Exemplo: "Claro, vou registrar isso para você! [CRIAR_OCORRENCIA: Lâmpada queimada no corredor]"
 
-Se o morador quiser reservar um espaço (ex: salão de festas, churrasqueira), peça a data e o espaço primeiro. Se ele já informou, INCLUA EXATAMENTE:
-[CRIAR_RESERVA: Nome do Espaço - Data]
-Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026]"
+Se o morador quiser reservar um espaço (ex: salão de festas, churrasqueira), você DEVE pedir a data e o HORÁRIO de início e fim. Se ele já informou tudo, INCLUA EXATAMENTE:
+[CRIAR_RESERVA: Nome do Espaço - Data - Horário]
+Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 - 14:00 as 22:00]"
 `
       
       // Constrói o histórico para a API do Gemini
@@ -187,26 +187,27 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026]"
     const handleCriarReserva = async () => {
       setActionStatus('loading')
       try {
-        const [espaco, dataStr] = reservaDetails.split(' - ')
-        const txid = `RES-${Math.floor(Math.random() * 10000)}`
+        const parts = reservaDetails.split(' - ')
+        const espaco = parts[0] || reservaDetails
+        const dataStr = parts[1] || new Date().toLocaleDateString('pt-BR')
+        const horarioStr = parts[2] || 'A definir'
+        
         await addDoc(collection(db, 'reservas'), {
           morador: user.nome,
           apt: user.apt || '',
           condominio: user.condominio || '',
-          espaco: espaco || reservaDetails,
-          data: dataStr || new Date().toLocaleDateString('pt-BR'),
-          horario: 'A definir',
+          espaco: espaco,
+          data: dataStr,
+          horario: horarioStr,
           pessoas: '',
-          status: 'Aguardando Pagamento',
-          valor: 150.00, // Valor fixo de exemplo
-          txid: txid,
+          status: 'Pendente',
           uid: user.uid || user.id,
           _createdAt: serverTimestamp()
         })
         
         // Notificação
         await addDoc(collection(db,'notificacoes'),{
-          text:`[${user.condominio}] Nova Reserva (Via AI): ${espaco} - Aguardando Pagamento`,
+          text:`[${user.condominio}] Nova Reserva (Via AI): ${espaco} - Pendente Aprovação`,
           time:new Date().toISOString(), tipo:'reserva', lida:false, condominio: user.condominio, _createdAt:serverTimestamp()
         })
         setActionStatus('done')
@@ -235,22 +236,18 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026]"
           </div>
         )}
 
-        {/* Widget de Reserva e PIX */}
+        {/* Widget de Reserva */}
         {matchReserva && (
           <div className="mt-3 p-3 bg-brand-50 border border-brand-100 rounded-xl">
             <p className="text-xs font-bold text-brand-800 mb-2 flex items-center gap-1"><Zap size={14}/> Pré-Reserva Gerada</p>
             <p className="text-xs text-brand-700 mb-3">{reservaDetails}</p>
             {actionStatus === 'done' ? (
               <div className="flex flex-col items-center gap-2 mt-2 pt-2 border-t border-brand-200">
-                <p className="text-xs font-bold text-gray-800">Escaneie o PIX para confirmar (R$ 150,00)</p>
-                <div className="bg-white p-2 rounded-xl shadow-sm border border-cream-200">
-                  <QRCode value={`00020101021126580014br.gov.bcb.pix0136sua-chave-pix-oficial-aqui@alpha.com5204000053039865406150.005802BR5909Alpha Adm6009Sao Paulo62070503RES***6304`} size={120} />
-                </div>
-                <p className="text-[10px] text-gray-500 text-center">Após o pagamento, o administrador confirmará a reserva.</p>
+                <div className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={14}/> Pedido de reserva enviado para aprovação!</div>
               </div>
             ) : (
               <button onClick={handleCriarReserva} disabled={actionStatus==='loading'} className="btn-primary py-1.5 px-3 text-xs w-full justify-center">
-                {actionStatus === 'loading' ? 'Gerando Reserva...' : 'Confirmar e Gerar PIX'}
+                {actionStatus === 'loading' ? 'Enviando...' : 'Confirmar Pedido de Reserva'}
               </button>
             )}
           </div>
@@ -264,17 +261,18 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026]"
 
   return (
     <>
-      {/* Botão Flutuante */}
+      {/* Botão Flutuante transformado em botão de Header */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-20 right-6 w-14 h-14 bg-gradient-to-tr from-brand-600 to-brand-400 rounded-full flex items-center justify-center text-white shadow-xl hover:shadow-brand-500/30 hover:scale-105 transition-all z-50 animate-bounce-soft ${isOpen ? 'rotate-180 scale-90' : ''}`}
+        className="relative p-2 rounded-lg text-brand-600 hover:text-brand-800 hover:bg-pale-100 transition-all flex items-center justify-center"
+        title="Alpha AI"
       >
-        {isOpen ? <ChevronDown size={28} /> : <Bot size={28} />}
+        {isOpen ? <ChevronDown size={18} /> : <Bot size={18} />}
       </button>
 
       {/* Janela de Chat */}
       {isOpen && (
-        <div className="fixed bottom-40 right-6 w-80 md:w-96 h-[500px] max-h-[80vh] bg-gray-50 rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden border border-cream-300 animate-fade-in">
+        <div className="absolute top-16 right-4 w-80 md:w-96 h-[500px] max-h-[80vh] bg-gray-50 rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden border border-cream-300 animate-fade-in">
           {/* Header */}
           <div className="bg-brand-700 text-white p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { collection, query, where, getDocs, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, query, where, getDocs, updateDoc, doc, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore'
 import { useFirestore } from '../../hooks/useFirestore'
 import { db } from '../../firebase'
 import { Calendar, Search, Loader2, Save, AlertTriangle, Plus, Edit2, Trash2 } from 'lucide-react'
@@ -18,6 +18,9 @@ export default function RHGestaoPonto() {
   // Para edição de registro individual
   const [modalEditarRegistro, setModalEditarRegistro] = useState(null)
   const [editHora, setEditHora] = useState('')
+  
+  // Seleção múltipla para exclusão
+  const [selectedDays, setSelectedDays] = useState([])
 
   useEffect(() => {
     const fetchColabs = async () => {
@@ -36,10 +39,11 @@ export default function RHGestaoPonto() {
         const snap = await getDocs(q)
         
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-          .filter(p => p.dataISO && p.dataISO.startsWith(mesAno))
+          .filter(p => p.dataISO && p.dataISO.startsWith(mesAno) && !p.deletado)
           .sort((a,b) => new Date(a.dataISO) - new Date(b.dataISO))
         
         setPontos(list)
+        setSelectedDays([])
       } catch (err) {
         console.error(err)
       } finally {
@@ -85,53 +89,115 @@ export default function RHGestaoPonto() {
   }
 
   const dias = agruparPorDia()
+  
+  // Calcula previa de horas para exibir na tabela
+  let prevTrabalhadosMin = 0
+  let prevEsperadosMin = 0
+  
+  Object.keys(dias).forEach(d => {
+    const dia = dias[d]
+    let minDia = 0
+    let espDia = 0
+    
+    if (dia.status === 'Normal') {
+       espDia = 8 * 60
+       const regs = dia.registros.sort((a,b) => new Date(a.dataISO) - new Date(b.dataISO))
+       let entradaTemp = null
+       regs.forEach(r => {
+         if (r.tipo === 'Entrada') {
+           entradaTemp = new Date(r.dataISO)
+         } else if (r.tipo === 'Saída' && entradaTemp) {
+           minDia += (new Date(r.dataISO) - entradaTemp) / 1000 / 60
+           entradaTemp = null
+         }
+       })
+    } else if (dia.status === 'Falta') {
+       espDia = 8 * 60
+    }
+    
+    dia.minTrabalhados = minDia
+    dia.minEsperados = espDia
+    dia.saldoMinutos = minDia - espDia
+    
+    prevTrabalhadosMin += minDia
+    prevEsperadosMin += espDia
+  })
+  
+  const totalSaldoHorasPrev = ((prevTrabalhadosMin - prevEsperadosMin) / 60).toFixed(2)
 
   const handleSalvarAjuste = async (e) => {
     e.preventDefault()
     setSaving(true)
-    const { dataIso, tipo, hora, marcacaoTipo } = modalAjuste
+    const { dataIso, tipo, hora, marcacaoTipo, horaE1, horaS1, horaE2, horaS2 } = modalAjuste
     try {
       const colabInfo = colabs.find(c => c.id === selectedColab)
       const loc = { lat: 0, lng: 0, isFallback: true }
       
-      let dataFinalISO
-      let pontoTipo
-      let isAjusteStatus = false
-      let ajusteTipoVal = null
-      
-      if (tipo === 'Marcacao') {
-         // Gambiarra rápida para salvar a hora local como se fosse UTC para não mudar de dia na exibição
-         dataFinalISO = `${dataIso}T${hora || '08:00'}:00.000Z`
-         pontoTipo = marcacaoTipo || 'Entrada'
-      } else {
-         dataFinalISO = `${dataIso}T12:00:00.000Z`
-         pontoTipo = 'Ajuste'
-         isAjusteStatus = true
-         ajusteTipoVal = tipo
+      const criarPonto = async (hhmm, pTipo) => {
+         const [y, m, d] = dataIso.split('-')
+         const [hh, mm] = hhmm.split(':')
+         const localDate = new Date(y, m - 1, d, hh, mm, 0)
+         const dataFinalISO = localDate.toISOString()
+         
+         const docRef = await addDoc(collection(db, 'pontos'), {
+            colabId: selectedColab,
+            colabNome: colabInfo.nome,
+            tipo: pTipo,
+            location: loc,
+            photoBase64: null,
+            timestamp: serverTimestamp(),
+            dataISO: dataFinalISO,
+            isAjuste: false,
+            ajusteTipo: null,
+            manual: true
+         })
+         
+         return {
+            id: docRef.id,
+            colabId: selectedColab,
+            dataISO: dataFinalISO,
+            tipo: pTipo,
+            isAjuste: false,
+            ajusteTipo: null,
+            manual: true
+         }
       }
-      
-      await addDoc(collection(db, 'pontos'), {
-        colabId: selectedColab,
-        colabNome: colabInfo.nome,
-        tipo: pontoTipo,
-        location: loc,
-        photoBase64: null,
-        timestamp: serverTimestamp(),
-        dataISO: dataFinalISO,
-        isAjuste: isAjusteStatus,
-        ajusteTipo: ajusteTipoVal,
-        manual: true
-      })
-      
-      setPontos(prev => [...prev, {
-        id: Date.now().toString(),
-        colabId: selectedColab,
-        dataISO: dataFinalISO,
-        tipo: pontoTipo,
-        isAjuste: isAjusteStatus,
-        ajusteTipo: ajusteTipoVal,
-        manual: true
-      }])
+
+      if (tipo === 'Dia Completo') {
+         const novosPontos = []
+         if (horaE1) novosPontos.push(await criarPonto(horaE1, 'Entrada'))
+         if (horaS1) novosPontos.push(await criarPonto(horaS1, 'Saída'))
+         if (horaE2) novosPontos.push(await criarPonto(horaE2, 'Entrada'))
+         if (horaS2) novosPontos.push(await criarPonto(horaS2, 'Saída'))
+         setPontos(prev => [...prev, ...novosPontos])
+      } else if (tipo === 'Marcacao') {
+         const novoPonto = await criarPonto(hora || '08:00', marcacaoTipo || 'Entrada')
+         setPontos(prev => [...prev, novoPonto])
+      } else {
+         const dataFinalISO = `${dataIso}T12:00:00.000Z`
+         const docRef = await addDoc(collection(db, 'pontos'), {
+            colabId: selectedColab,
+            colabNome: colabInfo.nome,
+            tipo: 'Ajuste',
+            location: loc,
+            photoBase64: null,
+            timestamp: serverTimestamp(),
+            dataISO: dataFinalISO,
+            isAjuste: true,
+            ajusteTipo: tipo,
+            manual: true
+         })
+         
+         setPontos(prev => [...prev, {
+            id: docRef.id,
+            colabId: selectedColab,
+            dataISO: dataFinalISO,
+            tipo: 'Ajuste',
+            isAjuste: true,
+            ajusteTipo: tipo,
+            manual: true
+         }])
+      }
       
       setModalAjuste(null)
     } catch(err) {
@@ -152,16 +218,15 @@ export default function RHGestaoPonto() {
           return
         }
         await updateDoc(doc(db, 'pontos', modalEditarRegistro.id), {
-          deletado: true, // Soft delete ou podemos fazer deleteDoc
+          deletado: true,
           atualizadoEm: serverTimestamp()
         })
-        // Atualiza estado local
         setPontos(prev => prev.filter(p => p.id !== modalEditarRegistro.id))
       } else {
-        // Atualizar hora
-        const oldData = new Date(modalEditarRegistro.dataISO)
-        const datePart = oldData.toISOString().split('T')[0]
-        const newDataISO = `${datePart}T${editHora}:00.000Z`
+        const [y, m, d] = modalEditarRegistro.dataISO.split('T')[0].split('-')
+        const [hh, mm] = editHora.split(':')
+        const newLocalDate = new Date(y, m - 1, d, hh, mm, 0)
+        const newDataISO = newLocalDate.toISOString()
         
         await updateDoc(doc(db, 'pontos', modalEditarRegistro.id), {
           dataISO: newDataISO,
@@ -179,6 +244,32 @@ export default function RHGestaoPonto() {
     }
   }
 
+  const handleExcluirSelecionados = async () => {
+    if (selectedDays.length === 0) return
+    if (!window.confirm(`Tem certeza que deseja excluir TODOS os registros dos ${selectedDays.length} dias selecionados?`)) return
+    
+    setSaving(true)
+    try {
+      const idsParaDeletar = pontos
+        .filter(p => p.dataISO && selectedDays.includes(p.dataISO.split('T')[0]))
+        .map(p => p.id)
+        
+      for (const id of idsParaDeletar) {
+         await updateDoc(doc(db, 'pontos', id), {
+            deletado: true,
+            atualizadoEm: serverTimestamp()
+         })
+      }
+      
+      setPontos(prev => prev.filter(p => !idsParaDeletar.includes(p.id)))
+      setSelectedDays([])
+    } catch(err) {
+      alert('Erro ao excluir selecionados: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleFecharPonto = async () => {
     if(!window.confirm(`Tem certeza que deseja FECHAR O PONTO de ${mesAno} para este colaborador?\nIsso consolidará os dados para a Folha de Pagamento.`)) return
     
@@ -190,27 +281,59 @@ export default function RHGestaoPonto() {
       let diasTrabalhados = 0
       let faltas = 0
       let folgas = 0
+      let minutosTrabalhadosTotal = 0
+      let minutosEsperadosTotal = 0
       
       Object.keys(dias).forEach(d => {
-        if(dias[d].status === 'Normal') diasTrabalhados++
-        if(dias[d].status === 'Falta') faltas++
-        if(dias[d].status === 'Folga') folgas++
+        const dia = dias[d]
+        if(dia.status === 'Normal') diasTrabalhados++
+        if(dia.status === 'Falta') faltas++
+        if(dia.status === 'Folga') folgas++
+
+        // Para os cálculos de horas (assumindo 8h/dia padrão para dias normais ou faltas)
+        if (dia.status === 'Normal') {
+           minutosEsperadosTotal += 8 * 60 // 8 horas esperadas
+           
+           const regs = dia.registros.sort((a,b) => new Date(a.dataISO) - new Date(b.dataISO))
+           let entradaTemp = null
+           
+           regs.forEach(r => {
+             if (r.tipo === 'Entrada') {
+               entradaTemp = new Date(r.dataISO)
+             } else if (r.tipo === 'Saída' && entradaTemp) {
+               const saidaDate = new Date(r.dataISO)
+               const diffMs = saidaDate - entradaTemp
+               minutosTrabalhadosTotal += (diffMs / 1000 / 60) // converte ms para minutos
+               entradaTemp = null
+             }
+           })
+        } else if (dia.status === 'Falta') {
+           minutosEsperadosTotal += 8 * 60 // Deveria ter trabalhado 8h e não trabalhou
+        }
       })
 
       const colabInfo = colabs.find(c => c.id === selectedColab)
 
+      const saldoMinutos = minutosTrabalhadosTotal - minutosEsperadosTotal
+      const horasTrabalhadas = (minutosTrabalhadosTotal / 60).toFixed(2)
+      const saldoHoras = (saldoMinutos / 60).toFixed(2) // Banco de horas (pode ser negativo)
+
       await addDoc(collection(db, 'fechamento_ponto'), {
         colabId: selectedColab,
         colabNome: colabInfo.nome,
-        mesAno: mesAno,
+        mesAno,
         diasTrabalhados,
         faltas,
         folgas,
         salarioBase: parseFloat(colabInfo.salario.replace(/[^\d,]/g, '').replace(',', '.')) || 0,
-        fechadoEm: new Date().toISOString()
+        fechadoEm: new Date().toISOString(),
+        horasTrabalhadas,
+        saldoHoras,
+        minutosTrabalhadosTotal,
+        minutosEsperadosTotal
       })
-
-      alert('Ponto fechado com sucesso! Os dados foram enviados para a Folha de Pagamento.')
+      
+      alert('Ponto fechado com sucesso! Agora você pode gerar a Folha de Pagamento.')
     } catch (err) {
       alert('Erro ao fechar ponto: ' + err.message)
     } finally {
@@ -248,18 +371,37 @@ export default function RHGestaoPonto() {
         <div>
           <div className="flex justify-between items-end mb-4">
             <h3 className="font-bold text-gray-800">Espelho de Ponto: {mesAno.split('-').reverse().join('/')}</h3>
-            <button onClick={handleFecharPonto} disabled={saving} className="btn-primary">
-              <Save size={16} /> Fechar Ponto
-            </button>
+            <div className="flex gap-2">
+              {selectedDays.length > 0 && (
+                <button onClick={handleExcluirSelecionados} disabled={saving} className="btn-secondary text-red-600 border-red-200 bg-red-50 hover:bg-red-100 flex items-center gap-2">
+                  <Trash2 size={16} /> Excluir {selectedDays.length} Dias
+                </button>
+              )}
+              <button onClick={handleFecharPonto} disabled={saving} className="btn-primary">
+                <Save size={16} /> Fechar Ponto
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="bg-cream-100 text-brand-700">
                 <tr>
-                  <th className="p-3 rounded-tl-lg">Data</th>
+                  <th className="p-3 rounded-tl-lg w-10">
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded text-brand-600"
+                      checked={Object.keys(dias).length > 0 && selectedDays.length === Object.keys(dias).length}
+                      onChange={e => {
+                        if (e.target.checked) setSelectedDays(Object.keys(dias))
+                        else setSelectedDays([])
+                      }}
+                    />
+                  </th>
+                  <th className="p-3">Data</th>
                   <th className="p-3">Registros (Entrada/Saída)</th>
                   <th className="p-3">Status</th>
+                  <th className="p-3 text-center">Saldo Diário</th>
                   <th className="p-3 rounded-tr-lg text-right">Ação</th>
                 </tr>
               </thead>
@@ -271,7 +413,18 @@ export default function RHGestaoPonto() {
                   const isFds = objDate.getDay() === 0 || objDate.getDay() === 6
                   
                   return (
-                    <tr key={dataISO} className={`border-b border-cream-200 ${isFds ? 'bg-cream-50' : ''}`}>
+                    <tr key={dataISO} className={`border-b border-cream-200 ${isFds ? 'bg-cream-50' : ''} ${selectedDays.includes(dataISO) ? 'bg-red-50' : ''}`}>
+                      <td className="p-3">
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 rounded text-brand-600"
+                          checked={selectedDays.includes(dataISO)}
+                          onChange={e => {
+                            if (e.target.checked) setSelectedDays([...selectedDays, dataISO])
+                            else setSelectedDays(selectedDays.filter(d => d !== dataISO))
+                          }}
+                        />
+                      </td>
                       <td className="p-3 font-medium text-gray-700 capitalize">{diaStr}</td>
                       <td className="p-3">
                         {dia.registros.length > 0 ? (
@@ -301,6 +454,15 @@ export default function RHGestaoPonto() {
                           {dia.status}
                         </span>
                       </td>
+                      <td className="p-3 text-center">
+                          {dia.status === 'Normal' || dia.status === 'Falta' ? (
+                            <span className={`font-bold text-sm ${dia.saldoMinutos > 0 ? 'text-emerald-600' : dia.saldoMinutos < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                              {dia.saldoMinutos > 0 ? '+' : ''}{(dia.saldoMinutos / 60).toFixed(2)}h
+                            </span>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                      </td>
                       <td className="p-3 text-right">
                         <button 
                           onClick={() => setModalAjuste({ dataIso: dataISO, tipo: 'Folga' })}
@@ -313,6 +475,17 @@ export default function RHGestaoPonto() {
                   )
                 })}
               </tbody>
+              <tfoot className="bg-cream-100/50">
+                <tr>
+                  <td colSpan="4" className="p-4 text-right font-bold text-brand-800">Saldo Total de Horas Previsto no Mês:</td>
+                  <td className="p-4 text-center">
+                    <span className={`font-black text-lg px-3 py-1 rounded-xl ${totalSaldoHorasPrev > 0 ? 'bg-emerald-100 text-emerald-700' : totalSaldoHorasPrev < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                      {totalSaldoHorasPrev > 0 ? '+' : ''}{totalSaldoHorasPrev}h
+                    </span>
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -336,9 +509,31 @@ export default function RHGestaoPonto() {
                   <option value="Folga">Folga (DSR)</option>
                   <option value="Falta">Falta Injustificada</option>
                   <option value="Atestado">Atestado Médico</option>
-                  <option value="Marcacao">Adicionar Marcação Manual</option>
+                  <option value="Marcacao">1 Marcação Manual</option>
+                  <option value="Dia Completo">Dia Completo (4 Marcações)</option>
                 </select>
               </div>
+              {modalAjuste.tipo === 'Dia Completo' && (
+                <div className="mb-4 grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <div>
+                    <label className="label text-emerald-700">Entrada 1</label>
+                    <input type="time" className="input bg-white" value={modalAjuste.horaE1 || ''} onChange={e => setModalAjuste({...modalAjuste, horaE1: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="label text-red-700">Saída 1</label>
+                    <input type="time" className="input bg-white" value={modalAjuste.horaS1 || ''} onChange={e => setModalAjuste({...modalAjuste, horaS1: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="label text-emerald-700">Entrada 2</label>
+                    <input type="time" className="input bg-white" value={modalAjuste.horaE2 || ''} onChange={e => setModalAjuste({...modalAjuste, horaE2: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="label text-red-700">Saída 2</label>
+                    <input type="time" className="input bg-white" value={modalAjuste.horaS2 || ''} onChange={e => setModalAjuste({...modalAjuste, horaS2: e.target.value})} />
+                  </div>
+                  <p className="col-span-2 text-xs text-gray-500 mt-2 text-center">Deixe em branco os horários que não quiser preencher.</p>
+                </div>
+              )}
               {modalAjuste.tipo === 'Marcacao' && (
                 <div className="mb-4 flex gap-4">
                   <div className="flex-1">

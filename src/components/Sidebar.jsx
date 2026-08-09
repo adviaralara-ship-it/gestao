@@ -49,6 +49,7 @@ const navGroups = [
     label: 'Operacional',
     items: [
       { to: '/reservas', label: 'Reservas', icon: CalendarCheck },
+      { to: '/manutencoes', label: 'Manutenção & Compras', icon: Wrench },
       { to: '/portaria', label: 'Portaria & Rondas', icon: DoorOpen },
       { to: '/encomendas', label: 'Encomendas', icon: Package },
       { to: '/visitantes', label: 'Visitantes', icon: QrCode },

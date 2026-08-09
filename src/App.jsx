@@ -40,11 +40,13 @@ import PontoEletronico from './pages/PontoEletronico'
 import Conferencias from './pages/Conferencias'
 import Recrutamento from './pages/Recrutamento'
 import Mural from './pages/Mural'
-import AlphaAI from './components/AlphaAI'
 import MonitoramentoIA from './pages/MonitoramentoIA'
 import Inadimplencia from './pages/Inadimplencia'
 import Locacao from './pages/Locacao'
 import GeradorContratos from './pages/GeradorContratos'
+import PortalFornecedores from './pages/PortalFornecedores'
+import PortalVagas from './pages/PortalVagas'
+import OnboardingCandidato from './pages/OnboardingCandidato'
 
 // Spinner de carregamento enquanto o Firebase Auth verifica a sessão
 function AuthLoader() {
@@ -64,7 +66,6 @@ function PrivateRoute({ children }) {
   return user ? (
     <>
       {children}
-      <AlphaAI />
     </>
   ) : (
     <Navigate to="/login" replace />
@@ -125,7 +126,6 @@ function AppRoutes() {
   const { user, authLoading } = useAuth()
   return (
     <>
-      {user && <WhatsAppButton />}
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
         {/* /cadastro: mostra formulário apenas se não logado; usuário logado vai ao dashboard */}
@@ -133,6 +133,9 @@ function AppRoutes() {
         <Route path="/visitantes/valida/:id" element={<ValidaVisitante />} />
         <Route path="/eventos/valida/:id" element={<ValidaConvidado />} />
         <Route path="/ponto" element={<PontoEletronico />} />
+        <Route path="/fornecedores" element={<PortalFornecedores />} />
+        <Route path="/trabalhe-conosco" element={<PortalVagas />} />
+        <Route path="/onboarding/:id" element={<OnboardingCandidato />} />
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<AuthorizedRoute module=""><span /></AuthorizedRoute>} />
           <Route path="dashboard" element={<AuthorizedRoute module="dashboard"><Dashboard /></AuthorizedRoute>} />

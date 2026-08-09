@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Wallet, FileText, CreditCard, LayoutDashboard, Calendar, ShieldAlert, Calculator } from 'lucide-react'
+import { Plus, Wallet, FileText, CreditCard, LayoutDashboard, Calendar, ShieldAlert, Calculator, FileCheck } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 
@@ -13,12 +13,13 @@ import ReservaEmergencia from './financeiro/ReservaEmergencia'
 import Historico from './financeiro/Historico'
 import Conciliacao from './financeiro/Conciliacao'
 import RateioAgua from './financeiro/RateioAgua'
+import EFDReinf from './financeiro/EFDReinf'
 
 // ─── Modal: Lançamento ────────────────────────────────────────────────
 function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onClose, onSave }) {
   const defaultCondo = filtroAtual && filtroAtual !== 'Todos' ? filtroAtual : (user?.condominio || '');
   const [form, setForm] = useState(data || {
-    descricao: '', tipo: 'Receita', categoria: '', valor: '', data: '', status: 'Pendente', condominio: defaultCondo, arquivoUrl: ''
+    descricao: '', tipo: 'Receita', categoria: '', valor: '', data: '', status: 'Pendente', condominio: defaultCondo, arquivoUrl: '', recorrente: false, qtdMeses: ''
   })
   const [isExtracting, setIsExtracting] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -113,6 +114,21 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
               <option>Recebido</option><option>Pago</option><option>Pendente</option>
             </select>
           </div>
+          
+          {!data && (
+            <div className="col-span-2 bg-cream-50 p-3 rounded-lg border border-cream-200 mt-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer mb-2">
+                <input type="checkbox" checked={form.recorrente} onChange={e=>set('recorrente',e.target.checked)} className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500" />
+                Repetir este lançamento mensalmente?
+              </label>
+              {form.recorrente && (
+                <div>
+                  <label className="label text-xs">Quantidade de meses (Ex: 12)</label>
+                  <input type="number" min="2" max="60" className="input max-w-[150px]" value={form.qtdMeses} onChange={e => set('qtdMeses', e.target.value)} placeholder="Digite..." />
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
           <button onClick={onClose} className="btn-secondary">Cancelar</button>
@@ -194,8 +210,33 @@ export default function Financeiro() {
 
   const handleSaveLanc = async (form) => {
     const clean = { ...form, valor: Number(form.valor) }
-    if (form.id) await updateLancamento(form.id, clean)
-    else await addLancamento(clean)
+    
+    if (form.id) {
+      delete clean.recorrente
+      delete clean.qtdMeses
+      await updateLancamento(form.id, clean)
+    } else {
+      if (form.recorrente && form.qtdMeses && Number(form.qtdMeses) > 1) {
+        const baseDate = new Date(form.data + 'T12:00:00Z') // T12 to avoid timezone shift
+        const qtd = Number(form.qtdMeses)
+        for (let i = 0; i < qtd; i++) {
+          const newDate = new Date(baseDate)
+          newDate.setMonth(newDate.getMonth() + i)
+          const dataStr = newDate.toISOString().split('T')[0]
+          
+          const parcelaClean = { ...clean, data: dataStr }
+          if (i > 0) parcelaClean.status = 'Pendente' // Future installments are pending
+          delete parcelaClean.recorrente
+          delete parcelaClean.qtdMeses
+          
+          await addLancamento(parcelaClean)
+        }
+      } else {
+        delete clean.recorrente
+        delete clean.qtdMeses
+        await addLancamento(clean)
+      }
+    }
     setModalLanc(null)
   }
 
@@ -219,6 +260,7 @@ export default function Financeiro() {
     tabs.push({ id: 'Reserva', label: 'Caixa Alpha', icon: ShieldAlert })
     tabs.push({ id: 'Conciliacao', label: 'Conciliação (OFX)', icon: LayoutDashboard })
     tabs.push({ id: 'Rateio', label: 'Rateio de Água', icon: Calculator })
+    tabs.push({ id: 'Fiscal', label: 'Fiscal & EFD-Reinf', icon: FileCheck })
   }
 
   // Tabela Antiga e Listagem de Contas (Aba Configurações/Geral)
@@ -353,6 +395,10 @@ export default function Financeiro() {
 
       { activeTab === 'Rateio' && (
         <RateioAgua lancamentos={lancamentos} />
+      )}
+
+      { activeTab === 'Fiscal' && (
+        <EFDReinf lancamentos={lancamentos} />
       )}
 
       {/* Modais */}

@@ -44,18 +44,8 @@ function Modal({ data, user, onClose, onSave, onDelete }) {
           <div className="grid grid-cols-2 gap-4">
             <div><label className="label">Status</label>
               <select className="input" value={form.status} onChange={e=>set('status',e.target.value)}>
-                <option>Pendente</option><option>Aguardando Pagamento</option><option>Confirmada</option><option>Cancelada</option>
+                <option>Pendente</option><option>Confirmada</option><option>Cancelada</option>
               </select>
-            </div>
-            <div>
-              <label className="label">Valor Cobrado (R$)</label>
-              {user?.role === 'Morador' ? (
-                <div className="input bg-cream-50 text-gray-500 font-medium">
-                  {form.valor ? `R$ ${Number(form.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : 'Sob consulta'}
-                </div>
-              ) : (
-                <input className="input" value={form.valor ? (typeof form.valor === 'string' && form.valor.includes(',') ? form.valor : Number(form.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})) : ''} onChange={e=>formatInput(e.target.value, v => set('valor', v))} placeholder="0,00" />
-              )}
             </div>
           </div>
         </div>
@@ -84,6 +74,11 @@ export default function Reservas() {
 
   const handleSave = async form => {
     if (form.status !== 'Cancelada') {
+      if (!form.horario || !form.horario.trim()) {
+        alert('O horário é obrigatório para verificar disponibilidade (ex: 14:00 - 22:00).')
+        return
+      }
+      
       const finalCondominio = form.condominio || user?.condominio || ''
       const overlap = items.some(i => {
         if (i.id === form.id || i.espaco !== form.espaco || i.data !== form.data || i.status === 'Cancelada') return false
@@ -140,59 +135,9 @@ export default function Reservas() {
         time:new Date().toISOString(),tipo:'reserva',lida:false, condominio: finalForm.condominio, _createdAt:serverTimestamp()
       })
     } else {
-      const oldItem = items.find(i => i.id === form.id)
-      await updateItem(form.id, {
-         ...form,
-         valor: form.valor ? (typeof form.valor === 'string' ? parseFloat(form.valor.replace(/\./g,'').replace(',','.')) : form.valor) : 0
-      })
-      
-      // Se acabou de ser confirmada vindo de Aguardando Pagamento (PIX)
-      if (oldItem && oldItem.status === 'Aguardando Pagamento' && form.status === 'Confirmada') {
-        const val = form.valor ? (typeof form.valor === 'string' ? parseFloat(form.valor.replace(/\./g,'').replace(',','.')) : form.valor) : 0
-        if (val > 0) {
-          try {
-            await addDoc(collection(db, 'financeiro'), {
-              tipo: 'Receita',
-              descricao: `Reserva PIX - ${form.espaco} (Apt ${form.apt})`,
-              valor: val,
-              data: new Date().toLocaleDateString('pt-BR'),
-              categoria: 'Taxa de Reserva',
-              condominio: form.condominio || user?.condominio || '',
-              pago: true,
-              comprovante: '',
-              anexos: [],
-              _createdAt: serverTimestamp()
-            })
-            alert('Pagamento confirmado e lançado no Financeiro automaticamente!')
-          } catch (e) {
-            console.error(e)
-          }
-        }
-      }
+      await updateItem(form.id, form)
     }
     setModal(null)
-  }
-  
-  const handleGerarCobranca = async (r) => {
-    if (!r.valor || r.valor <= 0) {
-      alert("Defina um valor maior que zero editando a reserva primeiro.");
-      return;
-    }
-    if (window.confirm(`Gerar boleto de R$ ${Number(r.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})} para o Apt ${r.apt}?`)) {
-      await addBoleto({
-        morador: r.morador,
-        apt: r.apt,
-        condominio: r.condominio,
-        vencimento: r.data,
-        valor: Number(r.valor),
-        status: 'Pendente',
-        emitido: false,
-        competencia: r.data.substring(0,7).split('-').reverse().join('/'),
-        descricao: `Reserva - ${r.espaco}`
-      })
-      await updateItem(r.id, { ...r, cobrancaGerada: true })
-      alert("Cobrança lançada na aba Boletos com sucesso!");
-    }
   }
 
   const prevMonth = ()=>setCurrentDate(new Date(currentDate.getFullYear(),currentDate.getMonth()-1,1))
@@ -287,12 +232,7 @@ export default function Reservas() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {r.valor > 0 && <span className="text-xs font-bold text-gray-500 mr-2">R$ {Number(r.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>}
                     <span className={statusBadge(r.status)}>{r.status}</span>
-                    {r.status === 'Confirmada' && r.valor > 0 && !r.cobrancaGerada && (user?.role === 'Administrador' || user?.role === 'Financeiro') && (
-                      <button onClick={()=>handleGerarCobranca(r)} title="Gerar Boleto/Pix" className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 transition-all flex items-center"><DollarSign size={14}/></button>
-                    )}
-                    {r.cobrancaGerada && <span className="badge-green text-[10px]">Cobrado</span>}
                     <button onClick={()=>setModal(r)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={12}/></button>
                     {r.status==='Cancelada' && (
                       <button onClick={()=>deleteItem(r.id)} className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 transition-all" title="Excluir reserva cancelada"><Trash2 size={12}/></button>

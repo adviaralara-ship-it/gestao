@@ -1,10 +1,74 @@
-import React, { useState } from 'react'
-import { Video, Copy, CheckCircle, Plus, Users, Clock, AlertCircle } from 'lucide-react'
+import React, { useState, useRef } from 'react'
+import { Video, Copy, CheckCircle, Plus, Users, Clock, AlertCircle, FileText, Download } from 'lucide-react'
+import { jsPDF } from 'jspdf'
+import { gerarAtaPorAudio } from '../utils/aiTranscricao'
 
 export default function Conferencias() {
   const [roomName, setRoomName] = useState('')
   const [inRoom, setInRoom] = useState(false)
   const [copied, setCopied] = useState(false)
+
+  // Gravação IA
+  const [isRecording, setIsRecording] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [mediaRecorder, setMediaRecorder] = useState(null)
+  const [summary, setSummary] = useState('')
+  const audioChunks = useRef([])
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      audioChunks.current = []
+      recorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.current.push(e.data) }
+      
+      recorder.onstop = async () => {
+        setIsTranscribing(true)
+        const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
+        try {
+          // Passa como "reuniao" para o prompt gerar um Resumo Executivo
+          const texto = await gerarAtaPorAudio(audioBlob, 'reuniao', `Reunião Alpha RH (${roomName})`)
+          setSummary(texto)
+        } catch (error) {
+          alert("Erro ao transcrever: " + error.message)
+        } finally {
+          setIsTranscribing(false)
+          stream.getTracks().forEach(track => track.stop())
+        }
+      }
+
+      recorder.start()
+      setMediaRecorder(recorder)
+      setIsRecording(true)
+      setSummary('')
+    } catch (e) {
+      alert("Permissão de microfone negada.")
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop()
+      setIsRecording(false)
+    }
+  }
+
+  const gerarPdfResumo = () => {
+    if (!summary) return
+    const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.width
+    
+    doc.setFontSize(16)
+    doc.text(`Resumo Executivo - Reunião`, pageWidth / 2, 20, { align: 'center' })
+    doc.setFontSize(10)
+    doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, 28, { align: 'center' })
+    
+    doc.setFontSize(12)
+    const textLines = doc.splitTextToSize(summary, pageWidth - 30)
+    doc.text(textLines, 15, 45)
+    
+    doc.save(`Resumo_Reuniao_${new Date().getTime()}.pdf`)
+  }
 
   const generateRoom = () => {
     const randomId = Math.random().toString(36).substring(2, 10)
@@ -35,10 +99,55 @@ export default function Conferencias() {
               <p className="text-xs text-gray-500">ID da Sala: {roomName}</p>
             </div>
           </div>
-          <button onClick={() => setInRoom(false)} className="btn-secondary border-red-200 text-red-600 hover:bg-red-50">
-            Sair da Sala
-          </button>
+          
+          <div className="flex items-center gap-3">
+            {!isRecording && !isTranscribing && !summary && (
+              <button onClick={startRecording} className="btn-primary py-2 text-sm bg-brand-600 hover:bg-brand-700 border-none">
+                <FileText size={16}/> Gravar Resumo com IA
+              </button>
+            )}
+
+            {isRecording && (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-red-600 font-bold text-sm animate-pulse">
+                  <span className="w-3 h-3 bg-red-600 rounded-full"></span> Gravando Áudio...
+                </div>
+                <button onClick={stopRecording} className="btn-secondary py-2 text-sm border-red-200 text-red-700 bg-white hover:bg-red-50">
+                  Parar e Gerar Resumo
+                </button>
+              </div>
+            )}
+
+            {isTranscribing && (
+              <div className="flex items-center gap-2 text-brand-700 text-sm font-bold">
+                <div className="w-5 h-5 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
+                Gerando Resumo...
+              </div>
+            )}
+
+            {summary && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-emerald-600 font-bold flex items-center gap-1"><CheckCircle size={16}/> Resumo Pronto</span>
+                <button onClick={() => setSummary('')} className="text-xs text-gray-400 hover:text-gray-700 underline">Novo</button>
+              </div>
+            )}
+
+            <button onClick={() => setInRoom(false)} className="btn-secondary border-red-200 text-red-600 hover:bg-red-50">
+              Sair da Sala
+            </button>
+          </div>
         </div>
+
+        {summary && (
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-brand-200 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div className="flex-1 max-h-32 overflow-y-auto custom-scrollbar pr-4 text-sm text-gray-700 whitespace-pre-wrap">
+              {summary}
+            </div>
+            <button onClick={gerarPdfResumo} className="btn-primary shrink-0 bg-emerald-600 hover:bg-emerald-700 border-none">
+              <Download size={16}/> Baixar PDF
+            </button>
+          </div>
+        )}
         
         <div className="flex-1 bg-gray-900 rounded-2xl overflow-hidden shadow-lg border border-gray-800">
           <iframe 

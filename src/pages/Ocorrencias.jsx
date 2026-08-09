@@ -5,6 +5,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { notificarAdm } from '../emailjs.config'
 import { useAuth } from '../context/AuthContext'
+import { Sparkles, Bot, Loader2 } from 'lucide-react'
 
 function Modal({ data, user, onClose, onSave }) {
   const [form, setForm] = useState(data||{titulo:'',descricao:'',apt:user?.apt||'',condominio:user?.condominio||'',hora:'',categoria:'Perturbação',status:'Aberta',prioridade:'Média',visibilidade:'Público',infracao:false, foto:''})
@@ -119,6 +120,72 @@ function ModalMulta({ ocorrencia, onClose, onSave }) {
   )
 }
 
+function ModalAlphaAI({ ocorrencia, onClose }) {
+  const [analyzing, setAnalyzing] = useState(true)
+  const [result, setResult] = useState(null)
+
+  React.useEffect(() => {
+    // Simula tempo de processamento da IA
+    const timer = setTimeout(() => {
+      setAnalyzing(false)
+      // Resposta mockada simulando análise do regimento
+      let mockResp = ""
+      if (ocorrencia.categoria === 'Perturbação') {
+        mockResp = "Segundo o Artigo 14 do Regimento Interno (Perturbação do Sossego), barulhos excessivos após as 22h são passíveis de Advertência Escrita na primeira infração, e multa de 50% da taxa condominial em caso de reincidência."
+      } else if (ocorrencia.categoria === 'Conduta') {
+        mockResp = "Segundo o Capítulo III das Regras de Convivência, condutas antissociais nas áreas comuns são passíveis de notificação imediata pela administração."
+      } else if (ocorrencia.categoria === 'Estacionamento') {
+        mockResp = "Conforme o Artigo 22 (Uso das Garagens), estacionar fora da faixa demarcada ou usar a vaga como depósito acarreta multa direta de 20% da taxa condominial."
+      } else {
+        mockResp = "Baseado no Regimento Interno, esta ocorrência requer análise do Síndico para aplicação de sanções previstas no Capítulo Geral de Infrações."
+      }
+      setResult(mockResp)
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [ocorrencia])
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content max-w-lg" onClick={e=>e.stopPropagation()}>
+        <div className="p-6 border-b border-cream-300 flex items-center justify-between bg-gradient-to-r from-blue-900 to-indigo-900 rounded-t-xl">
+          <h3 className="font-bold text-white flex items-center gap-2"><Sparkles size={18} className="text-blue-300"/> Alpha AI: Análise de Regimento</h3>
+          <button onClick={onClose} className="text-white/70 hover:text-white">✕</button>
+        </div>
+        <div className="p-6 flex flex-col gap-4">
+          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <p className="text-xs text-gray-500 font-bold uppercase mb-1">Ocorrência Analisada</p>
+            <p className="text-sm font-semibold text-gray-800">{ocorrencia.titulo}</p>
+            <p className="text-xs text-gray-600 mt-1">{ocorrencia.descricao}</p>
+          </div>
+          
+          <div className="min-h-[120px] flex items-center justify-center">
+            {analyzing ? (
+              <div className="flex flex-col items-center gap-3 text-brand-600">
+                <Loader2 className="animate-spin" size={32} />
+                <p className="text-sm font-medium animate-pulse">Lendo Regimento Interno...</p>
+              </div>
+            ) : (
+              <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex items-start gap-3 w-full animate-fade-in">
+                <Bot className="text-blue-600 shrink-0 mt-0.5" size={24} />
+                <div>
+                  <p className="text-sm text-blue-900 leading-relaxed font-medium">
+                    {result}
+                  </p>
+                  {ocorrencia.infracao && !ocorrencia.multaGerada && (
+                    <p className="text-xs text-blue-700 mt-3 flex items-center gap-1 font-bold">
+                      💡 Dica: Você pode usar o botão "Gerar Multa" no card para aplicar a sanção.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Ocorrencias() {
   const { user } = useAuth()
   const { items, addItem, updateItem, deleteItem } = useFirestore('ocorrencias')
@@ -126,6 +193,7 @@ export default function Ocorrencias() {
   const [search, setSearch] = useState('')
   const [modal,  setModal]  = useState(null)
   const [modalMulta, setModalMulta] = useState(null)
+  const [modalIA, setModalIA] = useState(null)
 
   const filtered = items.filter(i => {
     if (i.visibilidade === 'Apenas Adm' && user?.role !== 'Administrador') {
@@ -234,6 +302,11 @@ export default function Ocorrencias() {
                 </div>
               </div>
               <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity ml-3 items-center">
+                {(user?.role === 'Administrador' || user?.role === 'Síndico') && (
+                  <button onClick={()=>setModalIA(item)} title="Alpha AI: Analisar Regimento" className="p-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 transition-all flex items-center gap-1 text-xs font-bold px-2">
+                    <Sparkles size={14}/> Analisar
+                  </button>
+                )}
                 {item.infracao && !item.multaGerada && user?.role !== 'Morador' && (
                   <button onClick={()=>setModalMulta(item)} title="Gerar Multa" className="p-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 transition-all flex items-center gap-1 text-xs font-bold px-2">
                     <DollarSign size={14}/> Multa
@@ -252,6 +325,7 @@ export default function Ocorrencias() {
       </div>
       {modal&&<Modal data={modal==='new'?null:modal} user={user} onClose={()=>setModal(null)} onSave={handleSave}/>}
       {modalMulta && <ModalMulta ocorrencia={modalMulta} onClose={()=>setModalMulta(null)} onSave={handleGerarMulta}/>}
+      {modalIA && <ModalAlphaAI ocorrencia={modalIA} onClose={()=>setModalIA(null)} />}
     </div>
   )
 }

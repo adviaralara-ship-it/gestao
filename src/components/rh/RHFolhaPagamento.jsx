@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { useFirestore } from '../../hooks/useFirestore'
-import { Search, Loader2, Plus, Trash2, Printer, CheckCircle } from 'lucide-react'
+import { Search, Loader2, Plus, Trash2, Printer, CheckCircle, Mail, MessageCircle } from 'lucide-react'
 
 // Utilidades de Cálculo (Tabelas 2024/2025/2026 Brasil)
 const calcularINSS = (bruto) => {
@@ -41,6 +41,7 @@ export default function RHFolhaPagamento() {
   const [novoDesconto, setNovoDesconto] = useState({ desc: 'Plano de Saúde', valor: '' })
   const [vtAtivo, setVtAtivo] = useState(true) // Desconto padrão 6%
   const [insalubridade, setInsalubridade] = useState(false)
+  const [pagarBancoHoras, setPagarBancoHoras] = useState(false) // Toggle para pagar extras ou descontar atrasos
   
   // Folha Salva
   const [folhaSalva, setFolhaSalva] = useState(null)
@@ -97,7 +98,24 @@ export default function RHFolhaPagamento() {
   // Calcula Insalubridade Automática (ex: 20% do salário mínimo, vou usar 1412.00) se marcado
   const valorInsalubridade = insalubridade ? (1412.00 * 0.20) : 0
   
-  const salarioBruto = salarioBase + totalProventosManuais + valorInsalubridade
+  // Banco de Horas
+  const saldoHorasNum = fechamentoPonto?.saldoHoras ? parseFloat(fechamentoPonto.saldoHoras) : 0
+  const valorHora = salarioBase / 220
+  
+  let valorExtraBanco = 0
+  let valorDescontoBanco = 0
+
+  if (pagarBancoHoras) {
+    if (saldoHorasNum > 0) {
+      // Paga hora extra 50%
+      valorExtraBanco = saldoHorasNum * (valorHora * 1.5)
+    } else if (saldoHorasNum < 0) {
+      // Desconta atrasos normais
+      valorDescontoBanco = Math.abs(saldoHorasNum) * valorHora
+    }
+  }
+  
+  const salarioBruto = salarioBase + totalProventosManuais + valorInsalubridade + valorExtraBanco
 
   // Calcula VT (Até 6% do salário base, caso o desconto manual não estoure)
   const valorVT = vtAtivo ? (salarioBase * 0.06) : 0
@@ -108,7 +126,7 @@ export default function RHFolhaPagamento() {
   const valorIRRF = calcularIRRF(baseIRRF)
 
   const totalProventos = salarioBruto
-  const totalDescontos = totalDescontosManuais + valorVT + valorINSS + valorIRRF
+  const totalDescontos = totalDescontosManuais + valorVT + valorINSS + valorIRRF + valorDescontoBanco
   const salarioLiquido = totalProventos - totalDescontos
 
   // Patronal
@@ -124,11 +142,13 @@ export default function RHFolhaPagamento() {
         salarioBase,
         proventos: [
           ...proventos,
-          ...(insalubridade ? [{ desc: 'Insalubridade (20% SM)', valor: valorInsalubridade }] : [])
+          ...(insalubridade ? [{ desc: 'Insalubridade (20% SM)', valor: valorInsalubridade }] : []),
+          ...(valorExtraBanco > 0 ? [{ desc: `Horas Extras (${saldoHorasNum}h)`, valor: valorExtraBanco }] : [])
         ],
         descontos: [
           ...descontos,
           ...(vtAtivo ? [{ desc: 'Vale Transporte (6%)', valor: valorVT }] : []),
+          ...(valorDescontoBanco > 0 ? [{ desc: `Atrasos/Faltas (${Math.abs(saldoHorasNum)}h)`, valor: valorDescontoBanco }] : []),
           { desc: 'INSS', valor: valorINSS },
           { desc: 'IRRF', valor: valorIRRF }
         ],
@@ -169,6 +189,24 @@ export default function RHFolhaPagamento() {
     window.location.reload()
   }
 
+  const handleSendWhatsApp = () => {
+    const comp = mesAno.split('-').reverse().join('/')
+    const liq = folhaSalva.salarioLiquido.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})
+    const texto = `Olá ${colabInfo.nome}! Segue o aviso de que o seu Holerite referente a ${comp} já está processado.\n\nValor Líquido: ${liq}\n\nPor favor, caso necessário, procure o RH para pegar a sua via detalhada.`
+    const tel = colabInfo?.telefone ? colabInfo.telefone.replace(/\D/g, '') : ''
+    const url = tel ? `https://wa.me/55${tel}?text=${encodeURIComponent(texto)}` : `https://wa.me/?text=${encodeURIComponent(texto)}`
+    window.open(url, '_blank')
+  }
+
+  const handleSendEmail = () => {
+    const comp = mesAno.split('-').reverse().join('/')
+    const liq = folhaSalva.salarioLiquido.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})
+    const assunto = `Holerite Processado - ${comp}`
+    const texto = `Olá ${colabInfo.nome},\n\nO seu Holerite referente à competência ${comp} já foi processado pelo RH.\n\nValor líquido a receber: ${liq}\n\nQualquer dúvida, estamos à disposição.`
+    const mailto = `mailto:${colabInfo?.email || ''}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(texto)}`
+    window.open(mailto)
+  }
+
   return (
     <div className="card p-6 min-h-[600px]">
       <div className="flex flex-col md:flex-row gap-4 mb-6 pb-6 border-b border-cream-300">
@@ -207,9 +245,17 @@ export default function RHFolhaPagamento() {
                 <p className="text-sm">Processado em {new Date(folhaSalva.fechadoEm).toLocaleString()}</p>
               </div>
             </div>
-            <button onClick={handlePrint} className="btn-primary bg-emerald-600 hover:bg-emerald-700 flex items-center gap-2">
-              <Printer size={16} /> Imprimir Holerite
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={handleSendWhatsApp} className="btn-secondary text-green-700 bg-green-100 hover:bg-green-200 flex items-center gap-2 border-green-200">
+                <MessageCircle size={16} /> WhatsApp
+              </button>
+              <button onClick={handleSendEmail} className="btn-secondary text-blue-700 bg-blue-100 hover:bg-blue-200 flex items-center gap-2 border-blue-200">
+                <Mail size={16} /> E-mail
+              </button>
+              <button onClick={handlePrint} className="btn-primary bg-emerald-600 hover:bg-emerald-700 flex items-center gap-2">
+                <Printer size={16} /> Imprimir
+              </button>
+            </div>
           </div>
 
           {/* O Holerite Invisível (Só aparece na impressão) e visível como preview */}
@@ -304,6 +350,30 @@ export default function RHFolhaPagamento() {
           
           {/* Lançamentos Manuais */}
           <div className="lg:col-span-2 space-y-6">
+
+            {/* Painel Banco de Horas */}
+            {fechamentoPonto && (
+              <div className="p-5 border border-cream-300 rounded-xl bg-white shadow-sm">
+                <h3 className="font-bold text-gray-800 mb-4 border-b pb-2 flex justify-between">
+                  <span>Ponto Eletrônico & Banco de Horas</span>
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${saldoHorasNum > 0 ? 'bg-emerald-100 text-emerald-700' : saldoHorasNum < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                    Saldo: {saldoHorasNum} horas
+                  </span>
+                </h3>
+                <div className="flex gap-6 mb-4 text-sm text-gray-600">
+                  <div><b>Horas Trabalhadas:</b> {fechamentoPonto.horasTrabalhadas}h</div>
+                  <div><b>Faltas:</b> {fechamentoPonto.faltas} dias</div>
+                </div>
+                
+                <div className="flex items-center gap-3 bg-brand-50 p-3 rounded-lg border border-brand-100">
+                  <input type="checkbox" className="w-4 h-4 rounded text-brand-600" checked={pagarBancoHoras} onChange={e => setPagarBancoHoras(e.target.checked)} />
+                  <label className="text-sm font-bold text-brand-800 cursor-pointer flex-1">
+                    {saldoHorasNum > 0 ? 'Zerar banco pagando como Hora Extra (50%)' : saldoHorasNum < 0 ? 'Zerar banco descontando Atrasos/Faltas' : 'Nenhum saldo no banco de horas'}
+                  </label>
+                </div>
+              </div>
+            )}
+
             <div className="p-5 border border-cream-300 rounded-xl bg-white shadow-sm">
               <h3 className="font-bold text-gray-800 mb-4 border-b pb-2">Proventos (Vencimentos)</h3>
               
@@ -390,6 +460,12 @@ export default function RHFolhaPagamento() {
                   <span>R$ {totalProventosManuais.toFixed(2)}</span>
                 </div>
               )}
+              {valorExtraBanco > 0 && (
+                <div className="flex justify-between text-emerald-300">
+                  <span>+ Horas Extras (Banco):</span>
+                  <span>R$ {valorExtraBanco.toFixed(2)}</span>
+                </div>
+              )}
 
               <div className="border-t border-brand-700/50 my-2 pt-2 flex justify-between font-bold text-white">
                 <span>Salário Bruto:</span>
@@ -415,6 +491,12 @@ export default function RHFolhaPagamento() {
                 <div className="flex justify-between text-red-300">
                   <span>- Descontos Avulsos:</span>
                   <span>R$ {totalDescontosManuais.toFixed(2)}</span>
+                </div>
+              )}
+              {valorDescontoBanco > 0 && (
+                <div className="flex justify-between text-red-300">
+                  <span>- Atrasos/Faltas (Banco):</span>
+                  <span>R$ {valorDescontoBanco.toFixed(2)}</span>
                 </div>
               )}
 
