@@ -89,6 +89,26 @@ function ModalBoleto({ data, onClose, onSave, moradores = [] }) {
               <option>Pendente</option><option>Pago</option><option>Vencido</option>
             </select>
           </div>
+
+          <div className="col-span-2 mt-2 pt-4 border-t border-cream-200">
+             <label className="flex items-center gap-2 cursor-pointer mb-3">
+               <input type="checkbox" checked={form.emitido} onChange={e=>set('emitido', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-4 h-4"/>
+               <span className="font-bold text-gray-700 text-sm">Boleto gerado externamente (Sem API)</span>
+             </label>
+             
+             {form.emitido && (
+               <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-cream-200">
+                  <div>
+                    <label className="label text-xs">Link do Boleto PDF (Opcional)</label>
+                    <input className="input text-xs" value={form.url} onChange={e=>set('url',e.target.value)} placeholder="https://..."/>
+                  </div>
+                  <div>
+                    <label className="label text-xs">PIX Copia e Cola (Opcional)</label>
+                    <input className="input text-xs" value={form.pix_emv} onChange={e=>set('pix_emv',e.target.value)} placeholder="0002012658..."/>
+                  </div>
+               </div>
+             )}
+          </div>
         </div>
         <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
           <button onClick={onClose} className="btn-secondary">Cancelar</button>
@@ -283,7 +303,8 @@ export default function Boletos() {
   const marcarPago  = async b => updateItem(b.id,{...b,status:'Pago'})
   
   const handleSaveBoleto = async form => {
-    const clean = {...form,valor:Number(form.valor),emitido:false,linha:''}
+    const clean = {...form,valor:Number(form.valor)}
+    if (!clean.emitido) { clean.linha = ''; clean.url = ''; clean.pix_emv = ''; }
     if (modal!=='new') await updateItem(modal.id,clean); else await addItem(clean)
     setModal(null)
   }
