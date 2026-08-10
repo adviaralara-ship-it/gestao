@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Bot, X, Send, User, ChevronDown, CheckCircle, Zap } from 'lucide-react'
+import { Plus, X, Search, FileText, Download, Copy, RefreshCw, Scale, Lightbulb, Users, Calendar, Megaphone, Send, Bot, Camera, Sparkles, AlertCircle, Maximize2, Minimize2, Settings, History, User, ChevronDown, CheckCircle, Zap } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp, collection, addDoc, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -7,9 +7,9 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import QRCode from 'react-qr-code'
 
 // Chave da API e Instância do Gemini
-const API_KEY = "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA"
+const API_KEY = "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
 const genAI = new GoogleGenerativeAI(API_KEY)
-const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" })
+const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" })
 
 export default function AlphaAI() {
   const { user } = useAuth()
