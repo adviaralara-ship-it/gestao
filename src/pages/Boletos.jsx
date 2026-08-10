@@ -11,7 +11,37 @@ function gerarLinhaDigitavel(apt, valor, venc) {
   return `34191.${r()}${r()}${r()}${r()}${r()} ${r()}${r()}${r()}${r()}${r()}.${r()}${r()}${r()}${r()}${r()}${r()} ${r()}${r()}${r()}${r()}${r()}.${r()}${r()}${r()}${r()}${r()}${r()} ${r()} ${(venc||'').replace(/\//g,'')}${String(Math.round((valor||0)*100)).padStart(10,'0')}`
 }
 
-function BoletoPrintModal({ boleto, onClose }) {
+function generateStaticPix(chavePix, valor, nome = "Condominio", cidade = "Sao Paulo") {
+  if (!chavePix) return "";
+  const formatLength = (id, value) => {
+    const v = String(value);
+    return id + String(v.length).padStart(2, '0') + v;
+  };
+  const payloadFormat = formatLength("00", "01");
+  const merchantAccount = formatLength("26", formatLength("00", "br.gov.bcb.pix") + formatLength("01", chavePix));
+  const merchantCategory = formatLength("52", "0000");
+  const currency = formatLength("53", "986");
+  const amount = valor ? formatLength("54", Number(valor).toFixed(2)) : "";
+  const country = formatLength("58", "BR");
+  const merchantName = formatLength("59", nome.substring(0, 25).normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+  const merchantCity = formatLength("60", cidade.substring(0, 15).normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+  const additionalData = formatLength("62", formatLength("05", "***"));
+  const payload = payloadFormat + merchantAccount + merchantCategory + currency + amount + country + merchantName + merchantCity + additionalData + "6304";
+  
+  let crc = 0xFFFF;
+  for (let i = 0; i < payload.length; i++) {
+    crc ^= (payload.charCodeAt(i) << 8);
+    for (let j = 0; j < 8; j++) {
+      if ((crc & 0x8000) !== 0) crc = (crc << 1) ^ 0x1021;
+      else crc = (crc << 1);
+    }
+  }
+  return payload + (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+}
+
+function BoletoPrintModal({ boleto, condominio, onClose }) {
+  const pixFinal = boleto.pix_emv || generateStaticPix(condominio?.chave_pix, boleto.valor, condominio?.nome || "Condominio", "BR");
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content max-w-2xl" onClick={e => e.stopPropagation()}>
@@ -33,9 +63,13 @@ function BoletoPrintModal({ boleto, onClose }) {
               <div><p className="text-xs text-gray-400">Descrição</p><p className="font-bold text-gray-800">Taxa de Condomínio</p></div>
               <div><p className="text-xs text-gray-400">Valor</p><p className="font-black text-brand-700 text-lg">R$ {Number(boleto.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</p></div>
             </div>
-            <div className="p-4 bg-gray-50"><p className="text-xs text-gray-500 mb-2">Pix Copia e Cola:</p><p className="text-sm font-bold text-gray-800 tracking-wider break-all">{boleto.pix_emv || boleto.linha}</p></div>
+            {pixFinal ? (
+              <div className="p-4 bg-gray-50"><p className="text-xs text-gray-500 mb-2">Pix Copia e Cola:</p><p className="text-sm font-bold text-gray-800 tracking-wider break-all">{pixFinal}</p></div>
+            ) : (
+              <div className="p-4 bg-gray-50"><p className="text-xs text-gray-500 mb-2">Código de Barras:</p><p className="text-sm font-bold text-gray-800 tracking-wider break-all">{boleto.linha || gerarLinhaDigitavel(boleto.apt, boleto.valor, boleto.vencimento)}</p></div>
+            )}
             <div className="p-4 bg-white flex justify-center"><div className="flex gap-px h-12">{Array.from({length:80}).map((_,i)=><div key={i} className="bg-gray-900" style={{width:Math.random()>0.5?3:1}}/>)}</div></div>
-            <div className="p-3 bg-gray-50 text-center text-xs text-gray-400">Este é um boleto oficial emitido via Banco Cora · Alpha Soluções Condominiais © 2025</div>
+            <div className="p-3 bg-gray-50 text-center text-xs text-gray-400">Este é um recibo oficial emitido via Alpha Soluções Condominiais © 2025</div>
           </div>
         </div>
         <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
@@ -619,7 +653,7 @@ export default function Boletos() {
         </div>
       )}
 
-      {viewing&&<BoletoPrintModal boleto={viewing} onClose={()=>setViewing(null)}/>}
+      {viewing && <BoletoPrintModal boleto={viewing} condominio={allCondominios.find(c=>c.nome===(viewing.condominio || moradores.find(m=>m.nome===viewing.morador)?.condominio))} onClose={()=>setViewing(null)}/>}
       {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores}/>}
       {condoFundoEdit&&<ModalFundo condo={condoFundoEdit} onClose={()=>setCondoFundoEdit(null)} onSave={handleSaveFundo}/>}
     </div>
