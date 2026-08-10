@@ -98,6 +98,7 @@ function ModalDocsAdmissao({ candidato, onClose }) {
       </div>
     </div>
   )
+}
 function ModalContratacao({ candidato, onClose, onSave }) {
   const [form, setForm] = useState({ admissao: '', experiencia: '45' })
 
