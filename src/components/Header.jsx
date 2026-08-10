@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import OneSignal from 'react-onesignal'
 import { useFirestore } from '../hooks/useFirestore'
 import AlphaAI from './AlphaAI'
+import { getFilteredNavGroups } from '../utils/navData'
 
 const pageNames = {
   '/dashboard':'Dashboard','/condominios':'Condomínios & Unidades','/moradores':'Moradores',
@@ -43,8 +44,12 @@ export default function Header({ onMenuClick }) {
   const [dropOpen,   setDropOpen]   = useState(false)
   const [notifOpen,  setNotifOpen]  = useState(false)
   const [centralOpen, setCentralOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchCategory, setSearchCategory] = useState('Gestão')
   const [condoFilter, setCondoFilter] = useState('Todos')
   const { items: allNotifications, updateItem, deleteItem } = useFirestore('notificacoes')
+
+  const filteredNavGroups = getFilteredNavGroups(user)
 
   const notifications = allNotifications.filter(n => {
     if (user?.role === 'Administrador' || user?.role === 'Financeiro') return true;
@@ -84,6 +89,17 @@ export default function Header({ onMenuClick }) {
     if (n.tipo === 'comunicado' || n.tipo === 'mensagem') navigate('/comunicacao')
   }
 
+  // Fecha todos os menus ao clicar fora
+  React.useEffect(() => {
+    const fecharMenus = (e) => {
+      if (!e.target.closest('.search-menu-container')) {
+        setSearchOpen(false)
+      }
+    }
+    document.addEventListener('click', fecharMenus)
+    return () => document.removeEventListener('click', fecharMenus)
+  }, [])
+
   return (
     <header className="h-16 bg-white/90 backdrop-blur-md border-b border-cream-400 flex items-center justify-between px-4 gap-4 sticky top-0 z-30 shadow-sm">
       <div className="flex items-center gap-3">
@@ -111,8 +127,67 @@ export default function Header({ onMenuClick }) {
         <h1 className="text-sm font-bold text-gray-800 hidden sm:block">{pageName}</h1>
       </div>
 
-      <div className="flex-1 max-w-sm hidden md:flex items-center gap-2 bg-cream-100 border border-cream-400 rounded-lg px-3 py-2 text-sm text-gray-400 hover:border-brand-400 transition-all cursor-pointer">
-        <Search size={14}/><span className="text-xs">Buscar...</span>
+      <div className="relative flex-1 max-w-lg hidden md:block search-menu-container">
+        <div 
+          onClick={(e) => { e.stopPropagation(); setSearchOpen(!searchOpen); setDropOpen(false); setNotifOpen(false) }}
+          className="flex items-center justify-between gap-2 bg-cream-100 border border-cream-400 rounded-lg px-3 py-2 text-sm text-gray-500 hover:border-brand-400 transition-all cursor-pointer"
+        >
+          <div className="flex items-center gap-2 flex-1">
+            <Search size={16}/><span className="font-medium text-xs">Pesquisa Rápida</span>
+          </div>
+          <ChevronDown size={14} className="text-gray-400" />
+        </div>
+
+        {searchOpen && (
+          <div className="absolute top-12 left-0 w-full max-w-xl bg-white border border-cream-400 rounded-2xl shadow-xl z-50 overflow-hidden animate-fade-in p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-wrap gap-2 border-b border-cream-300 pb-3 mb-3">
+              {['Gestão', 'Financeiro', 'Operacional', 'Administrativo'].map(cat => {
+                // Verificar se esse grupo existe nas permissões do usuário
+                const groupExists = filteredNavGroups.find(g => g.label === cat)
+                if (!groupExists) return null
+
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setSearchCategory(cat)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                      searchCategory === cat 
+                        ? 'bg-brand-600 text-white' 
+                        : 'bg-pale-100 text-gray-500 hover:bg-cream-200 hover:text-gray-700'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                )
+              })}
+            </div>
+            
+            <div className="grid grid-cols-2 gap-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+              {filteredNavGroups.find(g => g.label === searchCategory)?.items?.map(item => (
+                <button
+                  key={item.to}
+                  onClick={() => {
+                    navigate(item.to)
+                    setSearchOpen(false)
+                  }}
+                  className="flex items-center gap-3 p-2 rounded-xl hover:bg-brand-50 border border-transparent hover:border-brand-200 transition-all text-left"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-600 shrink-0">
+                    <item.icon size={16} strokeWidth={2.5} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-gray-700 truncate">{item.label}</p>
+                  </div>
+                </button>
+              ))}
+              {!filteredNavGroups.find(g => g.label === searchCategory)?.items?.length && (
+                <div className="col-span-2 p-4 text-center text-xs text-gray-400">
+                  Nenhum item encontrado nesta categoria.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
