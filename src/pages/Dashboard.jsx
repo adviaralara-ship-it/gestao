@@ -48,6 +48,7 @@ export default function Dashboard() {
   const { items: visitantes }   = useFirestore('portaria_visitantes')
   const { items: reservas }     = useFirestore('reservas')
   const { items: boletos }      = useFirestore('boletos')
+  const { items: encomendas }   = useFirestore('encomendas')
   const { items: financeiro }   = useFirestore('financeiro_lancamentos')
   const { items: notificacoes } = useFirestore('notificacoes')
   const { items: assembleias }  = useFirestore('assembleias')
@@ -160,12 +161,14 @@ export default function Dashboard() {
             <p className="text-gray-500">Acompanhe as principais métricas do condomínio hoje.</p>
           </div>
         </div>
-        <button 
-          onClick={() => window.open('/ponto', '_blank')}
-          className="hidden md:flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-xl shadow-lg transition-all"
-        >
-          <Clock size={16} /> Bater Ponto
-        </button>
+        {user?.role !== 'Morador' && (
+          <button 
+            onClick={() => window.open('/ponto', '_blank')}
+            className="hidden md:flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-xl shadow-lg transition-all"
+          >
+            <Clock size={16} /> Bater Ponto
+          </button>
+        )}
       </div>
 
       {/* ─── VISÃO MOBILE (APP STYLE) ─── */}
@@ -205,16 +208,23 @@ export default function Dashboard() {
 
       {/* Stats Gerais */}
       <div className="grid grid-cols-2 xl:grid-cols-4 lg:grid-cols-4 gap-4">
-        <StatCard label="Moradores" value={totalMoradores||0} sub="Cadastrados no sistema" icon={Users} color="bg-brand-600"/>
-        
-        {user?.role === 'Porteiro' ? (
+        {user?.role === 'Morador' ? (
           <>
+            <StatCard label="Ocorrências" value={ocorrencias.filter(o=>o.autor===user?.nome && o.status!=='Resolvida').length} sub="Suas ocorrências abertas" icon={AlertTriangle} color="bg-red-600"/>
+            <StatCard label="Boletos" value={boletos.filter(b=>b.morador===user?.nome && b.status==='Pendente').length} sub="Boletos pendentes" icon={Receipt} color="bg-amber-600"/>
+            <StatCard label="Encomendas" value={encomendas?.filter(e=>e.morador===user?.nome && e.status==='Pendente').length || 0} sub="Aguardando retirada" icon={Package} color="bg-blue-600"/>
+            <StatCard label="Reservas Futuras" value={reservasFuturas||0} sub="Próximos agendamentos" icon={CalendarCheck} color="bg-purple-700"/>
+          </>
+        ) : user?.role === 'Porteiro' ? (
+          <>
+            <StatCard label="Moradores" value={totalMoradores||0} sub="Cadastrados no sistema" icon={Users} color="bg-brand-600"/>
             <StatCard label="Visitantes no Local" value={visNoLocal||0} sub="Pessoas atualmente no prédio" icon={DoorOpen} color="bg-amber-600"/>
             <StatCard label="Ocorrências" value={ocPendentes||0} sub="Pendentes de resolução" icon={AlertTriangle} color="bg-red-600"/>
             <StatCard label="Reservas do Dia" value={reservasFuturas||0} sub="Próximos agendamentos" icon={CalendarCheck} color="bg-purple-700"/>
           </>
         ) : (
           <>
+            <StatCard label="Moradores" value={totalMoradores||0} sub="Cadastrados no sistema" icon={Users} color="bg-brand-600"/>
             <StatCard label="Reservas Futuras" value={reservasFuturas||0} sub="Próximos agendamentos" icon={CalendarCheck} color="bg-purple-700"/>
             <StatCard label="Receitas do Mês" value={`R$ ${(mesAtualData.receitas/1000).toFixed(1)}k`} sub="Lançadas este mês" icon={TrendingUp} color="bg-emerald-600"/>
             <StatCard label="Despesas do Mês" value={`R$ ${(mesAtualData.despesas/1000).toFixed(1)}k`} sub="Lançadas este mês" icon={TrendingDown} color="bg-red-600"/>
@@ -310,22 +320,24 @@ export default function Dashboard() {
         )}
 
         {/* Atividades recentes — dados reais de notificacoes */}
-        <div className="card max-h-[300px] overflow-y-auto custom-scrollbar flex flex-col">
-          <p className="section-title mb-3 sticky top-0 bg-white z-10 py-1 flex items-center gap-2"><Bell size={14} className="text-brand-500"/>Atividades Recentes</p>
-          <div className="flex flex-col gap-1 flex-1">
-            {atividadesRecentes.length===0
-              ? <p className="text-gray-400 text-sm py-8 text-center">Nenhuma atividade registrada.</p>
-              : atividadesRecentes.map(n=>(
-                <div key={n.id} className="flex items-start gap-2 py-2 border-b border-gray-100 last:border-0 hover:bg-gray-50 px-1 rounded-lg transition-colors">
-                  <span className="text-base shrink-0 mt-0.5">{tipoIcon(n.tipo)}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-700 leading-snug truncate">{n.text}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{n.time?new Date(n.time).toLocaleString('pt-BR'):''}</p>
+        {user?.role !== 'Morador' && (
+          <div className="card max-h-[300px] overflow-y-auto custom-scrollbar flex flex-col">
+            <p className="section-title mb-3 sticky top-0 bg-white z-10 py-1 flex items-center gap-2"><Bell size={14} className="text-brand-500"/>Atividades Recentes</p>
+            <div className="flex flex-col gap-1 flex-1">
+              {atividadesRecentes.length===0
+                ? <p className="text-gray-400 text-sm py-8 text-center">Nenhuma atividade registrada.</p>
+                : atividadesRecentes.map(n=>(
+                  <div key={n.id} className="flex items-start gap-2 py-2 border-b border-gray-100 last:border-0 hover:bg-gray-50 px-1 rounded-lg transition-colors">
+                    <span className="text-base shrink-0 mt-0.5">{tipoIcon(n.tipo)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-700 leading-snug truncate">{n.text}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{n.time?new Date(n.time).toLocaleString('pt-BR'):''}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* WhatsApp */}
         {(user?.role === 'Administrador' || user?.role === 'Síndico') && (
