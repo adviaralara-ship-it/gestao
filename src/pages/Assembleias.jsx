@@ -311,7 +311,10 @@ function SalaVirtualAssembleia({ assembleia, onClose }) {
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState(null)
+  const [videoRecorder, setVideoRecorder] = useState(null)
+  const [modoGravacao, setModoGravacao] = useState('audio') // 'audio' ou 'video'
   const audioChunks = React.useRef([])
+  const videoChunks = React.useRef([])
   const [transcricaoPronta, setTranscricaoPronta] = useState(false)
 
   const handleVotar = async (e, opcaoIndex) => {
@@ -323,12 +326,38 @@ function SalaVirtualAssembleia({ assembleia, onClose }) {
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
-      audioChunks.current = []
-      recorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.current.push(e.data) }
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: true, 
+        video: modoGravacao === 'video' 
+      })
       
-      recorder.onstop = async () => {
+      // Separar apenas a faixa de áudio para a Inteligência Artificial
+      const audioStream = new MediaStream(stream.getAudioTracks())
+      const aRecorder = new MediaRecorder(audioStream)
+      audioChunks.current = []
+      aRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.current.push(e.data) }
+      
+      let vRecorder = null
+      if (modoGravacao === 'video') {
+        vRecorder = new MediaRecorder(stream)
+        videoChunks.current = []
+        vRecorder.ondataavailable = e => { if (e.data.size > 0) videoChunks.current.push(e.data) }
+        
+        // Quando o vídeo parar, fazer o download automático para o PC do usuário
+        vRecorder.onstop = () => {
+          const videoBlob = new Blob(videoChunks.current, { type: 'video/webm' })
+          const url = URL.createObjectURL(videoBlob)
+          const a = document.createElement('a')
+          a.style.display = 'none'
+          a.href = url
+          a.download = `Gravacao_Video_${assembleia.titulo.replace(/\s+/g,'_')}.webm`
+          document.body.appendChild(a)
+          a.click()
+          URL.revokeObjectURL(url)
+        }
+      }
+
+      aRecorder.onstop = async () => {
         setIsTranscribing(true)
         const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
         
@@ -363,15 +392,21 @@ function SalaVirtualAssembleia({ assembleia, onClose }) {
         }
       }
 
-      recorder.start()
-      setMediaRecorder(recorder)
+      aRecorder.start()
+      if (vRecorder) vRecorder.start()
+      
+      setMediaRecorder(aRecorder)
+      setVideoRecorder(vRecorder)
       setIsRecording(true)
     } catch (e) {
-      alert("Permissão de microfone negada ou não disponível.")
+      alert("Permissão de microfone/câmera negada ou não disponível.")
     }
   }
 
   const stopRecording = () => {
+    if (videoRecorder && videoRecorder.state !== 'inactive') {
+      videoRecorder.stop()
+    }
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       mediaRecorder.stop()
       setIsRecording(false)
@@ -404,18 +439,34 @@ function SalaVirtualAssembleia({ assembleia, onClose }) {
               <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2"><Video size={16}/> Gravação Automática da Ata</h3>
               
               {!isRecording && !isTranscribing && !transcricaoPronta && (
-                <button onClick={startRecording} className="btn-primary w-full justify-center bg-red-600 hover:bg-red-700 border-none">
-                  Gravar Reunião com IA
-                </button>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-4 bg-white p-2 rounded-lg border border-cream-300">
+                    <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                      <input type="radio" name="modo" checked={modoGravacao === 'audio'} onChange={() => setModoGravacao('audio')} className="text-brand-600"/> Somente Áudio
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                      <input type="radio" name="modo" checked={modoGravacao === 'video'} onChange={() => setModoGravacao('video')} className="text-brand-600"/> Vídeo + Áudio
+                    </label>
+                  </div>
+                  <button onClick={startRecording} className="btn-primary w-full justify-center bg-red-600 hover:bg-red-700 border-none">
+                    Gravar Reunião com IA
+                  </button>
+                  {modoGravacao === 'video' && (
+                    <p className="text-[10px] text-gray-500 leading-tight text-center">
+                      O vídeo será baixado no seu computador ao finalizar. A IA usará apenas o áudio, garantindo a transcrição.
+                    </p>
+                  )}
+                </div>
               )}
 
               {isRecording && (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2 text-red-600 font-bold text-sm animate-pulse">
-                    <span className="w-3 h-3 bg-red-600 rounded-full"></span> Gravando Áudio...
+                    <span className="w-3 h-3 bg-red-600 rounded-full"></span> 
+                    {modoGravacao === 'video' ? 'Gravando Vídeo e Áudio...' : 'Gravando Áudio...'}
                   </div>
                   <button onClick={stopRecording} className="btn-secondary border-red-200 text-red-700 bg-white hover:bg-red-50 w-full justify-center">
-                    Parar e Gerar Ata
+                    Parar Gravação e Gerar Ata
                   </button>
                 </div>
               )}
