@@ -17,7 +17,7 @@ export default function Conferencias() {
   const audioChunks = useRef([])
   const videoChunks = useRef([])
   const [transcricaoPronta, setTranscricaoPronta] = useState(false)
-  const [resumo, setResumo] = useState('')
+  const [summary, setSummary] = useState('')
 
   const startRecording = async () => {
     try {
@@ -94,7 +94,7 @@ export default function Conferencias() {
     doc.setFontSize(10)
     doc.text(`Data: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, 28, { align: 'center' })
     doc.setFontSize(12)
-    const textLines = doc.splitTextToSize(resumo, pageWidth - 30)
+    const textLines = doc.splitTextToSize(summary, pageWidth - 30)
     doc.text(textLines, 15, 45)
     doc.save(`Resumo_${roomName}_${new Date().getTime()}.pdf`)
   }
