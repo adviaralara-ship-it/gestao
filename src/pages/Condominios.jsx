@@ -26,7 +26,7 @@ function CondoModal({ data, onClose, onSave }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
         <div className="p-6 flex flex-col gap-4">
-          {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['unidades','Nº de Unidades']].map(([k,l])=>(
+          {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX (E-mail, CNPJ ou Celular)']].map(([k,l])=>(
             <div key={k}><label className="label">{l}</label><input className="input" value={form[k]} onChange={e=>set(k,e.target.value)} placeholder={l}/></div>
           ))}
           <div><label className="label">Status</label>
