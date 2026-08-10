@@ -117,6 +117,52 @@ export default function Conferencias() {
 
   if (inRoom) {
     return (
+      <div className="h-[80vh] flex flex-col gap-4 animate-fade-in">
+        <div className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-cream-300">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center text-brand-600">
+              <Video size={20} />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-800">Sala de Conferência Ativa</h2>
+              <p className="text-xs text-gray-500">ID da Sala: {roomName}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {!isRecording && !isTranscribing && !summary && (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4 bg-gray-50 p-2 rounded-lg border border-cream-200">
+                  <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                    <input type="radio" name="modo_conf" checked={modoGravacao === 'audio'} onChange={() => setModoGravacao('audio')} className="text-brand-600"/> Somente Áudio
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                    <input type="radio" name="modo_conf" checked={modoGravacao === 'video'} onChange={() => setModoGravacao('video')} className="text-brand-600"/> Vídeo + Áudio
+                  </label>
+                </div>
+                <button onClick={startRecording} className="btn-primary py-2 text-sm bg-brand-600 hover:bg-brand-700 border-none">
+                  <FileText size={16}/> Gravar Resumo com IA
+                </button>
+              </div>
+            )}
+
+            {isRecording && (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-red-600 font-bold text-sm animate-pulse">
+                  <span className="w-3 h-3 bg-red-600 rounded-full"></span> 
+                  {modoGravacao === 'video' ? 'Gravando Vídeo...' : 'Gravando Áudio...'}
+                </div>
+                <button onClick={stopRecording} className="btn-secondary py-2 text-sm border-red-200 text-red-700 bg-white hover:bg-red-50">
+                  Parar e Gerar Resumo
+                </button>
+              </div>
+            )}
+
+            {isTranscribing && (
+              <div className="flex items-center gap-2 text-brand-700 text-sm font-bold">
+                <div className="w-5 h-5 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
+                Gerando Resumo...
+              </div>
             )}
 
             {summary && (
@@ -126,7 +172,7 @@ export default function Conferencias() {
               </div>
             )}
 
-            <button onClick={() => setInRoom(false)} className="btn-secondary border-red-200 text-red-600 hover:bg-red-50">
+            <button onClick={() => setInRoom(false)} className="btn-secondary border-red-200 text-red-600 hover:bg-red-50 ml-2">
               Sair da Sala
             </button>
           </div>
