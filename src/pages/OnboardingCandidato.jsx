@@ -4,12 +4,14 @@ import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '../firebase'
 import { useParams } from 'react-router-dom'
+import { extrairDadosCandidato } from '../utils/aiTranscricao'
 
 export default function OnboardingCandidato() {
   const { id } = useParams()
   const [candidato, setCandidato] = useState(null)
   const [loading, setLoading] = useState(true)
   const [enviando, setEnviando] = useState(false)
+  const [analisandoDoc, setAnalisandoDoc] = useState(false)
   const [sucesso, setSucesso] = useState(false)
 
   // Documentos necessários
@@ -57,8 +59,29 @@ export default function OnboardingCandidato() {
     }
   }
 
-  const handleFileChange = (docId, file) => {
+  const handleFileChange = async (docId, file) => {
+    if (!file) return
     setArquivos(prev => ({ ...prev, [docId]: file }))
+    
+    // Se for um documento de identidade e ainda faltam dados no form, vamos tentar extrair
+    if ((docId === 'rg' || docId === 'cnh') && (!form.nomeCompleto || !form.dataNascimento)) {
+      setAnalisandoDoc(true)
+      try {
+        const dados = await extrairDadosCandidato(file)
+        if (dados) {
+          setForm(f => ({
+            ...f,
+            nomeCompleto: dados.nomeCompleto || f.nomeCompleto,
+            nomeMae: dados.nomeMae || f.nomeMae,
+            dataNascimento: dados.dataNascimento || f.dataNascimento
+          }))
+        }
+      } catch (err) {
+        console.error("Erro ao analisar doc", err)
+      } finally {
+        setAnalisandoDoc(false)
+      }
+    }
   }
 
   const handleSubmit = async (e) => {
@@ -151,6 +174,7 @@ export default function OnboardingCandidato() {
             <h3 className="text-lg font-bold text-brand-900 mb-4 flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs">1</span>
               Dados Pessoais
+              {analisandoDoc && <span className="text-xs font-normal text-brand-600 bg-brand-50 px-2 py-1 rounded-full animate-pulse ml-2">Extraindo dados do documento...</span>}
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><label className="label">Nome Completo</label><input required className="input" value={form.nomeCompleto} onChange={e=>setForm({...form, nomeCompleto:e.target.value})}/></div>

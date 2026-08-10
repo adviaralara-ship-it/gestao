@@ -36,7 +36,7 @@ function ColabModal({ data, onClose, onSave }) {
 
           <div className="col-span-2"><label className="label">Status</label>
             <select className="input" value={form.status} onChange={e => set('status', e.target.value)}>
-              <option>Ativo</option><option>Férias</option><option>Afastado</option><option>Inativo</option>
+              <option>Ativo</option><option>Em Experiência</option><option>Férias</option><option>Afastado</option><option>Inativo</option>
             </select>
           </div>
         </div>
@@ -228,7 +228,7 @@ export default function RHColaboradores() {
     setModal(null)
   }
 
-  const statusBadge = (s) => ({ Ativo: 'badge-green', Férias: 'badge-yellow', Afastado: 'badge-red', Inativo: 'badge-red' }[s] || 'badge-blue')
+  const statusBadge = (s) => ({ Ativo: 'badge-green', Férias: 'badge-yellow', Afastado: 'badge-red', Inativo: 'badge-red', 'Em Experiência': 'badge-blue' }[s] || 'badge-blue')
 
   const calculateAlerts = () => {
     const alerts = []
@@ -246,6 +246,12 @@ export default function RHColaboradores() {
         const diff = Math.ceil((new Date(c.vencimentoASO) - today) / (1000 * 60 * 60 * 24))
         if (diff <= 30 && diff >= 0) alerts.push({ id: c.id+'-aso', text: `Exame ASO de ${c.nome} vence em ${diff} dias`, type: diff <= 15 ? 'red' : 'yellow' })
         else if (diff < 0) alerts.push({ id: c.id+'-aso', text: `Exame ASO de ${c.nome} vencido há ${Math.abs(diff)} dias!`, type: 'red' })
+      }
+      
+      if (c.vencimentoExperiencia && c.status === 'Em Experiência') {
+        const diff = Math.ceil((new Date(c.vencimentoExperiencia) - today) / (1000 * 60 * 60 * 24))
+        if (diff <= 10 && diff >= 0) alerts.push({ id: c.id+'-exp', text: `Experiência de ${c.nome} vence em ${diff} dias`, type: diff <= 5 ? 'red' : 'yellow' })
+        else if (diff < 0) alerts.push({ id: c.id+'-exp', text: `Experiência de ${c.nome} venceu há ${Math.abs(diff)} dias!`, type: 'red' })
       }
     })
     return alerts

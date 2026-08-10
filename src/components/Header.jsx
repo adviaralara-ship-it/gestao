@@ -127,7 +127,7 @@ export default function Header({ onMenuClick }) {
         <h1 className="text-sm font-bold text-gray-800 hidden sm:block">{pageName}</h1>
       </div>
 
-      <div className="relative flex-1 max-w-lg hidden md:block search-menu-container">
+      <div className="relative flex-1 max-w-lg w-full search-menu-container">
         <div 
           onClick={(e) => { e.stopPropagation(); setSearchOpen(!searchOpen); setDropOpen(false); setNotifOpen(false) }}
           className="flex items-center justify-between gap-2 bg-cream-100 border border-cream-400 rounded-lg px-3 py-2 text-sm text-gray-500 hover:border-brand-400 transition-all cursor-pointer"

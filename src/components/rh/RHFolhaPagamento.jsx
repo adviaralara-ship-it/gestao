@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, query, where, getDocs, addDoc, serverTimestamp, deleteDoc, doc } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { useFirestore } from '../../hooks/useFirestore'
-import { Search, Loader2, Plus, Trash2, Printer, CheckCircle, Mail, MessageCircle } from 'lucide-react'
+import { Search, Loader2, Plus, Trash2, Printer, CheckCircle, Mail, MessageCircle, Download } from 'lucide-react'
 
 // Utilidades de Cálculo (Tabelas 2024/2025/2026 Brasil)
 const calcularINSS = (bruto) => {
@@ -207,6 +207,59 @@ export default function RHFolhaPagamento() {
     window.open(mailto)
   }
 
+  const handleExportCSV = async () => {
+    try {
+      const q = query(collection(db, 'fechamento_ponto'), where('mesAno', '==', mesAno))
+      const snap = await getDocs(q)
+      
+      if (snap.empty) {
+        alert('Nenhum ponto fechado para esta competência.')
+        return
+      }
+
+      const rows = [
+        ['Nome do Funcionario', 'Mes/Ano', 'Dias Trabalhados', 'Faltas', 'Folgas', 'Horas Trabalhadas', 'Saldo Banco Horas']
+      ]
+      
+      snap.docs.forEach(d => {
+        const data = d.data()
+        rows.push([
+          data.colabNome,
+          data.mesAno,
+          data.diasTrabalhados || 0,
+          data.faltas || 0,
+          data.folgas || 0,
+          data.horasTrabalhadas || '0.00',
+          data.saldoHoras || '0.00'
+        ])
+      })
+
+      let csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(";")).join("\n")
+      const encodedUri = encodeURI(csvContent)
+      const link = document.createElement("a")
+      link.setAttribute("href", encodedUri)
+      link.setAttribute("download", `exportacao_contabilidade_${mesAno}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch(err) {
+      alert('Erro ao exportar CSV: ' + err.message)
+    }
+  }
+
+  const handleExcluirFolha = async () => {
+    if (!folhaSalva) return
+    if (!window.confirm('Tem certeza que deseja excluir esta folha de pagamento? Isso não pode ser desfeito.')) return
+    
+    try {
+      await deleteDoc(doc(db, 'folhas_pagamento', folhaSalva.id))
+      setFolhaSalva(null)
+      alert('Folha de pagamento excluída com sucesso!')
+    } catch(err) {
+      alert('Erro ao excluir folha: ' + err.message)
+    }
+  }
+
   return (
     <div className="card p-6 min-h-[600px]">
       <div className="flex flex-col md:flex-row gap-4 mb-6 pb-6 border-b border-cream-300">
@@ -220,6 +273,12 @@ export default function RHFolhaPagamento() {
         <div className="w-full md:w-48">
           <label className="label">Competência</label>
           <input type="month" className="input" value={mesAno} onChange={e => setMesAno(e.target.value)} />
+        </div>
+        <div className="flex items-end pb-1">
+          <button onClick={handleExportCSV} className="btn-secondary h-10 flex items-center gap-2 border-brand-200 text-brand-700 bg-brand-50 hover:bg-brand-100">
+            <Download size={16} />
+            Exportar Contabilidade (CSV)
+          </button>
         </div>
       </div>
 
@@ -246,6 +305,9 @@ export default function RHFolhaPagamento() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button onClick={handleExcluirFolha} className="btn-secondary text-red-700 bg-red-100 hover:bg-red-200 flex items-center gap-2 border-red-200">
+                <Trash2 size={16} /> Excluir
+              </button>
               <button onClick={handleSendWhatsApp} className="btn-secondary text-green-700 bg-green-100 hover:bg-green-200 flex items-center gap-2 border-green-200">
                 <MessageCircle size={16} /> WhatsApp
               </button>

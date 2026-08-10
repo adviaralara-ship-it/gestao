@@ -74,3 +74,43 @@ Se o áudio estiver vazio ou inaudível, avise amigavelmente.
     throw new Error("Não foi possível gerar a transcrição no momento.")
   }
 }
+
+/**
+ * Envia um documento (imagem/pdf) para a IA extrair os dados do candidato
+ */
+export async function extrairDadosCandidato(file) {
+  try {
+    const base64File = await blobToBase64(file)
+    const mimeType = file.type || 'image/jpeg'
+
+    const prompt = `
+Você é um sistema extrator de dados de RH. O documento fornecido é um documento de identificação (RG, CNH, ou CPF).
+Sua tarefa é extrair os seguintes campos:
+- nomeCompleto
+- nomeMae (se houver, senão retorne null)
+- dataNascimento (no formato YYYY-MM-DD, ex: 1990-05-25)
+
+Responda APENAS com um objeto JSON válido, sem markdown, sem explicações extras.
+Exemplo:
+{"nomeCompleto": "João da Silva", "nomeMae": "Maria da Silva", "dataNascimento": "1990-05-25"}
+    `
+
+    const result = await model.generateContent([
+      prompt,
+      {
+        inlineData: {
+          mimeType: mimeType,
+          data: base64File
+        }
+      }
+    ])
+
+    const text = result.response.text()
+    // Limpar markdown de json se a IA teimar em colocar
+    const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim()
+    return JSON.parse(cleanJson)
+  } catch (error) {
+    console.error("Erro ao extrair dados do documento:", error)
+    throw new Error("Não foi possível extrair os dados.")
+  }
+}

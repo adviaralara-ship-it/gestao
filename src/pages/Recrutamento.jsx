@@ -98,15 +98,52 @@ function ModalDocsAdmissao({ candidato, onClose }) {
       </div>
     </div>
   )
+function ModalContratacao({ candidato, onClose, onSave }) {
+  const [form, setForm] = useState({ admissao: '', experiencia: '45' })
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="p-6 border-b border-cream-300">
+          <h3 className="font-bold text-gray-800">Contratar Candidato</h3>
+          <p className="text-xs text-gray-500">Defina os termos para {candidato.nome}</p>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="label">Data de Admissão</label>
+            <input type="date" required className="input" value={form.admissao} onChange={e => setForm({...form, admissao: e.target.value})} />
+          </div>
+          <div>
+            <label className="label">Período de Experiência</label>
+            <select className="input" value={form.experiencia} onChange={e => setForm({...form, experiencia: e.target.value})}>
+              <option value="30">30 dias</option>
+              <option value="45">45 dias</option>
+              <option value="60">60 dias</option>
+              <option value="90">90 dias</option>
+              <option value="0">Sem experiência (Direto Efetivo)</option>
+            </select>
+          </div>
+        </div>
+        <div className="p-6 border-t border-cream-300 flex justify-end gap-3 bg-cream-50 rounded-b-2xl">
+          <button onClick={onClose} className="btn-secondary">Cancelar</button>
+          <button onClick={() => onSave(form)} disabled={!form.admissao} className="btn-primary bg-emerald-600 hover:bg-emerald-700 border-none">
+            Confirmar Contratação
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function Recrutamento() {
   const { items: vagas, addItem: addVaga, updateItem: updVaga, deleteItem: delVaga } = useFirestore('vagas')
   const { items: candidatos, updateItem: updCandidato, deleteItem: delCandidato } = useFirestore('candidatos')
+  const { addItem: addColaborador } = useFirestore('rh')
   
   const [tab, setTab] = useState('candidatos') // 'vagas' ou 'candidatos'
   const [modalVaga, setModalVaga] = useState(null)
   const [modalDocs, setModalDocs] = useState(null)
+  const [modalContratar, setModalContratar] = useState(null)
   const [dragging, setDragging] = useState(null)
 
   const handleDragStart = (e, candidato) => {
@@ -127,6 +164,40 @@ export default function Recrutamento() {
     const link = `${window.location.origin}/onboarding/${id}`
     navigator.clipboard.writeText(link)
     alert("Link de admissão copiado para a área de transferência!")
+  }
+
+  const handleContratar = async (form) => {
+    if (!modalContratar) return
+    const c = modalContratar
+    const { admissao, experiencia } = form
+
+    let vencimentoExperiencia = ''
+    if (experiencia !== '0' && admissao) {
+      const date = new Date(admissao)
+      date.setDate(date.getDate() + parseInt(experiencia))
+      vencimentoExperiencia = date.toISOString().split('T')[0]
+    }
+
+    // Criar o colaborador
+    await addColaborador({
+      nome: c.dadosPessoais?.nomeCompleto || c.nome,
+      cargo: c.vagaTitulo || c.vaga,
+      dept: 'A Definir',
+      salario: '',
+      admissao: admissao,
+      nascimento: c.dadosPessoais?.dataNascimento || '',
+      status: experiencia !== '0' ? 'Em Experiência' : 'Ativo',
+      telefone: c.telefone || '',
+      vencimentoFerias: '',
+      vencimentoASO: '',
+      vencimentoExperiencia: vencimentoExperiencia,
+      onboarding: { contrato: false, email: false, exame: false, uniforme: false, epi: false }
+    })
+
+    // Alterar status do candidato para sumir do board
+    await updCandidato(c.id, { status: 'Contratado' })
+    setModalContratar(null)
+    alert("Candidato contratado com sucesso! Dados migrados para o RH.")
   }
 
   return (
@@ -237,9 +308,14 @@ export default function Recrutamento() {
                         {col.id === 'Aprovado' && (
                           <div className="mt-4 pt-3 border-t border-cream-100 flex flex-col gap-2">
                             {c.statusOnboarding === 'Concluído' ? (
-                              <button onClick={() => setModalDocs(c)} className="btn-primary py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 border-none w-full justify-center">
-                                <CheckCircle2 size={14}/> Ver Docs de Admissão
-                              </button>
+                              <div className="flex flex-col gap-2">
+                                <button onClick={() => setModalDocs(c)} className="btn-primary py-1.5 text-xs bg-gray-600 hover:bg-gray-700 border-none w-full justify-center">
+                                  <CheckCircle2 size={14}/> Ver Docs de Admissão
+                                </button>
+                                <button onClick={() => setModalContratar(c)} className="btn-primary py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 border-none w-full justify-center">
+                                  <Briefcase size={14}/> Contratar Candidato
+                                </button>
+                              </div>
                             ) : (
                               <button onClick={() => handleCopyLink(c.id)} className="btn-secondary py-1.5 text-xs w-full justify-center text-brand-700 bg-brand-50 border-brand-200 hover:bg-brand-100">
                                 <Copy size={14}/> Copiar Link de Admissão
@@ -270,6 +346,7 @@ export default function Recrutamento() {
         />
       )}
       {modalDocs && <ModalDocsAdmissao candidato={modalDocs} onClose={() => setModalDocs(null)} />}
+      {modalContratar && <ModalContratacao candidato={modalContratar} onClose={() => setModalContratar(null)} onSave={handleContratar} />}
     </div>
   )
 }
