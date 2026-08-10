@@ -47,6 +47,7 @@ import GeradorContratos from './pages/GeradorContratos'
 import PortalFornecedores from './pages/PortalFornecedores'
 import PortalVagas from './pages/PortalVagas'
 import OnboardingCandidato from './pages/OnboardingCandidato'
+import Pets from './pages/Pets'
 
 // Spinner de carregamento enquanto o Firebase Auth verifica a sessão
 function AuthLoader() {
@@ -84,7 +85,7 @@ function AuthorizedRoute({ module, children }) {
   }
 
   // Verifica se o usuário tem permissão para a rota específica
-  let hasPerm = user.permissoes?.includes(module) || user.role === 'Administrador'
+  let hasPerm = user.permissoes?.includes(module) || user.role === 'Administrador' || module === 'pets'
   if ((module === 'conferencias' || module === 'recrutamento') && user.permissoes?.includes('rh')) hasPerm = true
   
   if (!hasPerm) {
@@ -147,6 +148,7 @@ function AppRoutes() {
           <Route path="classificados" element={<AuthorizedRoute module="classificados"><Classificados /></AuthorizedRoute>} />
           <Route path="condominios" element={<AuthorizedRoute module="condominios"><Condominios /></AuthorizedRoute>} />
           <Route path="moradores" element={<AuthorizedRoute module="moradores"><Moradores /></AuthorizedRoute>} />
+          <Route path="pets" element={<AuthorizedRoute module="pets"><Pets /></AuthorizedRoute>} />
           <Route path="rh" element={<AuthorizedRoute module="rh"><RH /></AuthorizedRoute>} />
           <Route path="conferencias" element={<AuthorizedRoute module="conferencias"><Conferencias /></AuthorizedRoute>} />
           <Route path="recrutamento" element={<AuthorizedRoute module="recrutamento"><Recrutamento /></AuthorizedRoute>} />

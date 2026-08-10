@@ -3,7 +3,7 @@ import {
   CreditCard, FileText, Receipt, Gavel, AlertTriangle, CalendarCheck,
   DoorOpen, Shield, BookOpen, FolderOpen, MessageSquare, Building, 
   CheckSquare, Package, QrCode, PieChart, ShoppingBag,
-  Car, Video, Calculator, MessageCircleCode, Mail, Megaphone, Bot, Scale
+  Car, Video, Calculator, MessageCircleCode, Mail, Megaphone, Bot, Scale, PawPrint
 } from 'lucide-react'
 
 export const navGroups = [
@@ -15,6 +15,7 @@ export const navGroups = [
       { to: '/email', label: 'E-mail Alpha', icon: Mail },
       { to: '/condominios', label: 'Condomínios', icon: Building2 },
       { to: '/moradores', label: 'Moradores', icon: Users },
+      { to: '/pets', label: 'Pets', icon: PawPrint },
     ]
   },
   {
@@ -81,6 +82,7 @@ export function getFilteredNavGroups(user) {
       
       let reqPerm = item.to.replace('/', '')
       if (reqPerm === 'conferencias' || reqPerm === 'recrutamento') reqPerm = 'rh'
+      if (reqPerm === 'pets') return true
       
       return userPerms.includes(reqPerm) || user?.role === 'Administrador'
     }).map(item => ({
