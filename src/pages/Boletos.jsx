@@ -439,6 +439,64 @@ export default function Boletos() {
     e.target.value = null;
   };
 
+  const handleReconciliationCSV = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+        if (lines.length < 2) {
+          alert('A planilha parece estar vazia ou sem cabeçalho.');
+          return;
+        }
+
+        const headers = lines[0].toLowerCase().split(/[;,]/).map(h => h.trim());
+        const getIdx = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)));
+
+        const idxMorador = getIdx(['nome', 'morador', 'pagador', 'sacado', 'cliente']);
+        const idxValor = getIdx(['valor', 'total', 'recebido', 'pago']);
+        
+        if (idxMorador === -1 || idxValor === -1) {
+          alert("Não conseguimos identificar as colunas 'Nome' e 'Valor' na sua planilha de extrato. Verifique se estão presentes.");
+          return;
+        }
+
+        let baixados = 0;
+        const pendentes = allBoletos.filter(b => b.status === 'Pendente');
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(/[;,]/).map(c => c.trim().replace(/^"|"$/g, ''));
+          const nome = cols[idxMorador];
+          if (!nome) continue;
+
+          let valorBruto = cols[idxValor] || '0';
+          let valorLido = parseFloat(valorBruto.replace(/\./g, '').replace(',', '.')) || 0;
+          if (isNaN(valorLido)) valorLido = parseFloat(valorBruto.replace(',', '.')) || 0;
+
+          const boletoMatch = pendentes.find(b => 
+            b.morador.toLowerCase().trim() === nome.toLowerCase().trim() && 
+            Math.abs(Number(b.valor) - valorLido) < 0.1
+          );
+
+          if (boletoMatch) {
+            await updateItem(boletoMatch.id, { ...boletoMatch, status: 'Pago' });
+            pendentes.splice(pendentes.indexOf(boletoMatch), 1);
+            baixados++;
+          }
+        }
+        alert(`Sucesso! ${baixados} boletos foram encontrados na planilha e marcados como Pagos automaticamente.`);
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao processar a planilha. Verifique o formato CSV (separado por vírgula ou ponto e vírgula).');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = null;
+  };
+
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div className="page-header">
@@ -452,8 +510,13 @@ export default function Boletos() {
           <div className="flex gap-2">
             <button onClick={emitirLote} className="btn-secondary text-sm"><FileText size={14}/>Emitir Lote</button>
             <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1">
+              <CheckCircle2 size={14}/>
+              Conciliar Pagamentos (CSV)
+              <input type="file" accept=".csv" className="hidden" onChange={handleReconciliationCSV} />
+            </label>
+            <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1">
               <Upload size={14}/>
-              Importar CSV
+              Importar Boletos (CSV)
               <input type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
             </label>
             <button onClick={()=>setModal('new')} className="btn-primary"><Plus size={16}/>Novo Boleto</button>
