@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { BookOpen, Scale, Landmark, MapPin, Building, ChevronDown, Bot, Briefcase } from 'lucide-react'
+import { BookOpen, Scale, Landmark, MapPin, Building, ChevronDown, Bot, Briefcase, ExternalLink } from 'lucide-react'
 
 export default function BibliotecaLeis() {
   const [openLaw, setOpenLaw] = useState(null)
@@ -10,6 +10,7 @@ export default function BibliotecaLeis() {
       icone: <Scale className="text-brand-600" size={24} />,
       titulo: 'Código Civil (Condomínios)',
       resumo: 'Art. 1.331 a 1.358 do Código Civil Brasileiro',
+      link: 'https://www.planalto.gov.br/ccivil_03/leis/2002/l10406compilada.htm',
       conteudo: `O Código Civil de 2002 estabelece as regras gerais para condomínios edilícios.
 - Art. 1.336: São deveres do condômino: I - contribuir para as despesas do condomínio na proporção das suas frações ideais; II - não realizar obras que comprometam a segurança da edificação; III - não alterar a forma e a cor da fachada, das partes e esquadrias externas; IV - dar às suas partes a mesma destinação que tem a edificação, e não as utilizar de maneira prejudicial ao sossego, salubridade e segurança dos possuidores, ou aos bons costumes.
 - Art. 1.348: Compete ao síndico: representar, ativa e passivamente, o condomínio, praticando, em juízo ou fora dele, os atos necessários à defesa dos interesses comuns.`
@@ -19,6 +20,7 @@ export default function BibliotecaLeis() {
       icone: <Landmark className="text-brand-600" size={24} />,
       titulo: 'Lei do Inquilinato (Imobiliário)',
       resumo: 'Lei nº 8.245/1991',
+      link: 'https://www.planalto.gov.br/ccivil_03/leis/l8245.htm',
       conteudo: `Lei que regula as locações dos imóveis urbanos e os procedimentos a elas pertinentes.
 - Art. 22. O locador é obrigado a: I - entregar ao locatário o imóvel alugado em estado de servir ao uso a que se destina; X - pagar as despesas extraordinárias de condomínio.
 - Art. 23. O locatário é obrigado a: XII - pagar as despesas ordinárias de condomínio (salários, limpeza, manutenção).`
@@ -28,6 +30,7 @@ export default function BibliotecaLeis() {
       icone: <MapPin className="text-brand-600" size={24} />,
       titulo: 'Legislação e Convenções - João Pessoa (PB)',
       resumo: 'Leis Municipais e Convenção Sindical',
+      link: 'https://www.joaopessoa.pb.gov.br/',
       conteudo: `Regras específicas do município de João Pessoa:
 - Código de Posturas do Município: Regula os limites de emissão sonora (Lei do Silêncio), descarte de resíduos da construção civil em caçambas e manutenção de calçadas.
 - SINDIFICIOS-PB (Sindicato dos Empregados em Edifícios de João Pessoa): O piso salarial vigente para porteiros e zeladores deve respeitar a convenção coletiva anual. Adicional de insalubridade de 20% para funcionários que realizam a coleta de lixo nas dependências do condomínio.`
@@ -37,6 +40,7 @@ export default function BibliotecaLeis() {
       icone: <Building className="text-brand-600" size={24} />,
       titulo: 'Lei do Condomínio',
       resumo: 'Lei nº 4.591/1964',
+      link: 'https://www.planalto.gov.br/ccivil_03/leis/l4591.htm',
       conteudo: `Dispõe sobre o condomínio em edificações e as incorporações imobiliárias. Grande parte foi substituída pelo Código Civil, mas a parte de incorporação imobiliária (Capítulo I) continua em pleno vigor, ditando as regras de construção e entrega de condomínios por construtoras.`
     },
     {
@@ -44,6 +48,7 @@ export default function BibliotecaLeis() {
       icone: <Scale className="text-brand-600" size={24} />,
       titulo: 'Responsabilidade Civil e Criminal do Síndico',
       resumo: 'Art. 186, 927 e Art. 1.348 do Código Civil',
+      link: 'https://www.planalto.gov.br/ccivil_03/leis/2002/l10406compilada.htm',
       conteudo: `O síndico pode responder com seu patrimônio pessoal ou sofrer sanções penais caso haja negligência, imprudência ou má-fé na gestão.
 - Responsabilidade Civil: Ocorre quando as atribuições não são cumpridas adequadamente, causando prejuízos ao condomínio ou a terceiros (Ex: não realizar manutenção e uma marquise cair).
 - Responsabilidade Criminal: Envolve crimes contra a honra (difamação de moradores), apropriação indébita (desvio de fundos) ou negligência extrema que resulte em lesão corporal ou morte nas dependências do condomínio.`
@@ -53,6 +58,7 @@ export default function BibliotecaLeis() {
       icone: <Briefcase className="text-brand-600" size={24} />,
       titulo: 'Síndico Profissional / Gerente Contratado',
       resumo: 'Art. 1.347 do Código Civil',
+      link: 'https://www.planalto.gov.br/ccivil_03/leis/2002/l10406compilada.htm',
       conteudo: `A lei exige que todo condomínio tenha um representante legal (o "Síndico"). No entanto, ele NÃO precisa ser um morador.
 - Art. 1.347: A assembleia poderá escolher um síndico, que NÃO seja condômino (morador), para administrar o condomínio, por prazo não superior a dois anos, o qual poderá renovar-se.
 - Isso permite a contratação de um Gerente Profissional, Síndico Profissional ou uma Empresa Administradora para assumir a responsabilidade legal e operacional do condomínio, mediante remuneração aprovada em assembleia.`
@@ -98,9 +104,20 @@ export default function BibliotecaLeis() {
             
             {openLaw === lei.id && (
               <div className="p-4 bg-white border-t border-cream-200">
-                <p className="text-sm text-gray-600 whitespace-pre-line leading-relaxed">
+                <p className="text-sm text-gray-600 whitespace-pre-line leading-relaxed mb-4">
                   {lei.conteudo}
                 </p>
+                {lei.link && (
+                  <a 
+                    href={lei.link} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="inline-flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <ExternalLink size={16} />
+                    Ler legislação na íntegra
+                  </a>
+                )}
               </div>
             )}
           </div>
