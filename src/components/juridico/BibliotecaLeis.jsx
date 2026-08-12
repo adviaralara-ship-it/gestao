@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { BookOpen, Scale, Landmark, MapPin, Building, ChevronDown, Bot } from 'lucide-react'
+import { BookOpen, Scale, Landmark, MapPin, Building, ChevronDown, Bot, Briefcase } from 'lucide-react'
 
 export default function BibliotecaLeis() {
   const [openLaw, setOpenLaw] = useState(null)
