@@ -15,6 +15,7 @@ export const allModulesPerms = ['dashboard','whatsapp','email','condominios','mo
 export const sindicoPerms    = ['dashboard','moradores','notas-fiscais','ocorrencias','portaria','regime','comunicacao','boletos','assembleias','reservas','eventos','seguro','documentos','relatorios','visitantes','encomendas']
 export const financeiroPerms = ['dashboard','financeiro','boletos','notas-fiscais','prestadores','documentos']
 export const porteiroPerms   = ['dashboard','moradores','portaria','veiculos','comunicacao','reservas','eventos','visitantes','encomendas']
+export const portariaRemotaPerms = ['dashboard','cameras','visitantes','ocorrencias','reservas','portaria','veiculos']
 export const moradorPerms    = ['dashboard','moradores','notas-fiscais','ocorrencias','regime','comunicacao','boletos','assembleias','reservas','eventos','seguro','documentos','portaria','visitantes','encomendas']
 
 // ─── Perfis de usuários master (dados de perfil, SEM senha) ───────────────

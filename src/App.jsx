@@ -48,6 +48,7 @@ import PortalFornecedores from './pages/PortalFornecedores'
 import PortalVagas from './pages/PortalVagas'
 import OnboardingCandidato from './pages/OnboardingCandidato'
 import Pets from './pages/Pets'
+import Totem from './pages/Totem'
 
 // Spinner de carregamento enquanto o Firebase Auth verifica a sessão
 function AuthLoader() {
@@ -137,6 +138,7 @@ function AppRoutes() {
         <Route path="/fornecedores" element={<PortalFornecedores />} />
         <Route path="/trabalhe-conosco" element={<PortalVagas />} />
         <Route path="/onboarding/:id" element={<OnboardingCandidato />} />
+        <Route path="/totem" element={<Totem />} />
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<AuthorizedRoute module=""><span /></AuthorizedRoute>} />
           <Route path="dashboard" element={<AuthorizedRoute module="dashboard"><Dashboard /></AuthorizedRoute>} />

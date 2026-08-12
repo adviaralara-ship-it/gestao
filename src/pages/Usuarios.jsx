@@ -3,14 +3,14 @@ import { Users, Plus, Shield, Edit2, Trash2, Eye, EyeOff, KeyRound, Building, La
 import { useFirestore } from '../hooks/useFirestore'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
-import { allModulesPerms, sindicoPerms, financeiroPerms, porteiroPerms, moradorPerms } from '../context/AuthContext'
+import { allModulesPerms, sindicoPerms, financeiroPerms, porteiroPerms, moradorPerms, portariaRemotaPerms } from '../context/AuthContext'
 import { enviarEmail } from '../emailjs.config'
 import { secondaryAuth } from '../firebase'
 import { createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth'
 
 const MORADOR_ROLES = ['Morador', 'Síndico', 'Subsíndico', 'Conselheiro']
 
-const roles = ['Administrador', 'Síndico', 'Subsíndico', 'Morador', 'Porteiro', 'Financeiro']
+const roles = ['Administrador', 'Síndico', 'Subsíndico', 'Morador', 'Porteiro', 'Financeiro', 'Portaria Remota']
 
 const roleColors = {
   Administrador: 'badge-red',
@@ -55,6 +55,7 @@ function Modal({ data, onClose, onSave }) {
     if (r === 'Morador') return moradorPerms
     if (r === 'Porteiro') return porteiroPerms
     if (r === 'Financeiro') return financeiroPerms
+    if (r === 'Portaria Remota') return portariaRemotaPerms
     return moradorPerms // Others default to morador
   }
 
