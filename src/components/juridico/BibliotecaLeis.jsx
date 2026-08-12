@@ -38,6 +38,24 @@ export default function BibliotecaLeis() {
       titulo: 'Lei do Condomínio',
       resumo: 'Lei nº 4.591/1964',
       conteudo: `Dispõe sobre o condomínio em edificações e as incorporações imobiliárias. Grande parte foi substituída pelo Código Civil, mas a parte de incorporação imobiliária (Capítulo I) continua em pleno vigor, ditando as regras de construção e entrega de condomínios por construtoras.`
+    },
+    {
+      id: 'responsabilidade-sindico',
+      icone: <Scale className="text-brand-600" size={24} />,
+      titulo: 'Responsabilidade Civil e Criminal do Síndico',
+      resumo: 'Art. 186, 927 e Art. 1.348 do Código Civil',
+      conteudo: `O síndico pode responder com seu patrimônio pessoal ou sofrer sanções penais caso haja negligência, imprudência ou má-fé na gestão.
+- Responsabilidade Civil: Ocorre quando as atribuições não são cumpridas adequadamente, causando prejuízos ao condomínio ou a terceiros (Ex: não realizar manutenção e uma marquise cair).
+- Responsabilidade Criminal: Envolve crimes contra a honra (difamação de moradores), apropriação indébita (desvio de fundos) ou negligência extrema que resulte em lesão corporal ou morte nas dependências do condomínio.`
+    },
+    {
+      id: 'sindico-profissional',
+      icone: <Briefcase className="text-brand-600" size={24} />,
+      titulo: 'Síndico Profissional / Gerente Contratado',
+      resumo: 'Art. 1.347 do Código Civil',
+      conteudo: `A lei exige que todo condomínio tenha um representante legal (o "Síndico"). No entanto, ele NÃO precisa ser um morador.
+- Art. 1.347: A assembleia poderá escolher um síndico, que NÃO seja condômino (morador), para administrar o condomínio, por prazo não superior a dois anos, o qual poderá renovar-se.
+- Isso permite a contratação de um Gerente Profissional, Síndico Profissional ou uma Empresa Administradora para assumir a responsabilidade legal e operacional do condomínio, mediante remuneração aprovada em assembleia.`
     }
   ]
 
