@@ -6,6 +6,7 @@ import {
   AlertTriangle, DollarSign, Scale, FileText, Search, Plus, 
   MessageCircle, Mail, Briefcase, Gavel, BookOpen, ExternalLink, X 
 } from 'lucide-react'
+import BibliotecaLeis from '../components/juridico/BibliotecaLeis'
 
 // Modal para Adicionar Processo Jurídico
 function ProcessoModal({ onClose, onSave, processo }) {
@@ -213,25 +214,7 @@ export default function Inadimplencia() {
           )}
 
           {activeTab === 'biblioteca' && (
-            <div className="space-y-4">
-              <h3 className="font-bold text-gray-800">Base de Conhecimento Jurídico</h3>
-              <p className="text-sm text-gray-500 mb-4">Acesse rapidamente as leis mais utilizadas na gestão de condomínios e imobiliárias para tirar dúvidas.</p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {leis.map((lei, idx) => (
-                  <a key={idx} href={lei.link} target="_blank" rel="noopener noreferrer" className="border border-cream-300 rounded-xl p-5 hover:border-brand-500 hover:shadow-md transition-all group flex gap-4 items-start">
-                    <div className="p-3 bg-brand-50 text-brand-600 rounded-lg group-hover:bg-brand-600 group-hover:text-white transition-colors"><BookOpen size={24}/></div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-gray-800 mb-1 flex items-center justify-between">
-                        {lei.titulo}
-                        <ExternalLink size={16} className="text-gray-300 group-hover:text-brand-500"/>
-                      </h4>
-                      <p className="text-sm text-gray-500">{lei.desc}</p>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            </div>
+            <BibliotecaLeis />
           )}
         </div>
       </div>
