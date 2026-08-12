@@ -32,6 +32,12 @@ export default function AlphaAI() {
   }, [user, isOpen])
 
   useEffect(() => {
+    const handleOpenChat = () => setIsOpen(true)
+    window.addEventListener('open-ai-chat', handleOpenChat)
+    return () => window.removeEventListener('open-ai-chat', handleOpenChat)
+  }, [])
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 

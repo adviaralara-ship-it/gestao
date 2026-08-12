@@ -78,9 +78,13 @@ export default function BibliotecaLeis() {
             Esses dados são usados pela <strong>Alpha Assist (IA)</strong>.
           </p>
         </div>
-        <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+        <button 
+          onClick={() => window.dispatchEvent(new CustomEvent('open-ai-chat'))}
+          className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+          title="Abrir Chat da IA"
+        >
           <Bot size={14}/> IA Integrada
-        </div>
+        </button>
       </div>
 
       <div className="flex flex-col gap-4">
