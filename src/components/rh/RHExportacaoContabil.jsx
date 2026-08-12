@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { FileDown, Download, CheckCircle, Mail, AlertTriangle, Calendar, FileText } from 'lucide-react'
+import { FileDown, Download, CheckCircle, Mail, AlertTriangle, Calendar, FileText, Users, RefreshCw } from 'lucide-react'
 
 export default function RHExportacaoContabil() {
   const [mes, setMes] = useState('2026-08')
