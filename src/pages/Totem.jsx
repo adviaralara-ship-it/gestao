@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Html5QrcodeScanner } from 'html5-qrcode'
 import { CheckCircle, XCircle } from 'lucide-react'
 import { db } from '../firebase'
@@ -33,9 +33,9 @@ export default function Totem() {
           const dados = vSnap.data()
           if (dados.status === 'Autorizado' || dados.status === 'Pendente') {
             await updateDoc(vRef, { status: 'Acessou', dataAcesso: new Date().toISOString() })
-            setScanResult({ type: 'success', msg: \Acesso Liberado! Bem-vindo(a), \\ })
+            setScanResult({ type: 'success', msg: `Acesso Liberado! Bem-vindo(a), ${dados.nome}` })
           } else {
-            setScanResult({ type: 'error', msg: \Status inválido ou já acessou.\ })
+            setScanResult({ type: 'error', msg: `Status inválido ou já acessou.` })
           }
         } else {
           const cRef = doc(db, 'convidados', docId)
@@ -44,12 +44,12 @@ export default function Totem() {
             const dados = cSnap.data()
             if (dados.status !== 'Acessou') {
               await updateDoc(cRef, { status: 'Acessou', dataAcesso: new Date().toISOString() })
-              setScanResult({ type: 'success', msg: \Acesso Liberado! Bem-vindo(a), \\ })
+              setScanResult({ type: 'success', msg: `Acesso Liberado! Bem-vindo(a), ${dados.nome}` })
             } else {
-              setScanResult({ type: 'error', msg: \Convidado já acessou anteriormente.\ })
+              setScanResult({ type: 'error', msg: `Convidado já acessou anteriormente.` })
             }
           } else {
-            setScanResult({ type: 'error', msg: \QR Code não encontrado no sistema.\ })
+            setScanResult({ type: 'error', msg: `QR Code não encontrado no sistema.` })
           }
         }
       } catch (err) {
@@ -90,7 +90,9 @@ export default function Totem() {
 
         <div className="h-24 flex items-center justify-center">
           {scanResult && (
-            <div className={\lex flex-col items-center gap-2 p-4 rounded-xl w-full animate-fade-in \\}>
+            <div className={`flex flex-col items-center gap-2 p-4 rounded-xl w-full animate-fade-in ${
+              scanResult.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+            }`}>
               {scanResult.type === 'success' ? <CheckCircle size={32} /> : <XCircle size={32} />}
               <span className="font-bold text-lg">{scanResult.msg}</span>
             </div>
