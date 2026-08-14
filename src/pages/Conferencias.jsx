@@ -14,6 +14,7 @@ export default function Conferencias() {
   const [mediaRecorder, setMediaRecorder] = useState(null)
   const [videoRecorder, setVideoRecorder] = useState(null)
   const [modoGravacao, setModoGravacao] = useState('audio') // 'audio' ou 'video'
+  const [opcaoIA, setOpcaoIA] = useState('resumo')
   const audioChunks = useRef([])
   const videoChunks = useRef([])
   const [transcricaoPronta, setTranscricaoPronta] = useState(false)
@@ -54,7 +55,7 @@ export default function Conferencias() {
         setIsTranscribing(true)
         const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
         try {
-          const texto = await gerarAtaPorAudio(audioBlob, 'reuniao', `Reunião Alpha RH (${roomName})`)
+          const texto = await gerarAtaPorAudio(audioBlob, 'reuniao', `Reunião Alpha RH (${roomName})`, opcaoIA)
           setSummary(texto)
         } catch (error) {
           alert("Erro ao transcrever: " + error.message)
@@ -132,16 +133,25 @@ export default function Conferencias() {
           <div className="flex items-center gap-3">
             {!isRecording && !isTranscribing && !summary && (
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-4 bg-gray-50 p-2 rounded-lg border border-cream-200">
-                  <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
-                    <input type="radio" name="modo_conf" checked={modoGravacao === 'audio'} onChange={() => setModoGravacao('audio')} className="text-brand-600"/> Somente Áudio
-                  </label>
-                  <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
-                    <input type="radio" name="modo_conf" checked={modoGravacao === 'video'} onChange={() => setModoGravacao('video')} className="text-brand-600"/> Vídeo + Áudio
-                  </label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-4 bg-gray-50 p-2 rounded-lg border border-cream-200">
+                    <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                      <input type="radio" name="modo_conf" checked={modoGravacao === 'audio'} onChange={() => setModoGravacao('audio')} className="text-brand-600"/> Somente Áudio
+                    </label>
+                    <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                      <input type="radio" name="modo_conf" checked={modoGravacao === 'video'} onChange={() => setModoGravacao('video')} className="text-brand-600"/> Vídeo + Áudio
+                    </label>
+                  </div>
+                  <select value={opcaoIA} onChange={e => setOpcaoIA(e.target.value)} className="input-field py-1 px-2 text-xs">
+                    <option value="resumo">Recapitular a reunião</option>
+                    <option value="action_items">Listar Itens de Ação</option>
+                    <option value="ideias">Principais Ideias</option>
+                    <option value="notas">Gerar Notas da Reunião</option>
+                    <option value="mencoes_transcricao">Destaques e Menções</option>
+                  </select>
                 </div>
-                <button onClick={startRecording} className="btn-primary py-2 text-sm bg-brand-600 hover:bg-brand-700 border-none">
-                  <FileText size={16}/> Gravar Resumo com IA
+                <button onClick={startRecording} className="btn-primary py-2 h-full text-sm bg-brand-600 hover:bg-brand-700 border-none flex-shrink-0 self-stretch">
+                  <FileText size={16}/> Gravar com IA
                 </button>
               </div>
             )}

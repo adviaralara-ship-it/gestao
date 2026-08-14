@@ -29,7 +29,7 @@ function blobToBase64(blob) {
  * @param {string} tipo 'assembleia' ou 'reuniao'
  * @param {string} contexto Informações extras (título da reunião, pauta)
  */
-export async function gerarAtaPorAudio(audioBlob, tipo, contexto) {
+export async function gerarAtaPorAudio(audioBlob, tipo, contexto, opcaoAI = 'resumo') {
   try {
     const base64Audio = await blobToBase64(audioBlob)
     const mimeType = audioBlob.type || 'audio/webm'
@@ -47,7 +47,16 @@ Por favor, escute a gravação e redija a ATA OFICIAL DA ASSEMBLEIA, incluindo:
 Se o áudio estiver vazio ou inaudível, avise amigavelmente.
       `
     } else {
-      prompt = `
+      if (opcaoAI === 'action_items') {
+        prompt = `Você é um Assistente Executivo. A partir do áudio da reunião (Contexto: ${contexto}), liste APENAS os Itens de Ação (tarefas, responsáveis e prazos mencionados). Formate em bullet points.`
+      } else if (opcaoAI === 'ideias') {
+        prompt = `Você é um Assistente Executivo. A partir do áudio da reunião (Contexto: ${contexto}), extraia as PRINCIPAIS IDEIAS e sugestões discutidas. Formate em bullet points claros.`
+      } else if (opcaoAI === 'notas') {
+        prompt = `Você é um Assistente Executivo. A partir do áudio da reunião (Contexto: ${contexto}), gere NOTAS GERAIS E DETALHADAS da reunião, seguindo a ordem cronológica dos assuntos abordados.`
+      } else if (opcaoAI === 'mencoes_transcricao') {
+        prompt = `Você é um Assistente Executivo. A partir do áudio da reunião (Contexto: ${contexto}), faça duas coisas: 1) Liste as MENÇÕES (nomes de pessoas, empresas ou projetos citados) e 2) Faça um resumo focado nas falas de destaque (transcrição dos pontos mais importantes).`
+      } else {
+        prompt = `
 Você é um Assistente Executivo.
 Aqui está a gravação de áudio de uma reunião/conferência. O contexto é: ${contexto}.
 Por favor, gere um RESUMO EXECUTIVO desta reunião contendo:
@@ -55,7 +64,8 @@ Por favor, gere um RESUMO EXECUTIVO desta reunião contendo:
 - Próximos passos (Action Items).
 - Formatação em tópicos limpa e direta.
 Se o áudio estiver vazio ou inaudível, avise amigavelmente.
-      `
+        `
+      }
     }
 
     const result = await model.generateContent([
