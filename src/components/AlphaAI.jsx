@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Plus, X, Search, FileText, Download, Copy, RefreshCw, Scale, Lightbulb, Users, Calendar, Megaphone, Send, Bot, Camera, Sparkles, AlertCircle, Maximize2, Minimize2, Settings, History, User, ChevronDown, CheckCircle, Zap } from 'lucide-react'
+import { Plus, X, Search, FileText, Download, Copy, RefreshCw, Scale, Lightbulb, Users, Calendar, Megaphone, Send, Bot, Camera, Sparkles, AlertCircle, Maximize2, Minimize2, Settings, History, User, ChevronDown, CheckCircle, Zap, Volume2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp, collection, addDoc, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -158,6 +158,26 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
     }
 
     const [actionStatus, setActionStatus] = useState(null) // null, 'loading', 'done'
+    const [isPlaying, setIsPlaying] = useState(false)
+
+    const handleSpeak = () => {
+      if (isPlaying) {
+        window.speechSynthesis.cancel()
+        setIsPlaying(false)
+        return
+      }
+      
+      const cleanText = text.replace(/\[.*?\]/g, '').replace(/\*/g, '')
+      const utterance = new SpeechSynthesisUtterance(cleanText)
+      utterance.lang = 'pt-BR'
+      utterance.pitch = 1.1 // Voz um pouco mais animada
+      utterance.rate = 1.05
+      
+      utterance.onend = () => setIsPlaying(false)
+      
+      setIsPlaying(true)
+      window.speechSynthesis.speak(utterance)
+    }
 
     const handleCriarOcorrencia = async () => {
       setActionStatus('loading')
@@ -224,8 +244,18 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
     }
 
     return (
-      <div className={`p-3 rounded-2xl max-w-[85%] shadow-sm ${message.role === 'user' ? 'bg-brand-600 text-white rounded-br-none ml-auto' : 'bg-white border border-cream-200 text-gray-700 rounded-bl-none mr-auto'}`}>
+      <div className={`p-3 rounded-2xl max-w-[85%] shadow-sm relative group ${message.role === 'user' ? 'bg-brand-600 text-white rounded-br-none ml-auto' : 'bg-white border border-cream-200 text-gray-700 rounded-bl-none mr-auto'}`}>
         <p className="text-sm whitespace-pre-wrap leading-relaxed">{text}</p>
+        
+        {message.role === 'model' && (
+          <button 
+            onClick={handleSpeak} 
+            className="absolute -right-8 top-2 p-1.5 bg-gray-100 rounded-full text-gray-500 hover:text-brand-600 hover:bg-brand-50 opacity-0 group-hover:opacity-100 transition-all shadow-sm"
+            title="Ouvir resposta"
+          >
+            <Volume2 size={14} className={isPlaying ? 'text-brand-600 animate-pulse' : ''} />
+          </button>
+        )}
         
         {/* Widget de Ocorrência */}
         {matchOcorrencia && (
