@@ -137,7 +137,7 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
       }
       
       const chatModel = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
+        model: "gemini-1.5-flash-latest",
         systemInstruction: systemPrompt
       })
 
