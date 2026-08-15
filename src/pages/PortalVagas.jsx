@@ -44,15 +44,17 @@ export default function PortalVagas() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!file) return alert("Por favor, anexe o seu currículo em PDF.")
-    setEnviando(true)
+    setEnviando('Conectando ao Firebase Storage...')
 
     try {
       // 1. Upload do Currículo
       const fileRef = ref(storage, `curriculos/${Date.now()}_${file.name}`)
       await uploadBytes(fileRef, file)
+      setEnviando('Gerando link do currículo...')
       const url = await getDownloadURL(fileRef)
 
       // 2. Criar Candidato
+      setEnviando('Salvando candidato no banco de dados...')
       await addDoc(collection(db, 'candidatos'), {
         ...form,
         vagaId: vagaSelecionada.id,
@@ -64,6 +66,7 @@ export default function PortalVagas() {
       })
 
       // 3. Notificação
+      setEnviando('Gerando notificação para o RH...')
       await addDoc(collection(db, 'notificacoes'), {
         text: `💼 Novo currículo recebido para a vaga: ${vagaSelecionada.titulo}`,
         time: new Date().toISOString(),
@@ -76,7 +79,7 @@ export default function PortalVagas() {
       setSucesso(true)
     } catch (e) {
       console.error(e)
-      alert("Erro ao enviar currículo. Tente novamente.")
+      alert(`ERRO DETALHADO: ${e.message || e}`)
     } finally {
       setEnviando(false)
     }
@@ -174,7 +177,7 @@ export default function PortalVagas() {
                 </div>
 
                 <button type="submit" disabled={enviando} className="btn-primary w-full py-4 text-base shadow-xl shadow-brand-500/30 mt-4 justify-center">
-                  {enviando ? 'Enviando Dados...' : <><Send size={18}/> Enviar Candidatura</>}
+                  {enviando ? enviando : <><Send size={18}/> Enviar Candidatura</>}
                 </button>
               </form>
             </div>
