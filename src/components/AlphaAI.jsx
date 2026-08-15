@@ -120,12 +120,20 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
       const validHistory = []
       let lastRole = null
       for (const msg of rawHistory) {
-        if (msg.role !== lastRole) {
-          validHistory.push(msg)
-          lastRole = msg.role
+        const clonedMsg = { role: msg.role, parts: [{ text: msg.parts[0].text }] }
+        if (clonedMsg.role !== lastRole) {
+          validHistory.push(clonedMsg)
+          lastRole = clonedMsg.role
         } else {
-          validHistory[validHistory.length - 1].parts[0].text += '\n' + msg.parts[0].text
+          validHistory[validHistory.length - 1].parts[0].text += '\n' + clonedMsg.parts[0].text
         }
+      }
+
+      // Gemini exige que sendMessage() seja chamado após uma mensagem de 'model' (ou histórico vazio)
+      let textToSend = userMsg.text
+      if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === 'user') {
+        const lastUser = validHistory.pop()
+        textToSend = lastUser.parts[0].text + '\n\n' + textToSend
       }
       
       const chatModel = genAI.getGenerativeModel({ 
@@ -138,7 +146,7 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
         generationConfig: { maxOutputTokens: 1000 },
       })
 
-      const result = await chat.sendMessage(userMsg.text)
+      const result = await chat.sendMessage(textToSend)
       const aiResponse = result.response.text()
 
       const modelMsg = { role: 'model', text: aiResponse }
