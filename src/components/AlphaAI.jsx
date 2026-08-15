@@ -160,7 +160,7 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
 
     } catch (error) {
       console.error("Erro no Gemini:", error)
-      const errorMsg = { role: 'model', text: "Desculpe, estou com problemas de conexão. Tente novamente em instantes." }
+      const errorMsg = { role: 'model', text: `Desculpe, estou com problemas de conexão. Tente novamente. Detalhes: ${error.message}` }
       setMessages(prev => [...prev, errorMsg])
     } finally {
       setLoading(false)
