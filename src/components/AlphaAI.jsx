@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+﻿import React, { useState, useEffect, useRef } from 'react'
 import { Plus, X, Search, FileText, Download, Copy, RefreshCw, Scale, Lightbulb, Users, Calendar, Megaphone, Send, Bot, Camera, Sparkles, AlertCircle, Maximize2, Minimize2, Settings, History, User, ChevronDown, CheckCircle, Zap, Volume2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp, collection, addDoc, getDocs } from 'firebase/firestore'
@@ -6,10 +6,168 @@ import { db } from '../firebase'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import QRCode from 'react-qr-code'
 
-// Chave da API e Instância do Gemini
+// Chave da API e InstÃ¢ncia do Gemini
 const API_KEY = "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
 const genAI = new GoogleGenerativeAI(API_KEY)
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+
+// Componente interno para processar e renderizar os "Widgets" de Ação no meio da mensagem
+const RenderMessage = ({ message, user }) => {
+  let text = message.text
+
+  // Ocorrência
+  const matchOcorrencia = text.match(/\[CRIAR_OCORRENCIA:(.*?)\]/)
+  let ocorrenciaDesc = ''
+  if (matchOcorrencia) {
+    ocorrenciaDesc = matchOcorrencia[1].trim()
+    text = text.replace(matchOcorrencia[0], '')
+  }
+
+  // Reserva
+  const matchReserva = text.match(/\[CRIAR_RESERVA:(.*?)\]/)
+  let reservaDetails = ''
+  if (matchReserva) {
+    reservaDetails = matchReserva[1].trim()
+    text = text.replace(matchReserva[0], '')
+  }
+
+  const [actionStatus, setActionStatus] = useState(null) // null, 'loading', 'done'
+  const [isPlaying, setIsPlaying] = useState(false)
+
+  const handleSpeak = () => {
+    if (isPlaying) {
+      window.speechSynthesis.cancel()
+      setIsPlaying(false)
+      return
+    }
+    
+    const cleanText = text.replace(/\[.*?\]/g, '').replace(/\*/g, '')
+    const utterance = new SpeechSynthesisUtterance(cleanText)
+    utterance.lang = 'pt-BR'
+    utterance.pitch = 1.1 // Voz um pouco mais animada
+    utterance.rate = 1.05
+    
+    utterance.onend = () => setIsPlaying(false)
+    
+    setIsPlaying(true)
+    window.speechSynthesis.speak(utterance)
+  }
+
+  const handleCriarOcorrencia = async () => {
+    setActionStatus('loading')
+    try {
+      await addDoc(collection(db, 'ocorrencias'), {
+        titulo: 'Ocorrência via IA',
+        categoria: 'Outros',
+        prioridade: 'Média',
+        visibilidade: 'Público',
+        autor: user.nome,
+        nome_morador: user.nome,
+        apt: user.apt || '',
+        condominio: user.condominio || '',
+        data: new Date().toLocaleDateString('pt-BR'),
+        descricao: ocorrenciaDesc,
+        status: 'Aberta',
+        uid: user.uid || user.id,
+        _createdAt: serverTimestamp()
+      })
+      
+      // Notificação
+      await addDoc(collection(db,'notificacoes'),{
+        text:\[\] Nova Ocorrência (Via AI): \\,
+        time:new Date().toISOString(), tipo:'ocorrencia', lida:false, condominio: user.condominio, _createdAt:serverTimestamp()
+      })
+      setActionStatus('done')
+    } catch (e) {
+      alert("Erro ao criar ocorrência.")
+      setActionStatus(null)
+    }
+  }
+
+  const handleCriarReserva = async () => {
+    setActionStatus('loading')
+    try {
+      const parts = reservaDetails.split(' - ')
+      const espaco = parts[0] || reservaDetails
+      const dataStr = parts[1] || new Date().toLocaleDateString('pt-BR')
+      const horarioStr = parts[2] || 'A definir'
+      
+      await addDoc(collection(db, 'reservas'), {
+        morador: user.nome,
+        apt: user.apt || '',
+        condominio: user.condominio || '',
+        espaco: espaco,
+        data: dataStr,
+        horario: horarioStr,
+        pessoas: '',
+        status: 'Pendente',
+        uid: user.uid || user.id,
+        _createdAt: serverTimestamp()
+      })
+      
+      // Notificação
+      await addDoc(collection(db,'notificacoes'),{
+        text:\[\] Nova Reserva (Via AI): \ - Pendente Aprovação\,
+        time:new Date().toISOString(), tipo:'reserva', lida:false, condominio: user.condominio, _createdAt:serverTimestamp()
+      })
+      setActionStatus('done')
+    } catch (e) {
+      alert("Erro ao criar reserva.")
+      setActionStatus(null)
+    }
+  }
+
+  return (
+    <div className={\p-3 rounded-2xl max-w-[85%] shadow-sm relative \\}>
+      <p className="text-sm whitespace-pre-wrap leading-relaxed">{text}</p>
+      
+      {message.role === 'model' && (
+        <div className="mt-2 pt-2 border-t border-cream-100 flex justify-end">
+          <button 
+            onClick={handleSpeak} 
+            className="flex items-center gap-1 p-1 px-2 bg-cream-50 rounded-lg text-gray-500 hover:text-brand-600 hover:bg-brand-50 transition-all text-[10px] font-medium"
+            title="Ouvir resposta"
+          >
+            <Volume2 size={12} className={isPlaying ? 'text-brand-600 animate-pulse' : ''} />
+            {isPlaying ? 'Ouvindo...' : 'Ouvir resposta'}
+          </button>
+        </div>
+      )}
+      
+      {/* Widget de Ocorrência */}
+      {matchOcorrencia && (
+        <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-xl">
+          <p className="text-xs font-bold text-red-800 mb-2 flex items-center gap-1"><Zap size={14}/> Abertura de Ocorrência</p>
+          <p className="text-xs text-red-700 mb-3">{ocorrenciaDesc}</p>
+          {actionStatus === 'done' ? (
+            <div className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={14}/> Ocorrência Registrada!</div>
+          ) : (
+            <button onClick={handleCriarOcorrencia} disabled={actionStatus==='loading'} className="btn-primary py-1.5 px-3 text-xs w-full justify-center bg-red-600 hover:bg-red-700 border-none">
+              {actionStatus === 'loading' ? 'Registrando...' : 'Confirmar e Abrir Chamado'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Widget de Reserva */}
+      {matchReserva && (
+        <div className="mt-3 p-3 bg-brand-50 border border-brand-100 rounded-xl">
+          <p className="text-xs font-bold text-brand-800 mb-2 flex items-center gap-1"><Zap size={14}/> Pré-Reserva Gerada</p>
+          <p className="text-xs text-brand-700 mb-3">{reservaDetails}</p>
+          {actionStatus === 'done' ? (
+            <div className="flex flex-col items-center gap-2 mt-2 pt-2 border-t border-brand-200">
+              <div className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={14}/> Pedido de reserva enviado para aprovação!</div>
+            </div>
+          ) : (
+            <button onClick={handleCriarReserva} disabled={actionStatus==='loading'} className="btn-primary py-1.5 px-3 text-xs w-full justify-center">
+              {actionStatus === 'loading' ? 'Enviando...' : 'Confirmar Pedido de Reserva'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function AlphaAI() {
   const { user } = useAuth()
@@ -58,7 +216,7 @@ export default function AlphaAI() {
       setMessages(snap.data().messages || [])
     } else {
       // Mensagem de boas vindas inicial
-      const welcomeMsg = { role: 'model', text: `Olá, ${user.nome}! Eu sou o Alpha AI, seu Concierge Virtual. Como posso te ajudar hoje?` }
+      const welcomeMsg = { role: 'model', text: `OlÃ¡, ${user.nome}! Eu sou o Alpha AI, seu Concierge Virtual. Como posso te ajudar hoje?` }
       setMessages([welcomeMsg])
       await setDoc(chatDocRef, {
         userId: user.uid || user.id,
@@ -80,7 +238,7 @@ export default function AlphaAI() {
     setLoading(true)
 
     try {
-      // Salva a mensagem do usuário no banco
+      // Salva a mensagem do usuÃ¡rio no banco
       await updateDoc(chatDocRef, {
         messages: arrayUnion(userMsg),
         lastActivity: serverTimestamp()
@@ -88,35 +246,35 @@ export default function AlphaAI() {
 
       // Prompt de Sistema para definir a personalidade e capacidades
       const systemPrompt = `
-Você é o "Alpha AI", o Concierge Virtual extremamente educado e inteligente do condomínio "${user.condominio}".
-O morador com quem você está falando se chama "${user.nome}" (Apartamento ${user.apt}).
-Seja amigável, direto, e use emojis ocasionalmente.
+VocÃª Ã© o "Alpha AI", o Concierge Virtual extremamente educado e inteligente do condomÃ­nio "${user.condominio}".
+O morador com quem vocÃª estÃ¡ falando se chama "${user.nome}" (Apartamento ${user.apt}).
+Seja amigÃ¡vel, direto, e use emojis ocasionalmente.
 
-BASE DE CONHECIMENTO DO CONDOMÍNIO:
+BASE DE CONHECIMENTO DO CONDOMÃNIO:
 ${knowledgeBase || "Nenhuma regra extra adicionada."}
 
-REGRAS ESPECIAIS DE AÇÃO (SIMULAÇÃO DE TOOL CALLING):
-Se o morador pedir para abrir uma ocorrência ou registrar um problema (ex: lâmpada queimada, barulho), responda normalmente e INCLUA EXATAMENTE este texto na sua resposta:
+REGRAS ESPECIAIS DE AÃ‡ÃƒO (SIMULAÃ‡ÃƒO DE TOOL CALLING):
+Se o morador pedir para abrir uma ocorrÃªncia ou registrar um problema (ex: lÃ¢mpada queimada, barulho), responda normalmente e INCLUA EXATAMENTE este texto na sua resposta:
 [CRIAR_OCORRENCIA: Resumo do Problema]
-Exemplo: "Claro, vou registrar isso para você! [CRIAR_OCORRENCIA: Lâmpada queimada no corredor]"
+Exemplo: "Claro, vou registrar isso para vocÃª! [CRIAR_OCORRENCIA: LÃ¢mpada queimada no corredor]"
 
-Se o morador quiser reservar um espaço (ex: salão de festas, churrasqueira), você DEVE pedir a data e o HORÁRIO de início e fim. Se ele já informou tudo, INCLUA EXATAMENTE:
-[CRIAR_RESERVA: Nome do Espaço - Data - Horário]
-Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 - 14:00 as 22:00]"
+Se o morador quiser reservar um espaÃ§o (ex: salÃ£o de festas, churrasqueira), vocÃª DEVE pedir a data e o HORÃRIO de inÃ­cio e fim. Se ele jÃ¡ informou tudo, INCLUA EXATAMENTE:
+[CRIAR_RESERVA: Nome do EspaÃ§o - Data - HorÃ¡rio]
+Exemplo: "Reserva prÃ©-aprovada! [CRIAR_RESERVA: SalÃ£o de Festas - 15/10/2026 - 14:00 as 22:00]"
 `
       
-      // Constrói o histórico para a API do Gemini
+      // ConstrÃ³i o histÃ³rico para a API do Gemini
       const rawHistory = messages.map(m => ({
         role: m.role === 'model' ? 'model' : 'user',
         parts: [{ text: m.text }]
       }))
       
-      // Remove a primeira mensagem se for do model (boas vindas) para não quebrar a regra de alternância
+      // Remove a primeira mensagem se for do model (boas vindas) para nÃ£o quebrar a regra de alternÃ¢ncia
       if (rawHistory.length > 0 && rawHistory[0].role === 'model') {
         rawHistory.shift()
       }
 
-      // Garante que não haja dois papéis iguais seguidos
+      // Garante que nÃ£o haja dois papÃ©is iguais seguidos
       const validHistory = []
       let lastRole = null
       for (const msg of rawHistory) {
@@ -129,7 +287,7 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
         }
       }
 
-      // Gemini exige que sendMessage() seja chamado após uma mensagem de 'model' (ou histórico vazio)
+      // Gemini exige que sendMessage() seja chamado apÃ³s uma mensagem de 'model' (ou histÃ³rico vazio)
       let textToSend = userMsg.text
       if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === 'user') {
         const lastUser = validHistory.pop()
@@ -160,18 +318,18 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
 
     } catch (error) {
       console.error("Erro no Gemini:", error)
-      const errorMsg = { role: 'model', text: `Desculpe, estou com problemas de conexão. Tente novamente. Detalhes: ${error.message}` }
+      const errorMsg = { role: 'model', text: `Desculpe, estou com problemas de conexÃ£o. Tente novamente. Detalhes: ${error.message}` }
       setMessages(prev => [...prev, errorMsg])
     } finally {
       setLoading(false)
     }
   }
 
-  // Componente interno para processar e renderizar os "Widgets" de Ação no meio da mensagem
+  // Componente interno para processar e renderizar os "Widgets" de AÃ§Ã£o no meio da mensagem
   const RenderMessage = ({ message }) => {
     let text = message.text
 
-    // Ocorrência
+    // OcorrÃªncia
     const matchOcorrencia = text.match(/\[CRIAR_OCORRENCIA:(.*?)\]/)
     let ocorrenciaDesc = ''
     if (matchOcorrencia) {
@@ -213,10 +371,10 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
       setActionStatus('loading')
       try {
         await addDoc(collection(db, 'ocorrencias'), {
-          titulo: 'Ocorrência via IA',
+          titulo: 'OcorrÃªncia via IA',
           categoria: 'Outros',
-          prioridade: 'Média',
-          visibilidade: 'Público',
+          prioridade: 'MÃ©dia',
+          visibilidade: 'PÃºblico',
           autor: user.nome,
           nome_morador: user.nome,
           apt: user.apt || '',
@@ -228,14 +386,14 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
           _createdAt: serverTimestamp()
         })
         
-        // Notificação
+        // NotificaÃ§Ã£o
         await addDoc(collection(db,'notificacoes'),{
-          text:`[${user.condominio}] Nova Ocorrência (Via AI): ${ocorrenciaDesc}`,
+          text:`[${user.condominio}] Nova OcorrÃªncia (Via AI): ${ocorrenciaDesc}`,
           time:new Date().toISOString(), tipo:'ocorrencia', lida:false, condominio: user.condominio, _createdAt:serverTimestamp()
         })
         setActionStatus('done')
       } catch (e) {
-        alert("Erro ao criar ocorrência.")
+        alert("Erro ao criar ocorrÃªncia.")
         setActionStatus(null)
       }
     }
@@ -261,9 +419,9 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
           _createdAt: serverTimestamp()
         })
         
-        // Notificação
+        // NotificaÃ§Ã£o
         await addDoc(collection(db,'notificacoes'),{
-          text:`[${user.condominio}] Nova Reserva (Via AI): ${espaco} - Pendente Aprovação`,
+          text:`[${user.condominio}] Nova Reserva (Via AI): ${espaco} - Pendente AprovaÃ§Ã£o`,
           time:new Date().toISOString(), tipo:'reserva', lida:false, condominio: user.condominio, _createdAt:serverTimestamp()
         })
         setActionStatus('done')
@@ -290,13 +448,13 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
           </div>
         )}
         
-        {/* Widget de Ocorrência */}
+        {/* Widget de OcorrÃªncia */}
         {matchOcorrencia && (
           <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-xl">
-            <p className="text-xs font-bold text-red-800 mb-2 flex items-center gap-1"><Zap size={14}/> Abertura de Ocorrência</p>
+            <p className="text-xs font-bold text-red-800 mb-2 flex items-center gap-1"><Zap size={14}/> Abertura de OcorrÃªncia</p>
             <p className="text-xs text-red-700 mb-3">{ocorrenciaDesc}</p>
             {actionStatus === 'done' ? (
-              <div className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={14}/> Ocorrência Registrada!</div>
+              <div className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={14}/> OcorrÃªncia Registrada!</div>
             ) : (
               <button onClick={handleCriarOcorrencia} disabled={actionStatus==='loading'} className="btn-primary py-1.5 px-3 text-xs w-full justify-center bg-red-600 hover:bg-red-700 border-none">
                 {actionStatus === 'loading' ? 'Registrando...' : 'Confirmar e Abrir Chamado'}
@@ -308,11 +466,11 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
         {/* Widget de Reserva */}
         {matchReserva && (
           <div className="mt-3 p-3 bg-brand-50 border border-brand-100 rounded-xl">
-            <p className="text-xs font-bold text-brand-800 mb-2 flex items-center gap-1"><Zap size={14}/> Pré-Reserva Gerada</p>
+            <p className="text-xs font-bold text-brand-800 mb-2 flex items-center gap-1"><Zap size={14}/> PrÃ©-Reserva Gerada</p>
             <p className="text-xs text-brand-700 mb-3">{reservaDetails}</p>
             {actionStatus === 'done' ? (
               <div className="flex flex-col items-center gap-2 mt-2 pt-2 border-t border-brand-200">
-                <div className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={14}/> Pedido de reserva enviado para aprovação!</div>
+                <div className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={14}/> Pedido de reserva enviado para aprovaÃ§Ã£o!</div>
               </div>
             ) : (
               <button onClick={handleCriarReserva} disabled={actionStatus==='loading'} className="btn-primary py-1.5 px-3 text-xs w-full justify-center">
@@ -325,12 +483,12 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
     )
   }
 
-  // Não renderiza nada se não estiver logado
+  // NÃ£o renderiza nada se nÃ£o estiver logado
   if (!user) return null
 
   return (
     <>
-      {/* Botão Flutuante transformado em botão de Header */}
+      {/* BotÃ£o Flutuante transformado em botÃ£o de Header */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 rounded-lg text-brand-600 hover:text-brand-800 hover:bg-pale-100 transition-all flex items-center justify-center"
@@ -360,7 +518,7 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 custom-scrollbar">
             {messages.map((m, idx) => (
-              <RenderMessage key={idx} message={m} />
+              <RenderMessage key={idx} message={m} user={user} />
             ))}
             {loading && (
               <div className="mr-auto bg-white border border-cream-200 rounded-2xl rounded-bl-none p-3 shadow-sm flex gap-1">
@@ -390,10 +548,11 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
                 <Send size={16} />
               </button>
             </div>
-            <p className="text-[9px] text-center text-gray-400 mt-2">A IA pode cometer erros. Verifique informações importantes.</p>
+            <p className="text-[9px] text-center text-gray-400 mt-2">A IA pode cometer erros. Verifique informaÃ§Ãµes importantes.</p>
           </div>
         </div>
       )}
     </>
   )
 }
+
