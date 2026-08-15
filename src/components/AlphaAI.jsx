@@ -9,7 +9,7 @@ import QRCode from 'react-qr-code'
 // Chave da API e Instância do Gemini
 const API_KEY = "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
 const genAI = new GoogleGenerativeAI(API_KEY)
-const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" })
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
 
 export default function AlphaAI() {
   const { user } = useAuth()
