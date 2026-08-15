@@ -4,7 +4,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 const API_KEY = "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
 const genAI = new GoogleGenerativeAI(API_KEY)
 // Para áudio, o gemini-flash-latest é excelente e rápido
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" })
+const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" })
 
 /**
  * Converte um Blob de áudio para uma string Base64 limpa
