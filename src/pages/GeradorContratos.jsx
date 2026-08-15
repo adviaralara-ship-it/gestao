@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { FileText, Printer, CheckCircle, Bot, Zap, Loader2, Sparkles, AlertCircle } from 'lucide-react'
+import { FileText, Printer, CheckCircle, Bot, Zap, Loader2, Sparkles, AlertCircle, FileEdit } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
@@ -340,12 +340,19 @@ REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):
 
         {/* Lado Direito - Preview */}
         <div className="w-full lg:w-2/3 h-full pb-8 print:w-full print:p-0">
-          <div className="bg-gray-200 p-4 md:p-8 rounded-xl border border-cream-300 shadow-inner h-full overflow-y-auto flex justify-center custom-scrollbar print:bg-white print:border-none print:shadow-none print:h-auto print:overflow-visible print:p-0 relative">
+          <div className="bg-gray-200 p-4 md:p-8 rounded-xl border border-cream-300 shadow-inner h-full overflow-y-auto flex justify-center custom-scrollbar print:bg-white print:border-none print:shadow-none print:h-auto print:overflow-visible print:p-0 relative group">
             
+            <div className="absolute top-4 right-4 bg-yellow-100 text-yellow-800 text-xs px-3 py-2 rounded-full font-medium shadow border border-yellow-300 print:hidden flex items-center gap-2 pointer-events-none opacity-80 group-hover:opacity-100 transition-opacity z-10">
+              <FileEdit className="w-4 h-4" />
+              Clique na folha para editar o texto livremente
+            </div>
+
             {/* Folha A4 Fake para Preview */}
             <div 
               ref={printRef}
-              className="bg-white shadow-2xl p-10 md:p-16 print:shadow-none print:p-0 transition-all"
+              contentEditable={true}
+              suppressContentEditableWarning={true}
+              className="bg-white shadow-2xl p-10 md:p-16 print:shadow-none print:p-0 transition-all outline-none"
               style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
               dangerouslySetInnerHTML={{ __html: tab === 'modelos' ? modeloAtivo.template(form) : (iaDocHtml || `<div style="font-family: Arial; color: #999; text-align: center; margin-top: 50px;">O documento gerado pela IA aparecerá aqui.</div>`) }}
             />
