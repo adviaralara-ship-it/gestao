@@ -106,13 +106,35 @@ Exemplo: "Reserva pré-aprovada! [CRIAR_RESERVA: Salão de Festas - 15/10/2026 -
 `
       
       // Constrói o histórico para a API do Gemini
-      const history = messages.map(m => ({
+      const rawHistory = messages.map(m => ({
         role: m.role === 'model' ? 'model' : 'user',
         parts: [{ text: m.text }]
       }))
       
-      const chat = model.startChat({
-        history: [{ role: 'user', parts: [{ text: systemPrompt }] }, { role: 'model', parts: [{ text: "Entendido. Serei o Alpha AI." }] }, ...history],
+      // Remove a primeira mensagem se for do model (boas vindas) para não quebrar a regra de alternância
+      if (rawHistory.length > 0 && rawHistory[0].role === 'model') {
+        rawHistory.shift()
+      }
+
+      // Garante que não haja dois papéis iguais seguidos
+      const validHistory = []
+      let lastRole = null
+      for (const msg of rawHistory) {
+        if (msg.role !== lastRole) {
+          validHistory.push(msg)
+          lastRole = msg.role
+        } else {
+          validHistory[validHistory.length - 1].parts[0].text += '\n' + msg.parts[0].text
+        }
+      }
+      
+      const chatModel = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        systemInstruction: systemPrompt
+      })
+
+      const chat = chatModel.startChat({
+        history: validHistory,
         generationConfig: { maxOutputTokens: 1000 },
       })
 
