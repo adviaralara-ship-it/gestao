@@ -9,7 +9,7 @@ import QRCode from 'react-qr-code'
 // Chave da API e InstÃ¢ncia do Gemini
 const API_KEY = "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
 const genAI = new GoogleGenerativeAI(API_KEY)
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
 
 // Componente interno para processar e renderizar os "Widgets" de Ação no meio da mensagem
 const RenderMessage = ({ message, user }) => {
@@ -295,7 +295,7 @@ Exemplo: "Reserva prÃ©-aprovada! [CRIAR_RESERVA: SalÃ£o de Festas - 15/10/20
       }
       
       const chatModel = genAI.getGenerativeModel({ 
-        model: "gemini-flash-latest",
+        model: "gemini-3.5-flash",
         systemInstruction: systemPrompt
       })
 

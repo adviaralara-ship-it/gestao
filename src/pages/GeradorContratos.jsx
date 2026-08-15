@@ -6,7 +6,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 // Chave da API e Instância do Gemini
 const API_KEY = "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA"
 const genAI = new GoogleGenerativeAI(API_KEY)
-const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" })
+const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
 
 const modelos = [
   {
