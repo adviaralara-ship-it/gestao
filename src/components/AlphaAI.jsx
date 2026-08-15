@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Plus, X, Search, FileText, Download, Copy, RefreshCw, Scale, Lightbulb, Users, Calendar, Megaphone, Send, Bot, Camera, Sparkles, AlertCircle, Maximize2, Minimize2, Settings, History, User, ChevronDown, CheckCircle, Zap, Volume2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp, collection, addDoc, getDocs } from 'firebase/firestore'
@@ -74,7 +74,7 @@ const RenderMessage = ({ message, user }) => {
       
       // Notificação
       await addDoc(collection(db,'notificacoes'),{
-        text:\[\] Nova Ocorrência (Via AI): \\,
+        text:`[${user.condominio}] Nova Ocorrência (Via AI): ${ocorrenciaDesc}`,
         time:new Date().toISOString(), tipo:'ocorrencia', lida:false, condominio: user.condominio, _createdAt:serverTimestamp()
       })
       setActionStatus('done')
@@ -107,7 +107,7 @@ const RenderMessage = ({ message, user }) => {
       
       // Notificação
       await addDoc(collection(db,'notificacoes'),{
-        text:\[\] Nova Reserva (Via AI): \ - Pendente Aprovação\,
+        text:`[${user.condominio}] Nova Reserva (Via AI): ${espaco} - Pendente Aprovação`,
         time:new Date().toISOString(), tipo:'reserva', lida:false, condominio: user.condominio, _createdAt:serverTimestamp()
       })
       setActionStatus('done')
