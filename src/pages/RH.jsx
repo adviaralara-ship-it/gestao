@@ -38,12 +38,6 @@ export default function RH() {
           <Calculator size={16} /> Folha de Pagamento
         </button>
         <button 
-          onClick={() => setActiveTab('convencoes')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'convencoes' ? 'bg-white shadow-sm text-brand-700' : 'text-gray-500 hover:text-brand-600 hover:bg-white/50'}`}
-        >
-          <BookOpen size={16} /> Convenções & IA
-        </button>
-        <button 
           onClick={() => setActiveTab('exportacao')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'exportacao' ? 'bg-white shadow-sm text-brand-700' : 'text-gray-500 hover:text-brand-600 hover:bg-white/50'}`}
         >
@@ -55,7 +49,6 @@ export default function RH() {
         {activeTab === 'colaboradores' && <RHColaboradores />}
         {activeTab === 'ponto' && <RHGestaoPonto />}
         {activeTab === 'folha' && <RHFolhaPagamento />}
-        {activeTab === 'convencoes' && <RHConvencoesIA />}
         {activeTab === 'exportacao' && <RHExportacaoContabil />}
       </div>
     </div>

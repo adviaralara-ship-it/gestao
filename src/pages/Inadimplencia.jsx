@@ -4,9 +4,10 @@ import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { 
   AlertTriangle, DollarSign, Scale, FileText, Search, Plus, 
-  MessageCircle, Mail, Briefcase, Gavel, BookOpen, ExternalLink, X 
+  MessageCircle, Mail, Briefcase, Gavel, BookOpen, ExternalLink, X, Bot 
 } from 'lucide-react'
 import BibliotecaLeis from '../components/juridico/BibliotecaLeis'
+import RHConvencoesIA from '../components/rh/RHConvencoesIA'
 
 // Modal para Adicionar Processo Jurídico
 function ProcessoModal({ onClose, onSave, processo }) {
@@ -131,6 +132,7 @@ export default function Inadimplencia() {
           <button onClick={()=>setActiveTab('cobranca')} className={`px-6 py-4 font-medium flex items-center gap-2 ${activeTab==='cobranca' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-500 hover:bg-cream-50'}`}><AlertTriangle size={18}/> Cobrança Automática</button>
           <button onClick={()=>setActiveTab('juridico')} className={`px-6 py-4 font-medium flex items-center gap-2 ${activeTab==='juridico' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-500 hover:bg-cream-50'}`}><Briefcase size={18}/> Área Jurídica (Contencioso)</button>
           <button onClick={()=>setActiveTab('biblioteca')} className={`px-6 py-4 font-medium flex items-center gap-2 ${activeTab==='biblioteca' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-500 hover:bg-cream-50'}`}><BookOpen size={18}/> Biblioteca de Leis</button>
+          <button onClick={()=>setActiveTab('convencoes')} className={`px-6 py-4 font-medium flex items-center gap-2 ${activeTab==='convencoes' ? 'text-brand-600 border-b-2 border-brand-600' : 'text-gray-500 hover:bg-cream-50'}`}><Bot size={18}/> Convenções & IA</button>
         </div>
 
         <div className="p-6">
@@ -215,6 +217,10 @@ export default function Inadimplencia() {
 
           {activeTab === 'biblioteca' && (
             <BibliotecaLeis />
+          )}
+
+          {activeTab === 'convencoes' && (
+            <RHConvencoesIA />
           )}
         </div>
       </div>
