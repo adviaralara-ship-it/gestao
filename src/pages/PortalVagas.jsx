@@ -43,32 +43,25 @@ export default function PortalVagas() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!file) return alert("Por favor, anexe o seu currículo em PDF.")
-    setEnviando('Conectando ao Firebase Storage...')
+    setEnviando('Preparando envio...')
 
     try {
-      // 1. Upload do Currículo
-      const fileRef = ref(storage, `curriculos/${Date.now()}_${file.name}`)
-      await uploadBytes(fileRef, file)
-      setEnviando('Gerando link do currículo...')
-      const url = await getDownloadURL(fileRef)
-
-      // 2. Criar Candidato
+      // 1. Criar Candidato
       setEnviando('Salvando candidato no banco de dados...')
       await addDoc(collection(db, 'candidatos'), {
         ...form,
         vagaId: vagaSelecionada.id,
         vagaTitulo: vagaSelecionada.titulo,
         condominio: vagaSelecionada.condominio || 'Administradora',
-        curriculoUrl: url,
-        status: 'Novo', // Novo, Entrevista, Teste Prático, Aprovado, Reprovado
+        curriculoUrl: '', // Será enviado via WhatsApp
+        status: 'Pendente (WhatsApp)', // Aguardando o anexo via whats
         _createdAt: serverTimestamp()
       })
 
-      // 3. Notificação
+      // 2. Notificação
       setEnviando('Gerando notificação para o RH...')
       await addDoc(collection(db, 'notificacoes'), {
-        text: `💼 Novo currículo recebido para a vaga: ${vagaSelecionada.titulo}`,
+        text: `💼 Novo candidato (via WhatsApp) para a vaga: ${vagaSelecionada.titulo}`,
         time: new Date().toISOString(),
         tipo: 'rh',
         lida: false,
@@ -76,6 +69,12 @@ export default function PortalVagas() {
         _createdAt: serverTimestamp()
       })
 
+      // 3. Redirecionar para WhatsApp
+      const numeroRH = "5583998468997" // Substitua pelo número real do RH se precisar
+      const mensagem = `Olá, estou me candidatando para a vaga de *${vagaSelecionada.titulo}*.\n\nMeu nome: ${form.nome}\nEmail: ${form.email}\n\nSegue o meu currículo em PDF em anexo!`
+      const linkWhatsapp = `https://wa.me/${numeroRH}?text=${encodeURIComponent(mensagem)}`
+      
+      window.open(linkWhatsapp, '_blank')
       setSucesso(true)
     } catch (e) {
       console.error(e)
@@ -111,9 +110,9 @@ export default function PortalVagas() {
             <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 size={40} className="text-emerald-500" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Currículo Enviado!</h2>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Quase lá!</h2>
             <p className="text-gray-500 mb-8 max-w-md mx-auto">
-              Recebemos suas informações para a vaga de <strong>{vagaSelecionada?.titulo}</strong>. Nosso RH entrará em contato caso seu perfil seja selecionado. Boa sorte!
+              Recebemos os seus dados iniciais para a vaga de <strong>{vagaSelecionada?.titulo}</strong>. Agora, não esqueça de <strong>enviar o arquivo do seu currículo</strong> no WhatsApp que acabou de abrir! Boa sorte!
             </p>
             <button onClick={() => { setSucesso(false); setVagaSelecionada(null); }} className="btn-secondary px-8 py-3 rounded-xl mx-auto flex items-center gap-2">
               <ChevronLeft size={18}/> Voltar para as vagas
@@ -164,20 +163,16 @@ export default function PortalVagas() {
                   <label className="label">Resumo Profissional</label>
                   <textarea required className="input min-h-[100px] resize-none" value={form.experiencia} onChange={e=>setForm({...form, experiencia:e.target.value})} placeholder="Fale um pouco sobre suas experiências recentes..." />
                 </div>
-                
-                <div className="bg-cream-50 p-4 rounded-xl border border-dashed border-cream-400 mt-2">
-                  <label className="label text-brand-600 mb-1 flex items-center gap-2"><Upload size={16}/> Anexar Currículo (PDF)</label>
-                  <input 
-                    required 
-                    type="file" 
-                    accept="application/pdf"
-                    className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-brand-100 file:text-brand-700 hover:file:bg-brand-200 w-full"
-                    onChange={e=>setFile(e.target.files[0])}
-                  />
+
+                <div className="bg-emerald-50 text-emerald-800 p-4 rounded-xl border border-emerald-200 mt-2 text-sm flex gap-3 items-start">
+                  <div className="bg-emerald-100 p-2 rounded-full mt-1 shrink-0">
+                    <Send size={16} className="text-emerald-600" />
+                  </div>
+                  <p>Ao clicar em "Avançar para o WhatsApp", você será redirecionado para o WhatsApp do nosso RH. <strong>Por favor, lembre-se de anexar o arquivo do seu currículo na conversa!</strong></p>
                 </div>
 
-                <button type="submit" disabled={enviando} className="btn-primary w-full py-4 text-base shadow-xl shadow-brand-500/30 mt-4 justify-center">
-                  {enviando ? enviando : <><Send size={18}/> Enviar Candidatura</>}
+                <button type="submit" disabled={enviando} className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold w-full py-4 text-base shadow-xl shadow-emerald-500/30 mt-4 justify-center flex items-center gap-2 rounded-xl transition-all">
+                  {enviando ? enviando : <><Send size={18}/> Avançar para o WhatsApp</>}
                 </button>
               </form>
             </div>
