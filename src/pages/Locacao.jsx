@@ -122,6 +122,17 @@ export default function Locacao() {
   const [showContratoModal, setShowContratoModal] = useState(false)
   const [showRepasseModal, setShowRepasseModal] = useState(false)
   const [search, setSearch] = useState('')
+  const [filterStatus, setFilterStatus] = useState('Todos')
+
+  const todayDate = new Date().getDate();
+  const getVencimentoStatus = (diaStr) => {
+    const dia = parseInt(diaStr, 10);
+    if (!dia) return null;
+    let dif = dia - todayDate;
+    if (dif < 0 && dif > -20) return { text: `Atrasado há ${-dif} dia(s)`, color: 'text-red-600', bg: 'bg-red-100' };
+    if (dif >= 0 && dif <= 5) return { text: dif === 0 ? 'Vence HOJE' : `Vence em ${dif} dia(s)`, color: 'text-orange-600', bg: 'bg-orange-100' };
+    return null;
+  }
 
   const handleSaveContrato = async (form) => {
     if (form.id) {
@@ -174,7 +185,8 @@ export default function Locacao() {
   const stats = {
     ativos: contratos.filter(c => c.status === 'Ativo').length,
     inadimplentes: contratos.filter(c => c.status === 'Inadimplente').length,
-    repPendentes: repasses.filter(r => r.status === 'Pendente').length
+    repPendentes: repasses.filter(r => r.status === 'Pendente').length,
+    totalRepassar: repasses.filter(r => r.status === 'Pendente').reduce((acc, r) => acc + Number(r.valor_repasse||0), 0)
   }
 
   return (
@@ -197,7 +209,13 @@ export default function Locacao() {
         </div>
         <div className="card flex items-center gap-4">
           <div className="p-4 bg-yellow-50 text-yellow-600 rounded-xl"><DollarSign size={24}/></div>
-          <div><p className="text-sm text-gray-500 font-medium">Repasses Pendentes</p><h3 className="text-3xl font-bold text-gray-800">{stats.repPendentes}</h3></div>
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Repasses Pendentes</p>
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-3xl font-bold text-gray-800">{stats.repPendentes}</h3>
+              {stats.totalRepassar > 0 && <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">R$ {stats.totalRepassar.toFixed(2)}</span>}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -209,9 +227,17 @@ export default function Locacao() {
 
         <div className="p-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <div className="relative w-full sm:w-auto">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-              <input type="text" placeholder={activeTab === 'contratos' ? "Buscar inquilino ou locador..." : "Buscar proprietário..."} value={search} onChange={e => setSearch(e.target.value)} className="input pl-9 w-full sm:w-72" />
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <div className="relative w-full sm:w-auto">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input type="text" placeholder={activeTab === 'contratos' ? "Buscar inquilino ou locador..." : "Buscar proprietário..."} value={search} onChange={e => setSearch(e.target.value)} className="input pl-9 w-full sm:w-72" />
+              </div>
+              <select className="input w-full sm:w-auto" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                <option value="Todos">Todos os Status</option>
+                <option value="Ativo">Ativos</option>
+                <option value="Inadimplente">Inadimplentes</option>
+                <option value="Vencendo">Vencendo em Breve / Atrasados</option>
+              </select>
             </div>
             {activeTab === 'contratos' && <button onClick={() => setShowContratoModal(true)} className="btn-primary whitespace-nowrap"><Plus size={16}/> Novo Contrato</button>}
             {activeTab === 'repasses' && <button onClick={() => setShowRepasseModal(true)} className="btn-primary whitespace-nowrap"><Plus size={16}/> Novo Repasse Manual</button>}
@@ -230,7 +256,18 @@ export default function Locacao() {
                   </tr>
                 </thead>
                 <tbody>
-                  {contratos.filter(c => (c.proprietario||'').toLowerCase().includes(search.toLowerCase()) || (c.inquilino||'').toLowerCase().includes(search.toLowerCase())).map(c => (
+                  {contratos.filter(c => {
+                    const matchBusca = (c.proprietario||'').toLowerCase().includes(search.toLowerCase()) || (c.inquilino||'').toLowerCase().includes(search.toLowerCase())
+                    if (!matchBusca) return false;
+                    if (filterStatus === 'Todos') return true;
+                    if (filterStatus === 'Vencendo') {
+                      const vStatus = getVencimentoStatus(c.vencimento);
+                      return vStatus !== null && c.status === 'Ativo';
+                    }
+                    return c.status === filterStatus;
+                  }).map(c => {
+                    const vStatus = c.status === 'Ativo' ? getVencimentoStatus(c.vencimento) : null;
+                    return (
                     <tr key={c.id} className="table-row hover:bg-cream-50">
                       <td className="table-cell">
                         <div className="flex items-center gap-3">
@@ -250,6 +287,7 @@ export default function Locacao() {
                       <td className="table-cell">
                         <p className="text-sm font-bold text-gray-800">R$ {Number(c.valor_aluguel||0).toFixed(2)}</p>
                         <p className="text-xs text-gray-500 font-medium mt-0.5">Dia {c.vencimento} • Taxa {c.taxa_adm}%</p>
+                        {vStatus && <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${vStatus.bg} ${vStatus.color}`}>{vStatus.text}</span>}
                       </td>
                       <td className="table-cell">
                         <span className={`px-2 py-1 rounded-md text-xs font-bold border ${c.status === 'Ativo' ? 'bg-green-50 text-green-700 border-green-200' : c.status === 'Encerrado' ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{c.status}</span>
@@ -262,7 +300,7 @@ export default function Locacao() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  )})}
                   {contratos.length === 0 && <tr><td colSpan="5" className="py-12 text-center text-gray-400 text-sm">Nenhum contrato encontrado.</td></tr>}
                 </tbody>
               </table>
