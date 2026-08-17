@@ -171,7 +171,11 @@ export default function Locacao() {
   }
 
   const delContrato = async (id) => {
-    if (window.confirm('Excluir este contrato permanentemente?')) {
+    if (window.confirm('Excluir este contrato permanentemente? Os repasses vinculados também serão excluídos.')) {
+      const repassesVinculados = repasses.filter(r => r.contratoId === id)
+      for (const r of repassesVinculados) {
+        await deleteRepasse(r.id)
+      }
       await deleteContrato(id)
     }
   }
