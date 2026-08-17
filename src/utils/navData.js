@@ -63,7 +63,6 @@ export const navGroups = [
       { to: '/seguro', label: 'Seguro', icon: Shield },
       { to: '/regime', label: 'Regime Interno/Externo', icon: BookOpen },
       { to: '/documentos', label: 'Documentos', icon: FolderOpen },
-      { to: '/contratos', label: 'Gerador de Documentos', icon: FileText },
       { to: '/comunicacao', label: 'Comunicação', icon: MessageSquare },
       { to: '/mural', label: 'Mural de Recados', icon: Megaphone },
       { to: '/enquetes', label: 'Enquetes', icon: PieChart },
