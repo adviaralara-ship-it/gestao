@@ -300,6 +300,19 @@ export default function Recrutamento() {
                           )}
                         </div>
 
+                        <div className="mb-3 pt-3 border-t border-cream-100">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Mover para etapa</label>
+                          <select 
+                            className="w-full text-xs p-1.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 outline-none focus:border-brand-500 transition-colors cursor-pointer"
+                            value={c.status}
+                            onChange={(e) => updCandidato(c.id, { status: e.target.value })}
+                          >
+                            {COLUMNS.map(column => (
+                              <option key={column.id} value={column.id}>{column.title}</option>
+                            ))}
+                          </select>
+                        </div>
+
                         {c.curriculoUrl && (
                           <a href={c.curriculoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 font-bold hover:underline mb-2">
                             <Download size={12}/> Ver Currículo PDF
