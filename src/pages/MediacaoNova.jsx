@@ -31,7 +31,7 @@ CLÁUSULA TERCEIRA - DA CLÁUSULA PENAL
 O atraso no pagamento de qualquer das parcelas descritas na Cláusula Segunda acarretará o vencimento antecipado de todas as demais parcelas vincendas, acrescidas de multa penal de 20% (vinte por cento) sobre o saldo devedor, juros de 1% ao mês e correção monetária.
 
 CLÁUSULA QUARTA - DOS HONORÁRIOS DE MEDIAÇÃO
-Fica acordado o valor de R$ ${honorarios.toFixed(2)} a título de honorários para a plataforma/mediador, já englobados no saldo devedor acima pactuado.
+Fica acordado o valor de R$ ${Number(honorarios).toFixed(2)} a título de honorários para a plataforma/mediador, já englobados no saldo devedor acima pactuado.
 
 E, por estarem assim justos e acordados, firmam o presente termo para que surta seus efeitos legais, servindo o presente como TÍTULO EXECUTIVO EXTRAJUDICIAL nos termos do Art. 784, III do CPC.
 
@@ -53,8 +53,8 @@ TESTEMUNHA 2 (OU MEDIADOR)
   const handleGerarTermo = () => {
     // Atualiza o texto base com os valores da calculadora caso queira forçar a atualização
     const novoTexto = termoEditavel
-      .replace(/R\$ \d+\.\d{2}/, `R$ ${valorFinal.toFixed(2)}`)
-      .replace(/\d+ parcela\(s\) de R\$ \d+\.\d{2}/, `${parcelas} parcela(s) de R$ ${valorParcela.toFixed(2)}`)
+      .replace(/R\$ \d+\.\d{2}/, `R$ ${Number(valorFinal).toFixed(2)}`)
+      .replace(/\d+ parcela\(s\) de R\$ \d+\.\d{2}/, `${parcelas} parcela(s) de R$ ${Number(valorParcela).toFixed(2)}`)
     setTermoEditavel(novoTexto)
   }
 
@@ -123,11 +123,11 @@ TESTEMUNHA 2 (OU MEDIADOR)
             <div className="bg-pale-50 p-4 rounded-xl border border-pale-200 mt-4">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-gray-600 font-medium">Valor Total a Pagar:</span>
-                <span className="text-xl font-bold text-gray-900">R$ {valorFinal.toFixed(2)}</span>
+                <span className="text-xl font-bold text-gray-900">R$ {Number(valorFinal).toFixed(2)}</span>
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-500">Valor da Parcela ({parcelas}x):</span>
-                <span className="font-semibold text-brand-700">R$ {valorParcela.toFixed(2)}</span>
+                <span className="font-semibold text-brand-700">R$ {Number(valorParcela).toFixed(2)}</span>
               </div>
             </div>
 
