@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import { ArrowLeft, Save, FileText, Calculator, FileCheck, DollarSign } from 'lucide-react'
+import { ArrowLeft, Save, FileText, Calculator, FileCheck, DollarSign, Download } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { jsPDF } from 'jspdf'
 
 export default function MediacaoNova() {
   const navigate = useNavigate()
@@ -22,10 +23,10 @@ export default function MediacaoNova() {
 Pelo presente instrumento particular, de um lado, o CONDOMÍNIO _______________, doravante denominado CREDOR, e de outro lado, o(a) Sr.(a) _______________, proprietário(a) da UNIDADE _______________, doravante denominado(a) DEVEDOR(A), resolvem firmar o presente Acordo Extrajudicial para fins de ODR (Online Dispute Resolution), nos seguintes termos:
 
 CLÁUSULA PRIMEIRA - DA DÍVIDA
-O(A) DEVEDOR(A) reconhece e confessa de forma irrevogável e irretratável dever ao CREDOR a importância de R$ ${valorFinal.toFixed(2)} (_______________), referente a cotas condominiais em atraso, devidamente atualizadas com juros e correção, já incluídos os honorários de mediação.
+O(A) DEVEDOR(A) reconhece e confessa de forma irrevogável e irretratável dever ao CREDOR a importância de R$ ${Number(valorFinal).toFixed(2)} (_______________), referente a cotas condominiais em atraso, devidamente atualizadas com juros e correção, já incluídos os honorários de mediação.
 
 CLÁUSULA SEGUNDA - DA FORMA DE PAGAMENTO
-O(A) DEVEDOR(A) se compromete a pagar a dívida confessada em ${parcelas} parcela(s) de R$ ${valorParcela.toFixed(2)}, sendo o primeiro vencimento para __/__/____ e as demais para os mesmos dias dos meses subsequentes.
+O(A) DEVEDOR(A) se compromete a pagar a dívida confessada em ${parcelas} parcela(s) de R$ ${Number(valorParcela).toFixed(2)}, sendo o primeiro vencimento para __/__/____ e as demais para os mesmos dias dos meses subsequentes.
 
 CLÁUSULA TERCEIRA - DA CLÁUSULA PENAL
 O atraso no pagamento de qualquer das parcelas descritas na Cláusula Segunda acarretará o vencimento antecipado de todas as demais parcelas vincendas, acrescidas de multa penal de 20% (vinte por cento) sobre o saldo devedor, juros de 1% ao mês e correção monetária.
@@ -58,6 +59,29 @@ TESTEMUNHA 2 (OU MEDIADOR)
     setTermoEditavel(novoTexto)
   }
 
+  const handleGerarPDF = () => {
+    const doc = new jsPDF()
+    const margin = 15
+    const maxLineWidth = 180
+    
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(11)
+    
+    // Quebra o texto para respeitar as margens da página
+    const textLines = doc.splitTextToSize(termoEditavel, maxLineWidth)
+    
+    doc.text(textLines, margin, 20)
+    
+    const nomeArquivo = condominio && unidade ? `Termo_Acordo_${condominio}_${unidade}.pdf` : 'Termo_de_Acordo.pdf'
+    doc.save(nomeArquivo)
+  }
+
+  const handleSalvar = () => {
+    // Aqui no futuro vamos mandar os dados para o Firebase
+    alert('✅ Termo de Acordo salvo com sucesso na base de dados!')
+    navigate('/mediacao')
+  }
+
   return (
     <div className="p-6 h-full flex flex-col bg-gray-50">
       <div className="flex justify-between items-center mb-6">
@@ -70,7 +94,7 @@ TESTEMUNHA 2 (OU MEDIADOR)
             <p className="text-gray-500">Calculadora de acordos e geração de termo com validade legal</p>
           </div>
         </div>
-        <button className="flex items-center gap-2 bg-brand-600 text-white px-5 py-2.5 rounded-lg hover:bg-brand-700 transition-colors font-medium">
+        <button onClick={handleSalvar} className="flex items-center gap-2 bg-brand-600 text-white px-5 py-2.5 rounded-lg hover:bg-brand-700 transition-colors font-medium shadow-sm">
           <Save size={20} />
           Salvar Acordo
         </button>
@@ -131,7 +155,7 @@ TESTEMUNHA 2 (OU MEDIADOR)
               </div>
             </div>
 
-            <button onClick={handleGerarTermo} className="w-full mt-2 bg-gray-800 text-white py-2 rounded-lg hover:bg-gray-900 transition-colors flex items-center justify-center gap-2 font-medium">
+            <button onClick={handleGerarTermo} className="w-full mt-2 bg-gray-800 text-white py-2 rounded-lg hover:bg-gray-900 transition-colors flex items-center justify-center gap-2 font-medium shadow-sm">
               <FileCheck size={18} />
               Atualizar Termo com Valores
             </button>
@@ -145,14 +169,15 @@ TESTEMUNHA 2 (OU MEDIADOR)
               <FileText className="text-brand-600" />
               Termo de Confissão de Dívida (Editável)
             </h2>
-            <button className="text-sm bg-white border border-pale-300 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-50 transition-colors">
-              Gerar PDF
+            <button onClick={handleGerarPDF} className="text-sm bg-white border border-pale-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-50 transition-colors flex items-center gap-2 font-medium shadow-sm">
+              <Download size={16} />
+              Exportar para PDF
             </button>
           </div>
           
           <div className="p-4 flex-1">
             <textarea 
-              className="w-full h-full min-h-[500px] p-6 border-0 focus:ring-0 resize-none font-serif text-gray-800 leading-relaxed bg-pale-50 rounded-lg"
+              className="w-full h-full min-h-[500px] p-6 border-0 focus:ring-0 resize-none font-serif text-gray-800 leading-relaxed bg-pale-50 rounded-lg shadow-inner"
               value={termoEditavel}
               onChange={e => setTermoEditavel(e.target.value)}
             />
