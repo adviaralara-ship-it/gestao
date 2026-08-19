@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Search, Filter, Handshake, FileText, ChevronRight } from 'lucide-react'
+import { Plus, Search, Filter, Handshake, FileText, ChevronRight, Eye, Pencil, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 export default function Mediacao() {
@@ -8,6 +8,12 @@ export default function Mediacao() {
     { id: '1', condominio: 'Residencial Flores', unidade: 'Apto 101', tipo: 'Financeira', status: 'Aguardando Assinatura', valor: 2500, data: '2026-08-15' },
     { id: '2', condominio: 'Condomínio Central', unidade: 'Apto 304', tipo: 'Comportamental', status: 'Em Negociação', valor: 0, data: '2026-08-18' },
   ])
+
+  const handleDelete = (id) => {
+    if(window.confirm('Tem certeza que deseja apagar esta mediação?')) {
+      setMediacoes(mediacoes.filter(m => m.id !== id))
+    }
+  }
 
   return (
     <div className="p-6 h-full flex flex-col">
@@ -72,9 +78,15 @@ export default function Mediacao() {
                   <td className="p-4">
                     <span className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded-md">{m.status}</span>
                   </td>
-                  <td className="p-4 text-right">
-                    <button className="text-brand-600 hover:text-brand-800 p-2 rounded hover:bg-brand-50 transition-colors">
-                      <ChevronRight size={20} />
+                  <td className="p-4 text-right flex justify-end gap-2">
+                    <button className="text-gray-500 hover:text-brand-600 p-2 rounded hover:bg-brand-50 transition-colors" title="Visualizar Sala do Morador">
+                      <Eye size={18} />
+                    </button>
+                    <button className="text-gray-500 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition-colors" title="Editar Mediação">
+                      <Pencil size={18} />
+                    </button>
+                    <button onClick={() => handleDelete(m.id)} className="text-gray-500 hover:text-red-600 p-2 rounded hover:bg-red-50 transition-colors" title="Apagar Mediação">
+                      <Trash2 size={18} />
                     </button>
                   </td>
                 </tr>
