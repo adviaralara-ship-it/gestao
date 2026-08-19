@@ -3,7 +3,7 @@ import {
   CreditCard, FileText, Receipt, Gavel, AlertTriangle, CalendarCheck,
   DoorOpen, Shield, BookOpen, FolderOpen, MessageSquare, Building, 
   CheckSquare, Package, QrCode, PieChart, ShoppingBag,
-  Car, Video, Calculator, MessageCircleCode, Mail, Megaphone, Bot, Scale, PawPrint, FileSignature
+  Car, Video, Calculator, MessageCircleCode, Mail, Megaphone, Bot, Scale, PawPrint, FileSignature, Handshake
 } from 'lucide-react'
 
 export const navGroups = [
@@ -39,6 +39,7 @@ export const navGroups = [
       { to: '/financeiro', label: 'Receitas & Despesas', icon: CreditCard },
       { to: '/boletos', label: 'Boletos & Fundo', icon: FileText },
       { to: '/inadimplencia', label: 'Inadimplência & Jurídico', icon: Scale },
+      { to: '/mediacao', label: 'Mediação & ODR', icon: Handshake },
       { to: '/contratos', label: 'Gerador de Contratos & Documentos', icon: FileSignature },
       { to: '/calculadora', label: 'Calculadora (Comercial)', icon: Calculator },
       { to: '/locacao', label: 'Locação & Aluguéis', icon: Building },
