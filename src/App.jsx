@@ -51,6 +51,7 @@ import Pets from './pages/Pets'
 import Totem from './pages/Totem'
 import Mediacao from './pages/Mediacao'
 import MediacaoNova from './pages/MediacaoNova'
+import MediacaoSalaExterna from './pages/MediacaoSalaExterna'
 
 // Spinner de carregamento enquanto o Firebase Auth verifica a sessão
 function AuthLoader() {
@@ -141,6 +142,9 @@ function AppRoutes() {
         <Route path="/trabalhe-conosco" element={<PortalVagas />} />
         <Route path="/onboarding/:id" element={<OnboardingCandidato />} />
         <Route path="/totem" element={<Totem />} />
+        {/* Rota pública para o morador acessar e assinar o termo de mediação ODR */}
+        <Route path="/mediacao/sala/:id" element={<MediacaoSalaExterna />} />
+        
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<AuthorizedRoute module=""><span /></AuthorizedRoute>} />
           <Route path="dashboard" element={<AuthorizedRoute module="dashboard"><Dashboard /></AuthorizedRoute>} />

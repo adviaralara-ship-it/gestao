@@ -79,7 +79,7 @@ export default function Mediacao() {
                     <span className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded-md">{m.status}</span>
                   </td>
                   <td className="p-4 text-right flex justify-end gap-2">
-                    <button className="text-gray-500 hover:text-brand-600 p-2 rounded hover:bg-brand-50 transition-colors" title="Visualizar Sala do Morador">
+                    <button onClick={() => window.open(`/mediacao/sala/${m.id}`, '_blank')} className="text-gray-500 hover:text-brand-600 p-2 rounded hover:bg-brand-50 transition-colors" title="Visualizar Sala do Morador">
                       <Eye size={18} />
                     </button>
                     <button className="text-gray-500 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition-colors" title="Editar Mediação">
