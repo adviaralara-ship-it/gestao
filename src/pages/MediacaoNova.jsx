@@ -10,11 +10,12 @@ export default function MediacaoNova() {
   const [condominio, setCondominio] = useState('')
   const [unidade, setUnidade] = useState('')
   const [valorOriginal, setValorOriginal] = useState(0)
-  const [desconto, setDesconto] = useState(0)
+  const [descontoPorcentagem, setDescontoPorcentagem] = useState(0)
   const [honorarios, setHonorarios] = useState(0)
   const [parcelas, setParcelas] = useState(1)
   
-  const valorFinal = (Number(valorOriginal) - Number(desconto)) + Number(honorarios)
+  const valorDescontoReal = (Number(valorOriginal) * Number(descontoPorcentagem)) / 100
+  const valorFinal = (Number(valorOriginal) - valorDescontoReal) + Number(honorarios)
   const valorParcela = parcelas > 0 ? valorFinal / parcelas : 0
 
   // Estado do Termo (Gerado automaticamente, mas editável)
@@ -128,14 +129,23 @@ TESTEMUNHA 2 (OU MEDIADOR)
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descontos (R$)</label>
-                <input type="number" className="w-full p-2 border border-pale-300 rounded-lg text-green-600" value={desconto} onChange={e => setDesconto(e.target.value)} />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Desconto (%)</label>
+                <div className="relative">
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">%</span>
+                  <input type="number" className="w-full p-2 pr-8 border border-pale-300 rounded-lg text-green-600" value={descontoPorcentagem} onChange={e => setDescontoPorcentagem(e.target.value)} />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-brand-700 mb-1">Honorários ODR (R$)</label>
                 <input type="number" className="w-full p-2 border border-brand-300 rounded-lg text-brand-600 font-bold bg-brand-50" value={honorarios} onChange={e => setHonorarios(e.target.value)} />
               </div>
             </div>
+
+            {valorDescontoReal > 0 && (
+              <div className="text-sm text-green-600 bg-green-50 p-2 rounded-lg text-center border border-green-100">
+                Desconto financeiro: <b>R$ {valorDescontoReal.toFixed(2)}</b>
+              </div>
+            )}
 
             <div className="pt-4 border-t border-pale-100">
               <label className="block text-sm font-medium text-gray-700 mb-1">Número de Parcelas</label>
