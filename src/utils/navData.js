@@ -1,4 +1,4 @@
-import {
+import { Radar, HeartHandshake, 
   LayoutDashboard, Building2, Users, UserCog, Briefcase, Wrench,
   CreditCard, FileText, Receipt, Gavel, AlertTriangle, CalendarCheck,
   DoorOpen, Shield, BookOpen, FolderOpen, MessageSquare, Building, 
@@ -27,8 +27,10 @@ export const navGroups = [
       { to: '/usuarios', label: 'Usuários', icon: Users },
       { to: '/conferencias', label: 'Conferências', icon: Video },
       { to: '/prestadores', label: 'Prestadores', icon: Briefcase },
-      { to: '/ocorrencias', label: 'Ocorrências', icon: AlertTriangle },
+      { to: '/ocorrencias', label: 'Ocorrências & Solicitações', icon: AlertTriangle },
       { to: '/tarefas', label: 'Tarefas & Agenda', icon: CheckSquare },
+      { to: '/conviver', label: 'Método Conviver+', icon: HeartHandshake },
+      { to: '/radar', label: 'Radar de Convivência', icon: Radar },
       { to: '/monitoramento-ia', label: 'Monitoramento IA', icon: Bot },
       { to: '/eventos', label: 'Eventos & Check-in', icon: CalendarCheck },
     ]
@@ -84,6 +86,9 @@ export function getFilteredNavGroups(user) {
       let reqPerm = item.to.replace('/', '')
       if (reqPerm === 'conferencias' || reqPerm === 'recrutamento') reqPerm = 'rh'
       if (reqPerm === 'pets' || reqPerm === 'mediacao') return true
+      
+      // FORÇA A EXIBIÇÃO INDEPENDENTE DE QUEM ESTEJA LOGADO (apenas para teste)
+      if (reqPerm === 'conviver' || reqPerm === 'radar') return true
       
       return userPerms.includes(reqPerm) || user?.role === 'Administrador'
     }).map(item => ({

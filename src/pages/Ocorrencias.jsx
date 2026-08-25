@@ -36,7 +36,7 @@ function Modal({ data, user, onClose, onSave }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e=>e.stopPropagation()}>
         <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">{data?'Editar Ocorrência':'Nova Ocorrência'}</h3>
+          <h3 className="font-bold text-gray-800">{data?'Editar Ocorrência':'🤝 Solicitação'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
         <div className="p-6 flex flex-col gap-4">
@@ -220,10 +220,10 @@ export default function Ocorrencias() {
         text:msg, time:new Date().toISOString(), tipo:'ocorrencia', lida:false, condominio: finalForm.condominio, _createdAt:serverTimestamp()
       })
       // Email ADM
-      notificarAdm(`⚠️ Nova Ocorrência: ${form.titulo}`,
+      notificarAdm(`⚠️ 🤝 Solicitação: ${form.titulo}`,
         `Ocorrência registrada:\n\n📋 Título: ${form.titulo}\n🏠 Apt: ${form.apt}\n📂 Categoria: ${form.categoria}\n🚨 Prioridade: ${form.prioridade}\n\nDescrição:\n${form.descricao}`)
       // WhatsApp ADM
-      const wppMsg = encodeURIComponent(`⚠️ *Nova Ocorrência*\n\n*${form.titulo}*\nApt ${form.apt} · ${form.categoria} · Prioridade: ${form.prioridade}\n\n${form.descricao}`)
+      const wppMsg = encodeURIComponent(`⚠️ *🤝 Solicitação*\n\n*${form.titulo}*\nApt ${form.apt} · ${form.categoria} · Prioridade: ${form.prioridade}\n\n${form.descricao}`)
       window.open(`https://wa.me/?text=${wppMsg}`,'_blank')
     } else {
       await updateItem(modal.id,form)
@@ -249,7 +249,7 @@ export default function Ocorrencias() {
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div className="page-header">
-        <div><h2 className="section-title text-xl">Ocorrências</h2><p className="section-sub">{items.filter(i=>i.status!=='Resolvida').length} ocorrências abertas</p></div>
+        <div><h2 className="section-title text-xl">Ocorrências & Solicitações</h2><p className="section-sub">{items.filter(i=>i.status!=='Resolvida').length} ocorrências abertas</p></div>
         <button onClick={()=>setModal('new')} className="btn-primary"><Plus size={16}/>Registrar</button>
       </div>
       <div className="grid grid-cols-3 gap-4">
