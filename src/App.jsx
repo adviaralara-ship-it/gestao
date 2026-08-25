@@ -177,6 +177,8 @@ function AppRoutes() {
           <Route path="assembleias" element={<AuthorizedRoute module="assembleias"><Assembleias /></AuthorizedRoute>} />
           <Route path="eventos" element={<AuthorizedRoute module="eventos"><Eventos /></AuthorizedRoute>} />
           <Route path="ocorrencias" element={<AuthorizedRoute module="ocorrencias"><Ocorrencias /></AuthorizedRoute>} />
+          <Route path="conviver" element={<AuthorizedRoute module="conviver"><Conviver /></AuthorizedRoute>} />
+          <Route path="radar" element={<AuthorizedRoute module="radar"><RadarConviver /></AuthorizedRoute>} />
           <Route path="reservas" element={<AuthorizedRoute module="reservas"><Reservas /></AuthorizedRoute>} />
           <Route path="portaria" element={<AuthorizedRoute module="portaria"><Portaria /></AuthorizedRoute>} />
           <Route path="seguro" element={<AuthorizedRoute module="seguro"><Seguro /></AuthorizedRoute>} />
