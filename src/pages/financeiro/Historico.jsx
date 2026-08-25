@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Search, Edit2, Trash2, Download } from 'lucide-react'
 import { jsPDF } from 'jspdf'
-import autoTable from 'jspdf-autotable' from 'lucide-react'
+import autoTable from 'jspdf-autotable'
 
 export default function Historico({ lancamentos, setModalLanc, deleteLancamento }) {
   const [search, setSearch] = useState('')
