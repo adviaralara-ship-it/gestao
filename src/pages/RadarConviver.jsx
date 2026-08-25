@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react'
-import { Radar, AlertTriangle, ShieldCheck, Activity, Users, MapPin, TrendingDown } from 'lucide-react'
+import { Radar, AlertTriangle, ShieldCheck, Activity, Users, MapPin, TrendingDown, Download } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts'
 
 export default function RadarConviver() {
@@ -55,6 +57,55 @@ export default function RadarConviver() {
     return { total, encerradas, acompanhamento: total - encerradas, chartData, recorrentes, indiceGeral }
   }, [ocorrencias, condominioFiltro])
 
+  
+  const gerarPDFRadar = () => {
+    const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.width
+    
+    doc.setFontSize(20)
+    doc.setTextColor(3, 22, 56)
+    doc.text('Relatorio de Saude da Convivencia', pageWidth / 2, 20, { align: 'center' })
+    
+    doc.setFontSize(14)
+    doc.setTextColor(100)
+    doc.text(`Condominio: ${condominioFiltro || 'Todos'}`, pageWidth / 2, 30, { align: 'center' })
+    
+    doc.setFontSize(16)
+    let color = [0, 128, 0]
+    if (stats.indiceGeral === 'Atenção') color = [200, 150, 0]
+    if (stats.indiceGeral === 'Crítico') color = [200, 0, 0]
+    
+    doc.setTextColor(...color)
+    doc.text(`INDICE GERAL: ${stats.indiceGeral.toUpperCase()}`, pageWidth / 2, 45, { align: 'center' })
+    
+    doc.setTextColor(50)
+    doc.setFontSize(12)
+    doc.text(`Total de Ocorrencias (Historico): ${stats.total}`, 14, 65)
+    doc.text(`Casos Encerrados/Resolvidos: ${stats.encerradas}`, 14, 75)
+    doc.text(`Casos em Acompanhamento: ${stats.acompanhamento}`, 14, 85)
+    
+    autoTable(doc, {
+      startY: 100,
+      head: [['Categoria (Causa do Conflito)', 'Quantidade']],
+      body: stats.chartData.map(d => [d.name, d.value]),
+      theme: 'grid',
+      headStyles: { fillColor: [3, 22, 56] }
+    })
+    
+    if (stats.recorrentes.length > 0) {
+      doc.text('Alertas de Recorrencia', 14, doc.lastAutoTable.finalY + 15)
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 20,
+        head: [['Apartamento', 'Categoria Repetida', 'Quantas Vezes']],
+        body: stats.recorrentes.map(r => [`Apt ${r.apt}`, r.cat, `${r.count} vezes`]),
+        theme: 'striped',
+        headStyles: { fillColor: [200, 50, 50] }
+      })
+    }
+    
+    doc.save(`Radar_Convivencia_${condominioFiltro.replace(/\s+/g, '_')}.pdf`)
+  }
+
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#ffc658']
 
   return (
@@ -67,6 +118,8 @@ export default function RadarConviver() {
           <p className="text-gray-500 text-sm mt-1">Relatório de Saúde da Convivência</p>
         </div>
 
+        
+        <div className="flex gap-2">
         {user?.role !== 'Morador' && (
           <select 
             className="input w-64" 
@@ -77,6 +130,13 @@ export default function RadarConviver() {
             {condominios.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         )}
+        {condominioFiltro && (
+          <button onClick={gerarPDFRadar} className="btn btn-primary flex items-center gap-2 whitespace-nowrap">
+            <Download size={16} /> Baixar Relatório
+          </button>
+        )}
+        </div>
+
       </div>
 
       {!condominioFiltro ? (
