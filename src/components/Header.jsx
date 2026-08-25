@@ -17,7 +17,7 @@ const pageNames = {
 }
 const tipoIcon = t=>({reserva:'📅',boleto:'💰',ocorrencia:'⚠️',assembleia:'🏛️',manutencao:'🔧',morador:'👤',prestador:'🔨'}[t]||'🔔')
 
-const ROLES_COM_NOTIF = ['Administrador','Síndico','Financeiro','Subsíndico','Conselheiro','Morador']
+const ROLES_COM_NOTIF = ['Administrador','Síndico']
 
 const WHATSAPP_NUMBER = '5511999999999'
 

@@ -199,6 +199,11 @@ export default function Ocorrencias() {
     if (i.visibilidade === 'Apenas Adm' && user?.role !== 'Administrador') {
       return false
     }
+    // Restringir morador para ver apenas as próprias ocorrências
+    if (user?.role === 'Morador' && i.uid !== user?.uid) {
+      return false
+    }
+
     const searchLower = search.toLowerCase()
     const matchTitulo = i.titulo ? i.titulo.toLowerCase().includes(searchLower) : false
     const matchCat = i.categoria ? i.categoria.toLowerCase().includes(searchLower) : false

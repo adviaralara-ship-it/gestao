@@ -85,7 +85,7 @@ export function getFilteredNavGroups(user) {
       
       let reqPerm = item.to.replace('/', '')
       if (reqPerm === 'conferencias' || reqPerm === 'recrutamento') reqPerm = 'rh'
-      if (reqPerm === 'pets' || reqPerm === 'mediacao') return true
+      if (reqPerm === 'pets') return true
       
       // FORÇA A EXIBIÇÃO INDEPENDENTE DE QUEM ESTEJA LOGADO (apenas para teste)
       if (reqPerm === 'conviver' || reqPerm === 'radar') return true
