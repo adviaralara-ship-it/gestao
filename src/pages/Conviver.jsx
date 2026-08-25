@@ -84,19 +84,17 @@ export default function Conviver() {
                       <span className="badge-yellow text-[10px]">Apt {t.apt}</span>
                     </div>
 
-                    {/* Botões de Ação para avançar etapa */}
-                    <div className="mt-2 pt-2 border-t border-gray-100 flex gap-2 overflow-x-auto">
-                      {colunas.map(c => (
-                        c.id !== col.id && (
-                          <button 
-                            key={c.id} 
-                            onClick={() => moveTask(t.id, c.id)}
-                            className="text-[10px] px-2 py-1 bg-gray-100 hover:bg-brand-50 hover:text-brand-700 rounded transition-colors whitespace-nowrap"
-                          >
-                            Para {c.titulo.split(' ')[1]}
-                          </button>
-                        )
-                      ))}
+                    {/* Alterar Etapa */}
+                    <div className="mt-2 pt-2 border-t border-gray-100">
+                      <select 
+                        value={getCol(t)} 
+                        onChange={(e) => moveTask(t.id, e.target.value)}
+                        className="w-full text-xs p-1 border border-gray-200 rounded text-gray-600 outline-none focus:border-brand-500"
+                      >
+                        {colunas.map(c => (
+                          <option key={c.id} value={c.id}>{c.titulo}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 ))}
