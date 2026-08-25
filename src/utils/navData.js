@@ -27,7 +27,7 @@ export const navGroups = [
       { to: '/usuarios', label: 'Usuários', icon: Users },
       { to: '/conferencias', label: 'Conferências', icon: Video },
       { to: '/prestadores', label: 'Prestadores', icon: Briefcase },
-      { to: '/ocorrencias', label: 'Ocorrências & Solicitações', icon: AlertTriangle },
+      { to: '/ocorrencias', label: 'Solicitações', icon: AlertTriangle },
       { to: '/tarefas', label: 'Tarefas & Agenda', icon: CheckSquare },
       { to: '/conviver', label: 'Método Conviver+', icon: HeartHandshake },
       { to: '/radar', label: 'Radar de Convivência', icon: Radar },

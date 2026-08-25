@@ -11,7 +11,7 @@ const pageNames = {
   '/dashboard':'Dashboard','/condominios':'Condomínios & Unidades','/moradores':'Moradores',
   '/rh':'Recursos Humanos','/prestadores':'Prestadores de Serviços','/usuarios':'Usuários & Acessos',
   '/financeiro':'Financeiro','/boletos':'Boletos & Fundo de Reserva','/notas-fiscais':'Notas Fiscais',
-  '/assembleias':'Assembleias & Atas','/ocorrencias':'Ocorrências','/reservas':'Reservas de Espaços',
+  '/assembleias':'Assembleias & Atas','/ocorrencias':'Solicitações','/reservas':'Reservas de Espaços',
   '/portaria':'Portaria & Manutenção','/seguro':'Seguro do Condomínio','/regime':'Regime Interno & Externo',
   '/documentos':'Documentos','/comunicacao':'Comunicação',
 }

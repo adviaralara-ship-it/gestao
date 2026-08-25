@@ -200,8 +200,10 @@ export default function Ocorrencias() {
       return false
     }
     // Restringir morador para ver apenas as próprias ocorrências
-    if (user?.role === 'Morador' && i.uid !== user?.uid) {
-      return false
+    if (user?.role === 'Morador') {
+      const userId = user?.uid || user?.id;
+      const isOwner = (i.uid && i.uid === userId) || (i.nome_morador === user?.nome);
+      if (!isOwner) return false;
     }
 
     const searchLower = search.toLowerCase()
@@ -254,7 +256,7 @@ export default function Ocorrencias() {
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div className="page-header">
-        <div><h2 className="section-title text-xl">Ocorrências & Solicitações</h2><p className="section-sub">{items.filter(i=>i.status!=='Resolvida').length} ocorrências abertas</p></div>
+        <div><h2 className="section-title text-xl">Solicitações</h2><p className="section-sub">{items.filter(i=>i.status!=='Resolvida').length} ocorrências abertas</p></div>
         <button onClick={()=>setModal('new')} className="btn-primary"><Plus size={16}/>Registrar</button>
       </div>
       <div className="grid grid-cols-3 gap-4">
