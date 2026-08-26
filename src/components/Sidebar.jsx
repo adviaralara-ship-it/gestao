@@ -2,11 +2,10 @@ import React, { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { ChevronDown, ChevronRight, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { navGroups, getFilteredNavGroups } from '../utils/navData'
+import { getFilteredNavGroups } from '../utils/navData'
 
 function NavGroup({ group, collapsed }) {
-  const [open, setOpen] = useState(true)
-  const location = useLocation()
+  const [open, setOpen] = useState(group.isConfig ? false : true)
 
   if (collapsed) {
     return (
@@ -33,21 +32,26 @@ function NavGroup({ group, collapsed }) {
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-widest hover:text-brand-600 transition-colors"
       >
-        {group.label}
+        <span>{group.label}</span>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       </button>
       {open && (
         <div className="flex flex-col gap-0.5 mt-1 mb-2">
-          {group.items.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => isActive ? 'nav-item-active' : 'nav-item-inactive'}
-            >
-              <item.icon size={16} />
-              <span className="truncate">{item.label}</span>
-            </NavLink>
-          ))}
+          {group.items.map(item => {
+            const isSub = item.label.startsWith('↳')
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  `${isActive ? 'nav-item-active' : 'nav-item-inactive'} ${isSub ? 'ml-4 text-[13px] opacity-90' : ''}`
+                }
+              >
+                <item.icon size={isSub ? 14 : 16} />
+                <span className="truncate">{item.label.replace('↳ ', '')}</span>
+              </NavLink>
+            )
+          })}
         </div>
       )}
     </div>
@@ -56,9 +60,10 @@ function NavGroup({ group, collapsed }) {
 
 export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }) {
   const { user } = useAuth()
-  
-  // Filtra as opções do menu baseadas nas permissões do usuário
   const filteredNavGroups = getFilteredNavGroups(user)
+
+  const mainGroups   = filteredNavGroups.filter(g => !g.isConfig)
+  const configGroups = filteredNavGroups.filter(g =>  g.isConfig)
 
   return (
     <>
@@ -93,12 +98,21 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }) 
           )}
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 overflow-y-auto p-3 flex flex-col gap-1 bg-pale-100">
-          {filteredNavGroups.map(group => (
+        {/* Nav principal — scrollável */}
+        <nav className="flex-1 overflow-y-auto p-3 flex flex-col gap-1 bg-pale-100 custom-scrollbar">
+          {mainGroups.map(group => (
             <NavGroup key={group.label} group={group} collapsed={collapsed} />
           ))}
         </nav>
+
+        {/* Configurações — fixo no fundo */}
+        {configGroups.length > 0 && (
+          <div className="border-t-2 border-pale-300 p-3 bg-pale-100">
+            {configGroups.map(group => (
+              <NavGroup key={group.label} group={group} collapsed={collapsed} />
+            ))}
+          </div>
+        )}
 
         {/* Collapse toggle */}
         <div className="hidden lg:flex border-t border-pale-300 p-3 bg-pale-100">
