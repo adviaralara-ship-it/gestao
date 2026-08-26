@@ -1,9 +1,14 @@
 import React, { useState } from 'react'
-import { MessageSquare, Plus, Send, Megaphone, Trash2, Search, User, Smartphone, CheckSquare, Square, ExternalLink } from 'lucide-react'
+import { MessageSquare, Plus, Send, Megaphone, Trash2, Search, User, Smartphone, CheckSquare, Square, ExternalLink, Sparkles, Loader2, Bot } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { enviarEmail } from '../emailjs.config'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+const API_KEY = "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA"
+const genAI = new GoogleGenerativeAI(API_KEY)
+const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
 
 const tipoBadge = t=>({Aviso:'badge-blue',Comunicado:'badge-green',Convocação:'badge-purple',Urgente:'badge-red'}[t]||'badge-blue')
 
@@ -11,6 +16,27 @@ function ModalComunicado({ onClose, onSave, moradores, condominios }) {
   const [form, setForm] = useState({ titulo:'', texto:'', tipo:'Aviso', destino:'Todos', moradorEspecifico:'', condominio: 'Todos' })
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
   const destinoIndividual = form.destino==='Individual'
+  const [gerandoIA, setGerandoIA] = useState(false)
+  const redigirComIA = async () => {
+    if (!form.titulo) return alert("Por favor, digite pelo menos o Título para a IA ter uma base.")
+    setGerandoIA(true)
+    try {
+      const prompt = `Atue como um síndico/administrador profissional de condomínio. 
+Escreva um comunicado ${form.tipo.toLowerCase()} com o título "${form.titulo}". 
+${form.texto ? `Use o seguinte rascunho/ideia como base: ${form.texto}` : ''}
+O tom deve ser respeitoso, claro, objetivo e amigável. Retorne apenas o texto final do comunicado, sem aspas, pronto para ser enviado aos ${form.destino}.`
+      
+      const result = await model.generateContent(prompt)
+      const text = result.response.text()
+      set('texto', text)
+    } catch (e) {
+      console.error(e)
+      alert("Erro ao gerar texto com IA.")
+    } finally {
+      setGerandoIA(false)
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e=>e.stopPropagation()}>

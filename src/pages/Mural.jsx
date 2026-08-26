@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Megaphone, MessageSquare, Heart, Share2, AlertCircle, Calendar, MapPin, User, Search } from 'lucide-react'
+import { Megaphone, MessageSquare, Heart, Share2, AlertCircle, Calendar, MapPin, User, Search, Volume2, VolumeX, Loader2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 
@@ -11,6 +11,56 @@ export default function Mural() {
   const { items: avisos } = useFirestore('avisos')
   const [search, setSearch] = useState('')
   const [curtidas, setCurtidas] = useState({})
+
+  const [audioTocandoId, setAudioTocandoId] = useState(null)
+  const [audioObj, setAudioObj] = useState(null)
+  const [carregandoAudioId, setCarregandoAudioId] = useState(null)
+
+  const toggleAudio = (id, texto) => {
+    // Se já estiver tocando ESSE áudio, pausa e cancela
+    if (audioTocandoId === id && audioObj) {
+      audioObj.pause()
+      setAudioObj(null)
+      setAudioTocandoId(null)
+      return
+    }
+    // Se estiver tocando OUTRO, pausa
+    if (audioObj) {
+      audioObj.pause()
+      setAudioObj(null)
+    }
+
+    setCarregandoAudioId(id)
+    const textoCodificado = encodeURIComponent(texto)
+    const novoAudio = new Audio(`/api/gerar-audio?texto=${textoCodificado}`)
+    
+    novoAudio.oncanplaythrough = () => {
+      setCarregandoAudioId(null)
+      setAudioTocandoId(id)
+      novoAudio.play().catch(e => {
+        console.error("Erro ao tocar:", e)
+        setAudioTocandoId(null)
+      })
+    }
+    novoAudio.onended = () => {
+      setAudioTocandoId(null)
+      setAudioObj(null)
+    }
+    novoAudio.onerror = () => {
+      console.error("Erro de áudio")
+      setCarregandoAudioId(null)
+      setAudioTocandoId(null)
+    }
+    setAudioObj(novoAudio)
+  }
+
+  // Cleanup na desmontagem
+  useEffect(() => {
+    return () => {
+      if (audioObj) audioObj.pause()
+    }
+  }, [audioObj])
+
 
   // Filtra avisos que o usuário pode ver:
   // Todos, ou específicos para o condomínio dele, ou se for Admin/Síndico vê todos
@@ -90,6 +140,19 @@ export default function Mural() {
               </button>
               <button className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-brand-600 transition-colors">
                 <Share2 size={18} /> Compartilhar
+              </button>
+              <button 
+                onClick={() => toggleAudio(post.id, post.texto)} 
+                disabled={carregandoAudioId === post.id}
+                className={`flex items-center gap-1.5 text-sm font-semibold transition-colors ${audioTocandoId === post.id ? 'text-brand-600' : 'text-gray-500 hover:text-brand-600'}`}>
+                {carregandoAudioId === post.id ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : audioTocandoId === post.id ? (
+                  <VolumeX size={18} />
+                ) : (
+                  <Volume2 size={18} />
+                )}
+                {carregandoAudioId === post.id ? 'Gerando Voz...' : audioTocandoId === post.id ? 'Parar' : 'Ouvir'}
               </button>
             </div>
           </div>
