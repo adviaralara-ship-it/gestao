@@ -329,9 +329,9 @@ export default function RHFolhaPagamento() {
             <div className="border-b-2 border-black pb-4 mb-4 flex justify-between">
               <div>
                 {(() => {
-                  const condo = condominios.find(c => c.nome === activeColab?.condominio)
-                  const empNome = activeColab?.condominio ? activeColab.condominio : 'ALPHA GESTÃO CONDOMINIAL'
-                  const empCnpj = condo?.cnpj || (activeColab?.condominio ? 'CNPJ não cadastrado' : '00.000.000/0001-00')
+                  const condo = condominios.find(c => c.nome === colabInfo?.condominio)
+                  const empNome = colabInfo?.condominio ? colabInfo.condominio : 'ALPHA GESTÃO CONDOMINIAL'
+                  const empCnpj = condo?.cnpj || (colabInfo?.condominio ? 'CNPJ não cadastrado' : '00.000.000/0001-00')
                   return (
                     <>
                       <h1 className="text-xl font-bold uppercase">{empNome}</h1>
