@@ -118,6 +118,216 @@ const RenderMessage = ({ message, user }) => {
   }
 
   return (
+    <div className={`p-3 rounded-2xl max-w-[85%] shadow-sm relative ${message.role === 'user' ? 'bg-brand-600 text-white rounded-br-none ml-auto' : 'bg-white border border-cream-200 text-gray-700 rounded-bl-none mr-auto'}`}>
+      <p className="text-sm whitespace-pre-wrap leading-relaxed">{text}</p>
+      
+      {message.role === 'model' && (
+        <div className="mt-2 pt-2 border-t border-cream-100 flex justify-end">
+          <button 
+            onClick={handleSpeak} 
+            className="flex items-center gap-1 p-1 px-2 bg-cream-50 rounded-lg text-gray-500 hover:text-brand-600 hover:bg-brand-50 transition-all text-[10px] font-medium"
+            title="Ouvir resposta"
+          >
+            <Volume2 size={12} className={isPlaying ? 'text-brand-600 animate-pulse' : ''} />
+            {isPlaying ? 'Ouvindo...' : 'Ouvir resposta'}
+          </button>
+        </div>
+      )}
+      
+      {/* Widget de Ocorrência */}
+      {matchOcorrencia && (
+        <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-xl">
+          <p className="text-xs font-bold text-red-800 mb-2 flex items-center gap-1"><Zap size={14}/> Abertura de Ocorrência</p>
+          <p className="text-xs text-red-700 mb-3">{ocorrenciaDesc}</p>
+          {actionStatus === 'done' ? (
+            <div className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={14}/> Ocorrência Registrada!</div>
+          ) : (
+            <button onClick={handleCriarOcorrencia} disabled={actionStatus==='loading'} className="btn-primary py-1.5 px-3 text-xs w-full justify-center bg-red-600 hover:bg-red-700 border-none">
+              {actionStatus === 'loading' ? 'Registrando...' : 'Confirmar e Abrir Chamado'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Widget de Reserva */}
+      {matchReserva && (
+        <div className="mt-3 p-3 bg-brand-50 border border-brand-100 rounded-xl">
+          <p className="text-xs font-bold text-brand-800 mb-2 flex items-center gap-1"><Zap size={14}/> Pré-Reserva Gerada</p>
+          <p className="text-xs text-brand-700 mb-3">{reservaDetails}</p>
+          {actionStatus === 'done' ? (
+            <div className="flex flex-col items-center gap-2 mt-2 pt-2 border-t border-brand-200">
+              <div className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={14}/> Pedido de reserva enviado para aprovação!</div>
+            </div>
+          ) : (
+            <button onClick={handleCriarReserva} disabled={actionStatus==='loading'} className="btn-primary py-1.5 px-3 text-xs w-full justify-center">
+              {actionStatus === 'loading' ? 'Enviando...' : 'Confirmar Pedido de Reserva'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function AlphaAIChat() {
+  const { user } = useAuth()
+  
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const messagesEndRef = useRef(null)
+  
+  // Base de Conhecimento
+  const [knowledgeBase, setKnowledgeBase] = useState("")
+
+  const chatDocRef = user ? doc(db, 'ai_chats', user.uid || user.id) : null
+
+  useEffect(() => {
+    if (user && isOpen) {
+      loadHistory()
+      loadKnowledgeBase()
+    }
+  }, [user, isOpen])
+
+  useEffect(() => {
+    const handleOpenChat = () => setIsOpen(true)
+    window.addEventListener('open-ai-chat', handleOpenChat)
+    return () => window.removeEventListener('open-ai-chat', handleOpenChat)
+  }, [])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const loadKnowledgeBase = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'ai_knowledge'))
+      const rules = snap.docs.map(d => d.data().text).join('\n')
+      setKnowledgeBase(rules)
+    } catch (e) {
+      console.error("Erro ao carregar base de conhecimento", e)
+    }
+  }
+
+  const loadHistory = async () => {
+    if (!chatDocRef) return
+    const snap = await getDoc(chatDocRef)
+    if (snap.exists()) {
+      setMessages(snap.data().messages || [])
+    } else {
+      // Mensagem de boas vindas inicial
+      const welcomeMsg = { role: 'model', text: `OlÃ¡, ${user.nome}! Eu sou o Alpha AI, seu Concierge Virtual. Como posso te ajudar hoje?` }
+      setMessages([welcomeMsg])
+      await setDoc(chatDocRef, {
+        userId: user.uid || user.id,
+        userName: user.nome,
+        condominio: user.condominio || '',
+        apt: user.apt || '',
+        lastActivity: serverTimestamp(),
+        messages: [welcomeMsg]
+      })
+    }
+  }
+
+  const handleSend = async () => {
+    if (!input.trim() || !user || loading) return
+    
+    const userMsg = { role: 'user', text: input }
+    setMessages(prev => [...prev, userMsg])
+    setInput('')
+    setLoading(true)
+
+    try {
+      // Salva a mensagem do usuÃ¡rio no banco
+      await updateDoc(chatDocRef, {
+        messages: arrayUnion(userMsg),
+        lastActivity: serverTimestamp()
+      })
+
+      // Prompt de Sistema para definir a personalidade e capacidades
+      const systemPrompt = `
+VocÃª Ã© o "Alpha AI", o Concierge Virtual extremamente educado e inteligente do condomÃ­nio "${user.condominio}".
+O morador com quem vocÃª estÃ¡ falando se chama "${user.nome}" (Apartamento ${user.apt}).
+Seja amigÃ¡vel, direto, e use emojis ocasionalmente.
+
+BASE DE CONHECIMENTO DO CONDOMÃNIO:
+${knowledgeBase || "Nenhuma regra extra adicionada."}
+
+REGRAS ESPECIAIS DE AÃ‡ÃƒO (SIMULAÃ‡ÃƒO DE TOOL CALLING):
+Se o morador pedir para abrir uma ocorrÃªncia ou registrar um problema (ex: lÃ¢mpada queimada, barulho), responda normalmente e INCLUA EXATAMENTE este texto na sua resposta:
+[CRIAR_OCORRENCIA: Resumo do Problema]
+Exemplo: "Claro, vou registrar isso para vocÃª! [CRIAR_OCORRENCIA: LÃ¢mpada queimada no corredor]"
+
+Se o morador quiser reservar um espaÃ§o (ex: salÃ£o de festas, churrasqueira), vocÃª DEVE pedir a data e o HORÃRIO de inÃ­cio e fim. Se ele jÃ¡ informou tudo, INCLUA EXATAMENTE:
+[CRIAR_RESERVA: Nome do EspaÃ§o - Data - HorÃ¡rio]
+Exemplo: "Reserva prÃ©-aprovada! [CRIAR_RESERVA: SalÃ£o de Festas - 15/10/2026 - 14:00 as 22:00]"
+`
+      
+      // ConstrÃ³i o histÃ³rico para a API do Gemini
+      const rawHistory = messages.map(m => ({
+        role: m.role === 'model' ? 'model' : 'user',
+        parts: [{ text: m.text }]
+      }))
+      
+      // Remove a primeira mensagem se for do model (boas vindas) para nÃ£o quebrar a regra de alternÃ¢ncia
+      if (rawHistory.length > 0 && rawHistory[0].role === 'model') {
+        rawHistory.shift()
+      }
+
+      // Garante que nÃ£o haja dois papÃ©is iguais seguidos
+      const validHistory = []
+      let lastRole = null
+      for (const msg of rawHistory) {
+        const clonedMsg = { role: msg.role, parts: [{ text: msg.parts[0].text }] }
+        if (clonedMsg.role !== lastRole) {
+          validHistory.push(clonedMsg)
+          lastRole = clonedMsg.role
+        } else {
+          validHistory[validHistory.length - 1].parts[0].text += '\n' + clonedMsg.parts[0].text
+        }
+      }
+
+      // Gemini exige que sendMessage() seja chamado apÃ³s uma mensagem de 'model' (ou histÃ³rico vazio)
+      let textToSend = userMsg.text
+      if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === 'user') {
+        const lastUser = validHistory.pop()
+        textToSend = lastUser.parts[0].text + '\n\n' + textToSend
+      }
+      
+      const chatModel = genAI.getGenerativeModel({ 
+        model: "gemini-3.5-flash",
+        systemInstruction: systemPrompt
+      })
+
+      const chat = chatModel.startChat({
+        history: validHistory,
+        generationConfig: { maxOutputTokens: 1000 },
+      })
+
+      const result = await chat.sendMessage(textToSend)
+      const aiResponse = result.response.text()
+
+      const modelMsg = { role: 'model', text: aiResponse }
+      setMessages(prev => [...prev, modelMsg])
+
+      // Salva a resposta da IA no banco
+      await updateDoc(chatDocRef, {
+        messages: arrayUnion(modelMsg),
+        lastActivity: serverTimestamp()
+      })
+
+    } catch (error) {
+      console.error("Erro no Gemini:", error)
+      const errorMsg = { role: 'model', text: `Desculpe, estou com problemas de conexÃ£o. Tente novamente. Detalhes: ${error.message}` }
+      setMessages(prev => [...prev, errorMsg])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!user) return null
+
+  return (
     <div className="h-full flex flex-col bg-gray-50 rounded-2xl shadow-sm border border-cream-200 overflow-hidden animate-fade-in">
       {/* Header */}
       <div className="bg-brand-700 text-white p-4 flex items-center justify-between">

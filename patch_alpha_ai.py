@@ -1,18 +1,17 @@
-import re
 import os
 
 file_path = 'src/pages/AlphaAIChat.jsx'
 with open(file_path, 'r', encoding='utf-8') as f:
     text = f.read()
 
-# Substituir o render antigo
-# De: return ( <> ... </> )
-# Para: return ( <div className="h-full flex flex-col bg-gray-50 rounded-2xl shadow-sm border border-cream-200 overflow-hidden"> ... </div> )
+split_str = 'if (!user) return null'
+parts = text.split(split_str)
+if len(parts) > 1:
+    before = parts[0] + split_str
+    
+    new_render = """
 
-# Remover botão flutuante e isOpen check
-start_return = text.find('  return (')
-if start_return != -1:
-    new_render = """  return (
+  return (
     <div className="h-full flex flex-col bg-gray-50 rounded-2xl shadow-sm border border-cream-200 overflow-hidden animate-fade-in">
       {/* Header */}
       <div className="bg-brand-700 text-white p-4 flex items-center justify-between">
@@ -65,8 +64,9 @@ if start_return != -1:
       </div>
     </div>
   )
-}"""
-    text = text[:start_return] + new_render
+}
+"""
+    text = before + new_render
 
 with open(file_path, 'w', encoding='utf-8') as f:
     f.write(text)
