@@ -39,6 +39,7 @@ export const navGroups = [
     label: 'Financeiro',
     items: [
       { to: '/financeiro', label: 'Receitas & Despesas', icon: CreditCard },
+      { to: '/plano-contas', label: 'Previsão & Plano de Contas', icon: PieChart },
       { to: '/boletos', label: 'Boletos & Fundo', icon: FileText },
       { to: '/inadimplencia', label: 'Inadimplência & Jurídico', icon: Scale },
       { to: '/mediacao', label: 'Mediação & ODR', icon: Handshake },
@@ -85,6 +86,7 @@ export function getFilteredNavGroups(user) {
       
       let reqPerm = item.to.replace('/', '')
       if (reqPerm === 'conferencias' || reqPerm === 'recrutamento') reqPerm = 'rh'
+      if (reqPerm === 'plano-contas') reqPerm = 'financeiro'
       if (reqPerm === 'pets') return true
       const moradorAdminTabs = ['seguro', 'regime', 'documentos', 'comunicacao', 'mural', 'enquetes', 'classificados', 'relatorios']
       if (user?.role === 'Morador' && (reqPerm === 'financeiro' || reqPerm === 'manutencoes' || moradorAdminTabs.includes(reqPerm))) return true

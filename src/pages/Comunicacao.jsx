@@ -6,7 +6,7 @@ import { db } from '../firebase'
 import { enviarEmail } from '../emailjs.config'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const API_KEY = "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA"
+const API_KEY = "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
 const genAI = new GoogleGenerativeAI(API_KEY)
 const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
 

@@ -1,7 +1,9 @@
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
-from gtts import gTTS
-import io
+import asyncio
+import edge_tts
+import tempfile
+import os
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -16,11 +18,7 @@ class handler(BaseHTTPRequestHandler):
             return
 
         try:
-            tts = gTTS(text=texto, lang='pt', tld='com.br')
-            fp = io.BytesIO()
-            tts.write_to_fp(fp)
-            fp.seek(0)
-            audio_data = fp.read()
+            audio_data = asyncio.run(self.generate_audio(texto))
             
             self.send_response(200)
             self.send_header('Content-type', 'audio/mpeg')
@@ -31,3 +29,22 @@ class handler(BaseHTTPRequestHandler):
             self.send_response(500)
             self.end_headers()
             self.wfile.write(str(e).encode('utf-8'))
+
+    async def generate_audio(self, texto):
+        voz = "pt-BR-FranciscaNeural"
+        comunicador = edge_tts.Communicate(texto, voz)
+        
+        temp_dir = tempfile.gettempdir()
+        caminho_arquivo = os.path.join(temp_dir, f"audio_temp_{os.getpid()}.mp3")
+        
+        await comunicador.save(caminho_arquivo)
+        
+        with open(caminho_arquivo, "rb") as f:
+            data = f.read()
+            
+        try:
+            os.remove(caminho_arquivo)
+        except:
+            pass
+            
+        return data
