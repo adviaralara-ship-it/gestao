@@ -16,10 +16,11 @@ export const navGroups = [
     label: '🏠 Visão Geral',
     emoji: '🏠',
     items: [
-      { to: '/dashboard',       label: 'Dashboard',           icon: LayoutDashboard },
-      { to: '/alpha-ai',        label: 'Alpha IA',            icon: Bot },
-      { to: '/radar',           label: 'Radar de Convivência',icon: Radar },
-      { to: '/tarefas',         label: 'Tarefas & Agenda',    icon: CheckSquare },
+      { to: '/dashboard',        label: 'Dashboard',            icon: LayoutDashboard },
+      { to: '/alpha-ai',         label: 'Alpha IA',             icon: Bot },
+      { to: '/radar',            label: 'Radar de Convivência', icon: Radar },
+      { to: '/tarefas',          label: 'Tarefas & Agenda',     icon: CheckSquare },
+      { to: '/monitoramento-ia', label: 'Monitoramento IA',     icon: BarChart3 },
     ]
   },
   {
