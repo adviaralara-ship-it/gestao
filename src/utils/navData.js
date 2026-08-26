@@ -23,7 +23,7 @@ export const navGroups = [
     ]
   },
   {
-    label: '👥 Pessoas & Convivência',
+    label: '👥 Pessoas',
     emoji: '👥',
     items: [
       { to: '/moradores',   label: 'Moradores',        icon: Users },
