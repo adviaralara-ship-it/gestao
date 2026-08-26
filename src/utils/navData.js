@@ -86,7 +86,8 @@ export function getFilteredNavGroups(user) {
       let reqPerm = item.to.replace('/', '')
       if (reqPerm === 'conferencias' || reqPerm === 'recrutamento') reqPerm = 'rh'
       if (reqPerm === 'pets') return true
-      if ((reqPerm === 'financeiro' || reqPerm === 'manutencoes') && user?.role === 'Morador') return true
+      const moradorAdminTabs = ['seguro', 'regime', 'documentos', 'comunicacao', 'mural', 'enquetes', 'classificados', 'relatorios']
+      if (user?.role === 'Morador' && (reqPerm === 'financeiro' || reqPerm === 'manutencoes' || moradorAdminTabs.includes(reqPerm))) return true
       
       // FORÇA A EXIBIÇÃO INDEPENDENTE DE QUEM ESTEJA LOGADO (apenas para teste)
       if (reqPerm === 'conviver' || reqPerm === 'radar') return true
