@@ -405,14 +405,20 @@ export default function Dashboard() {
 
       
       {/* Robô de Vencimentos */}
-      {(user?.role === 'Administrador' || user?.role === 'Síndico') && roboAlertas.length > 0 && (
+      {(user?.role === 'Administrador' || user?.role === 'Síndico') && (
         <div className="card border-orange-200 bg-gradient-to-r from-orange-50/50 to-white">
           <div className="flex items-center gap-2 mb-4">
             <Bot size={20} className="text-orange-500" />
             <p className="section-title text-orange-800 m-0">Robô de Vencimentos (Alertas Automáticos)</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {roboAlertas.map(a => (
+            {roboAlertas.length === 0 ? (
+              <div className="col-span-full py-6 flex flex-col items-center justify-center text-orange-400 opacity-80">
+                <Shield size={32} className="mb-2 text-orange-300" />
+                <p className="text-sm font-medium">Tudo em dia!</p>
+                <p className="text-xs">Nenhum seguro ou mandato vencendo nos próximos 30 dias.</p>
+              </div>
+            ) : roboAlertas.map(a => (
               <div key={a.id + a.tipo} className={`flex items-start gap-3 p-3 rounded-xl border ${a.color} transition-all hover:scale-[1.02]`}>
                 <div className="p-2 bg-white rounded-lg shadow-sm"><a.icon size={16}/></div>
                 <div>
