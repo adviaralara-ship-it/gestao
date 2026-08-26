@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react'
-import { HeartHandshake, Search, Filter, AlertTriangle, ShieldCheck, CheckCircle2 } from 'lucide-react'
+import { HeartHandshake, Search, Filter, AlertTriangle, ShieldCheck, CheckCircle2, Trash2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 
 export default function Conviver() {
   const { user } = useAuth()
-  const { items: ocorrencias, updateItem } = useFirestore('ocorrencias')
+  const { items: ocorrencias, updateItem, deleteItem } = useFirestore('ocorrencias')
   const [condominioFiltro, setCondominioFiltro] = useState(user?.condominio || '')
   
   // Condomínios disponíveis no BD
@@ -76,7 +76,12 @@ export default function Conviver() {
               <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
                 {items.map(t => (
                   <div key={t.id} className="bg-white p-3 rounded shadow-sm border border-gray-200 text-sm flex flex-col gap-2">
-                    <div className="font-bold text-gray-800">{t.titulo}</div>
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="font-bold text-gray-800">{t.titulo}</div>
+                      <button onClick={() => { if(window.confirm('Tem certeza que deseja apagar esta ocorrência?')) deleteItem(t.id); }} className="text-gray-300 hover:text-red-500 transition-colors p-1" title="Apagar ocorrência">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                     <div className="text-xs text-gray-500 line-clamp-2">{t.descricao}</div>
                     
                     <div className="flex flex-wrap gap-1 mt-1">
