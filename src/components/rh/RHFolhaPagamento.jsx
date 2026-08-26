@@ -26,6 +26,7 @@ const calcularIRRF = (baseCalculo) => {
 
 export default function RHFolhaPagamento() {
   const [colabs, setColabs] = useState([])
+  const [condominios, setCondominios] = useState([])
   const [selectedColab, setSelectedColab] = useState('')
   const [mesAno, setMesAno] = useState(new Date().toISOString().substring(0, 7))
   
@@ -50,6 +51,8 @@ export default function RHFolhaPagamento() {
 
   useEffect(() => {
     const fetchColabs = async () => {
+      const snapCondos = await getDocs(query(collection(db, 'condominios')))
+      setCondominios(snapCondos.docs.map(d => ({ id: d.id, ...d.data() })))
       const snap = await getDocs(query(collection(db, 'rh')))
       setColabs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.nome.localeCompare(b.nome)))
     }
@@ -325,8 +328,17 @@ export default function RHFolhaPagamento() {
             {/* Header Holerite */}
             <div className="border-b-2 border-black pb-4 mb-4 flex justify-between">
               <div>
-                <h1 className="text-xl font-bold uppercase">Alpha Gestão Condominial</h1>
-                <p className="text-sm">CNPJ: 00.000.000/0001-00</p>
+                {(() => {
+                  const condo = condominios.find(c => c.nome === activeColab?.condominio)
+                  const empNome = activeColab?.condominio ? activeColab.condominio : 'ALPHA GESTÃO CONDOMINIAL'
+                  const empCnpj = condo?.cnpj || (activeColab?.condominio ? 'CNPJ não cadastrado' : '00.000.000/0001-00')
+                  return (
+                    <>
+                      <h1 className="text-xl font-bold uppercase">{empNome}</h1>
+                      <p className="text-sm">CNPJ: {empCnpj}</p>
+                    </>
+                  )
+                })()}
               </div>
               <div className="text-right">
                 <h2 className="text-xl font-bold uppercase">Recibo de Pagamento</h2>

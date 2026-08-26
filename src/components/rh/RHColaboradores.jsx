@@ -7,9 +7,9 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { storage, db } from '../../firebase'
 
 
-function ColabModal({ data, onClose, onSave }) {
+function ColabModal({ data, condominios = [], onClose, onSave }) {
   const [form, setForm] = useState(data || { 
-    nome: '', cargo: '', dept: '', salario: '', admissao: '', nascimento: '', status: 'Ativo',
+    nome: '', cargo: '', dept: '', salario: '', admissao: '', nascimento: '', status: 'Ativo', condominio: '',
     telefone: '', vencimentoFerias: '', vencimentoASO: ''
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -22,6 +22,13 @@ function ColabModal({ data, onClose, onSave }) {
         </div>
         <div className="p-6 grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto">
           <div className="col-span-2"><label className="label">Nome Completo</label><input className="input" value={form.nome} onChange={e => set('nome', e.target.value)} /></div>
+          <div className="col-span-2">
+            <label className="label">Condomínio / Empresa (Para Folha)</label>
+            <select className="input" value={form.condominio || ''} onChange={e => set('condominio', e.target.value)}>
+              <option value="">ALPHA GESTÃO CONDOMINIAL (Interno)</option>
+              {condominios.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+            </select>
+          </div>
           <div><label className="label">Cargo</label><input className="input" value={form.cargo} onChange={e => set('cargo', e.target.value)} /></div>
           <div><label className="label">Departamento</label><input className="input" value={form.dept} onChange={e => set('dept', e.target.value)} /></div>
           <div><label className="label">Salário</label><input className="input" value={form.salario} onChange={e => set('salario', e.target.value)} /></div>
@@ -177,6 +184,7 @@ function OnboardingModal({ data, onClose, updateItem }) {
 
 export default function RHColaboradores() {
   const { items: colabs, addItem, updateItem, deleteItem } = useFirestore('rh')
+  const { items: condominios } = useFirestore('condominios')
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
   const [pontoModal, setPontoModal] = useState(null)
@@ -388,7 +396,7 @@ export default function RHColaboradores() {
           </div>
         ))}
       </div>
-      {modal && <ColabModal data={modal === 'new' ? null : modal} onClose={() => setModal(null)} onSave={handleSave} />}
+      {modal && <ColabModal data={modal === 'new' ? null : modal} condominios={condominios} onClose={() => setModal(null)} onSave={handleSave} />}
       {pontoModal && <PontoModal data={pontoModal} onClose={() => setPontoModal(null)} />}
       {onboardingModal && <OnboardingModal data={onboardingModal} onClose={() => setOnboardingModal(null)} updateItem={updateItem} />}
     </div>
