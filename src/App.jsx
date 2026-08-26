@@ -168,6 +168,7 @@ function AppRoutes() {
           <Route path="prestadores" element={<AuthorizedRoute module="prestadores"><Prestadores /></AuthorizedRoute>} />
           <Route path="usuarios" element={<AuthorizedRoute module="usuarios"><Usuarios /></AuthorizedRoute>} />
           <Route path="financeiro" element={<AuthorizedRoute module="financeiro"><Financeiro /></AuthorizedRoute>} />
+          <Route path="plano-contas" element={<AuthorizedRoute module="financeiro"><PlanoContas /></AuthorizedRoute>} />
           <Route path="boletos" element={<AuthorizedRoute module="boletos"><Boletos /></AuthorizedRoute>} />
           <Route path="notas-fiscais" element={<AuthorizedRoute module="notas-fiscais"><NotasFiscais /></AuthorizedRoute>} />
           <Route path="inadimplencia" element={<AuthorizedRoute module="inadimplencia"><Inadimplencia /></AuthorizedRoute>} />
