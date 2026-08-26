@@ -128,66 +128,70 @@ export default function Header({ onMenuClick }) {
       </div>
 
       <div className="relative flex-1 max-w-lg w-full search-menu-container">
-        <div 
-          onClick={(e) => { e.stopPropagation(); setSearchOpen(!searchOpen); setDropOpen(false); setNotifOpen(false) }}
-          className="flex items-center justify-between gap-2 bg-cream-100 border border-cream-400 rounded-lg px-3 py-2 text-sm text-gray-500 hover:border-brand-400 transition-all cursor-pointer"
+        <div
+          onClick={(e) => { e.stopPropagation(); setSearchOpen(true); setDropOpen(false); setNotifOpen(false) }}
+          className="flex items-center gap-2 bg-cream-100 border border-cream-400 rounded-lg px-3 py-2 text-sm text-gray-500 hover:border-brand-400 transition-all cursor-text"
         >
-          <div className="flex items-center gap-2 flex-1">
-            <Search size={16}/><span className="font-medium text-xs">Pesquisa Rápida</span>
-          </div>
-          <ChevronDown size={14} className="text-gray-400" />
+          <Search size={16} className="shrink-0 text-gray-400"/>
+          <input
+            id="quick-search-input"
+            type="text"
+            placeholder="Pesquisar módulo..."
+            className="bg-transparent border-none outline-none text-xs font-medium text-gray-700 w-full placeholder:text-gray-400"
+            value={searchCategory}
+            onChange={e => { setSearchCategory(e.target.value); setSearchOpen(true) }}
+            onFocus={() => setSearchOpen(true)}
+            onClick={e => e.stopPropagation()}
+          />
+          {searchCategory && (
+            <button onClick={e => { e.stopPropagation(); setSearchCategory(''); }} className="text-gray-400 hover:text-gray-600">
+              <X size={14}/>
+            </button>
+          )}
         </div>
 
-        {searchOpen && (
-          <div className="absolute top-12 left-0 w-full max-w-xl bg-white border border-cream-400 rounded-2xl shadow-xl z-50 overflow-hidden animate-fade-in p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex flex-wrap gap-2 border-b border-cream-300 pb-3 mb-3">
-              {['Gestão', 'Financeiro', 'Operacional', 'Administrativo'].map(cat => {
-                // Verificar se esse grupo existe nas permissões do usuário
-                const groupExists = filteredNavGroups.find(g => g.label === cat)
-                if (!groupExists) return null
+        {searchOpen && (() => {
+          const query = searchCategory.toLowerCase().trim()
+          // Achata todos os itens de todos os grupos com info do grupo
+          const allItems = filteredNavGroups.flatMap(g =>
+            g.items.map(item => ({ ...item, groupLabel: g.label }))
+          )
+          const results = query
+            ? allItems.filter(item =>
+                item.label.toLowerCase().replace('↳ ', '').includes(query) ||
+                item.groupLabel.toLowerCase().includes(query)
+              )
+            : allItems
 
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setSearchCategory(cat)}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                      searchCategory === cat 
-                        ? 'bg-brand-600 text-white' 
-                        : 'bg-pale-100 text-gray-500 hover:bg-cream-200 hover:text-gray-700'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                )
-              })}
-            </div>
-            
-            <div className="grid grid-cols-2 gap-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-              {filteredNavGroups.find(g => g.label === searchCategory)?.items?.map(item => (
-                <button
-                  key={item.to}
-                  onClick={() => {
-                    navigate(item.to)
-                    setSearchOpen(false)
-                  }}
-                  className="flex items-center gap-3 p-2 rounded-xl hover:bg-brand-50 border border-transparent hover:border-brand-200 transition-all text-left"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-600 shrink-0">
-                    <item.icon size={16} strokeWidth={2.5} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-gray-700 truncate">{item.label}</p>
-                  </div>
-                </button>
-              ))}
-              {!filteredNavGroups.find(g => g.label === searchCategory)?.items?.length && (
-                <div className="col-span-2 p-4 text-center text-xs text-gray-400">
-                  Nenhum item encontrado nesta categoria.
+          return (
+            <div
+              className="absolute top-12 left-0 w-full max-w-xl bg-white border border-cream-400 rounded-2xl shadow-xl z-50 overflow-hidden animate-fade-in p-3"
+              onClick={e => e.stopPropagation()}
+            >
+              {results.length === 0 ? (
+                <p className="text-center text-xs text-gray-400 py-6">Nenhum módulo encontrado para "{searchCategory}"</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-1.5 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
+                  {results.map(item => (
+                    <button
+                      key={item.to}
+                      onClick={() => { navigate(item.to); setSearchOpen(false); setSearchCategory('') }}
+                      className="flex items-center gap-3 p-2 rounded-xl hover:bg-brand-50 border border-transparent hover:border-brand-200 transition-all text-left"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-600 shrink-0">
+                        <item.icon size={15} strokeWidth={2.5} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-gray-700 truncate">{item.label.replace('↳ ', '')}</p>
+                        <p className="text-[10px] text-gray-400 truncate">{item.groupLabel}</p>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
-          </div>
-        )}
+          )
+        })()}
       </div>
 
       <div className="flex items-center gap-2">
