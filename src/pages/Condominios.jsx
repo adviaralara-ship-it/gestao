@@ -13,7 +13,7 @@ function fmtInput(v, setter) {
 }
 
 function CondoModal({ data, onClose, onSave }) {
-  const [form, setForm] = useState(data || { nome:'', endereco:'', unidades:'', sindico:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'' })
+  const [form, setForm] = useState(data || { nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'' })
   const [fundoStr, setFundoStr] = useState(data?.fundoReserva ? fmtBR(data.fundoReserva) : '')
   const [metaStr,  setMetaStr]  = useState(data?.fundoMeta    ? fmtBR(data.fundoMeta)    : '')
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
@@ -26,8 +26,8 @@ function CondoModal({ data, onClose, onSave }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
         <div className="p-6 flex flex-col gap-4">
-          {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX (E-mail, CNPJ ou Celular)']].map(([k,l])=>(
-            <div key={k}><label className="label">{l}</label><input className="input" value={form[k]} onChange={e=>set(k,e.target.value)} placeholder={l}/></div>
+          {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['mandatoFim','Fim do Mandato (Síndico)'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX (E-mail, CNPJ ou Celular)']].map(([k,l])=>(
+            <div key={k}><label className="label">{l}</label><input type={k==='mandatoFim'?'date':'text'} className="input" value={form[k]||''} onChange={e=>set(k,e.target.value)} placeholder={l}/></div>
           ))}
           <div><label className="label">Status</label>
             <select className="input" value={form.status} onChange={e=>set('status',e.target.value)}>

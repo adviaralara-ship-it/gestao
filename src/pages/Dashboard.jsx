@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts'
-import { TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck, CreditCard, DollarSign, Smartphone, LogIn, LogOut, FileText, Bell, Clock, DoorOpen } from 'lucide-react'
+import { TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck, CreditCard, DollarSign, Smartphone, LogIn, LogOut, FileText, Bell, Clock, DoorOpen, Bot, Shield } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useFirestore } from '../hooks/useFirestore'
 import { Link, useNavigate } from 'react-router-dom'
@@ -53,6 +53,8 @@ export default function Dashboard() {
   const { items: financeiro }   = useFirestore('financeiro_lancamentos')
   const { items: notificacoes } = useFirestore('notificacoes')
   const { items: assembleias }  = useFirestore('assembleias')
+  const { items: apolices }  = useFirestore('apolices')
+  const { items: condominios }  = useFirestore('condominios')
 
   const getSafeDate = val => {
     if (!val) return new Date()
@@ -371,6 +373,30 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      
+      {/* Robô de Vencimentos */}
+      {(user?.role === 'Administrador' || user?.role === 'Síndico') && roboAlertas.length > 0 && (
+        <div className="card border-orange-200 bg-gradient-to-r from-orange-50/50 to-white">
+          <div className="flex items-center gap-2 mb-4">
+            <Bot size={20} className="text-orange-500" />
+            <p className="section-title text-orange-800 m-0">Robô de Vencimentos (Alertas Automáticos)</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {roboAlertas.map(a => (
+              <div key={a.id + a.tipo} className={`flex items-start gap-3 p-3 rounded-xl border ${a.color} transition-all hover:scale-[1.02]`}>
+                <div className="p-2 bg-white rounded-lg shadow-sm"><a.icon size={16}/></div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider opacity-80">{a.tipo}</p>
+                  <p className="text-sm font-bold mt-0.5">{a.desc}</p>
+                  <p className="text-xs mt-1 font-medium">{a.dias < 0 ? `Venceu há ${Math.abs(a.dias)} dias!` : a.dias === 0 ? 'Vence HOJE!' : `Vence em ${a.dias} dias`}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
 
       {/* Divulgação do App + Portaria */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
