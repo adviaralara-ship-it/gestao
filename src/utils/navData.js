@@ -121,7 +121,7 @@ export function getFilteredNavGroups(user) {
   const ALWAYS_ALLOWED = new Set([
     'alpha-ai', 'pets', 'mediacao', 'conviver', 'radar',
     'mural', 'enquetes', 'classificados', 'comunicacao',
-    'seguro', 'regime', 'documentos'
+    'seguro', 'regime', 'documentos', 'monitoramento-ia'
   ])
 
   const MORADOR_ALLOWED = new Set([
