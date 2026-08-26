@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { Target, Plus, Search, Edit2, Trash2, ArrowRight, Save, PieChart, TrendingUp, Calculator, AlertTriangle, FileText } from 'lucide-react'
+import { Target, Plus, Search, Edit2, Trash2, ArrowRight, Save, PieChart, TrendingUp, Calculator, AlertTriangle, FileText, Building } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore'
@@ -19,9 +19,11 @@ export default function PlanoContas() {
   const { items: customContas } = useFirestore('plano_contas')
   const { items: despesas } = useFirestore('financeiro_despesas')
   const { items: receitas } = useFirestore('financeiro_receitas')
+  const { items: condominiosList } = useFirestore('condominios')
   
   const [activeTab, setActiveTab] = useState('plano')
   const [anoBase, setAnoBase] = useState(new Date().getFullYear().toString())
+  const [filtroCondominio, setFiltroCondominio] = useState(user?.role === 'Síndico' || user?.role === 'Morador' ? user?.condominio : 'Alpha Soluções')
   
   // Combina as contas padrão com as personalizadas
   const contas = useMemo(() => {
@@ -58,21 +60,30 @@ export default function PlanoContas() {
     // Inicializa o balanço baseado no plano de contas que participam do orçamento
     const balanco = contas.filter(c => c.participacaoOrcamento).map(c => ({
       ...c,
-      previsto: 0, // Poderíamos ter um cadastro de meta anual por conta futuramente
+      previsto: 0,
       realizado: 0
     }))
 
+    // Filtra as despesas pelo condomínio selecionado
+    const despesasFiltradas = filtroCondominio === 'Todos' 
+      ? despesas 
+      : despesas.filter(d => d.condominio === filtroCondominio || (!d.condominio && filtroCondominio === 'Alpha Soluções'))
+
+    // Filtra as receitas pelo condomínio selecionado
+    const receitasFiltradas = filtroCondominio === 'Todos'
+      ? receitas
+      : receitas.filter(r => r.condominio === filtroCondominio || (!r.condominio && filtroCondominio === 'Alpha Soluções'))
+
     // Soma o realizado
-    despesas.forEach(d => {
+    despesasFiltradas.forEach(d => {
       const data = new Date(d.data_vencimento || d.data_pagamento)
       if(data.getFullYear().toString() === anoBase) {
-        // Tenta achar a categoria, fallback pra Outros
         const cat = balanco.find(b => b.tipo === 'Despesa' && (b.nome === d.categoria || d.categoria?.includes(b.nome)))
         if(cat) cat.realizado += Number(d.valor || 0)
       }
     })
 
-    receitas.forEach(r => {
+    receitasFiltradas.forEach(r => {
       const data = new Date(r.data_vencimento || r.data_pagamento)
       if(data.getFullYear().toString() === anoBase) {
         const cat = balanco.find(b => b.tipo === 'Receita' && (b.nome === r.categoria || r.categoria?.includes(b.nome)))
@@ -81,7 +92,7 @@ export default function PlanoContas() {
     })
 
     return balanco
-  }, [contas, despesas, receitas, anoBase])
+  }, [contas, despesas, receitas, anoBase, filtroCondominio])
 
   return (
     <div className="p-6 max-w-7xl mx-auto flex flex-col h-full animate-fade-in">
@@ -95,10 +106,29 @@ export default function PlanoContas() {
             Modele o orçamento anual, defina o plano de contas e simule rateios automáticos
           </p>
         </div>
-        <div className="flex bg-white rounded-lg p-1 shadow-sm border border-cream-200">
-          <button onClick={() => setActiveTab('plano')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='plano'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Plano de Contas</button>
-          <button onClick={() => setActiveTab('previsto')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='previsto'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Previsto x Realizado</button>
-          <button onClick={() => setActiveTab('simulador')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='simulador'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Simulador de Rateio</button>
+        
+        <div className="flex flex-col items-end gap-3">
+          {/* Filtro Global de Condomínio no Topo */}
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-cream-200 shadow-sm">
+            <Building size={16} className="text-brand-500" />
+            <select 
+              className="bg-transparent border-none text-sm font-bold text-gray-700 focus:ring-0 cursor-pointer outline-none"
+              value={filtroCondominio}
+              onChange={e => setFiltroCondominio(e.target.value)}
+            >
+              <option value="Todos">Visão Global (Todos)</option>
+              <option value="Alpha Soluções">Matriz: Alpha Soluções</option>
+              {condominiosList.map(c => (
+                <option key={c.id} value={c.nome}>{c.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex bg-white rounded-lg p-1 shadow-sm border border-cream-200">
+            <button onClick={() => setActiveTab('plano')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='plano'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Plano de Contas</button>
+            <button onClick={() => setActiveTab('previsto')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='previsto'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Previsto x Realizado</button>
+            <button onClick={() => setActiveTab('simulador')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='simulador'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Simulador de Rateio</button>
+          </div>
         </div>
       </div>
 
@@ -196,9 +226,11 @@ export default function PlanoContas() {
           </p>
           <div className="bg-amber-50 text-amber-700 border border-amber-200 p-4 rounded-xl flex items-start gap-3 text-left max-w-lg">
             <AlertTriangle className="shrink-0 mt-0.5" size={18} />
-            <p className="text-sm">
-              <strong>Módulo em construção:</strong> Esta simulação inteligente baseada em frações ideais estará disponível na próxima atualização do sistema Alpha.
-            </p>
+            <div className="flex flex-col">
+              <p className="text-sm">
+                <strong>Módulo em construção:</strong> O motor de simulação de frações ideais exige o cruzamento de dados de todas as unidades, blocos e garagens. Ele será liberado em breve na próxima atualização!
+              </p>
+            </div>
           </div>
         </div>
       )}
