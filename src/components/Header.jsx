@@ -4,7 +4,7 @@ import { Menu, Bell, Search, LogOut, ChevronDown, X, CheckCircle2, Trash2, Home,
 import { useAuth } from '../context/AuthContext'
 import OneSignal from 'react-onesignal'
 import { useFirestore } from '../hooks/useFirestore'
-import AlphaAI from './AlphaAI'
+
 import { getFilteredNavGroups } from '../utils/navData'
 
 const pageNames = {
@@ -192,7 +192,7 @@ export default function Header({ onMenuClick }) {
 
       <div className="flex items-center gap-2">
         <WhatsAppHeaderButton />
-        <AlphaAI />
+        
 
         {/* Notificações – somente para ADM/Síndico/Financeiro */}
         {podeVerNotif && (
