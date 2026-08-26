@@ -187,7 +187,8 @@ export default function Financeiro() {
   const { items: contas, addItem: addConta, updateItem: updateConta, deleteItem: deleteConta } = useFirestore('financeiro_contas')
   const { items: condominiosList } = useFirestore('condominios')
 
-  const [activeTab, setActiveTab] = useState(isMorador ? 'Historico' : 'Dashboard')
+  const searchParams = new URLSearchParams(window.location.search)
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || (isMorador ? 'Historico' : 'Dashboard'))
   const [modalLanc, setModalLanc] = useState(null)
   const [modalConta, setModalConta] = useState(null)
   const [condoFilter, setCondoFilter] = useState('Todos')

@@ -5,7 +5,7 @@ import {
 import { TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck, CreditCard, DollarSign, Smartphone, LogIn, LogOut, FileText, Bell, Clock, DoorOpen } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useFirestore } from '../hooks/useFirestore'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Video, Receipt, Package, Car } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -40,6 +40,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate()
   const [waConectado, setWaConectado] = useState(false)
 
   // Dados reais do Firestore
@@ -267,8 +268,8 @@ export default function Dashboard() {
                 <XAxis dataKey="mes" tick={{fill:'#64748b',fontSize:12,fontWeight:600}} axisLine={false} tickLine={false} dy={10}/>
                 <YAxis tick={{fill:'#94a3b8',fontSize:11}} axisLine={false} tickLine={false} tickFormatter={v=>`R$${(v/1000).toFixed(0)}k`}/>
                 <Tooltip cursor={{fill: '#f8fafc'}} content={<CustomTooltip/>}/>
-                <Bar dataKey="receitas" name="Receitas" fill="#10b981" radius={[4,4,0,0]} barSize={32}/>
-                <Bar dataKey="despesas" name="Despesas" fill="#ef4444" radius={[4,4,0,0]} barSize={32}/>
+                <Bar dataKey="receitas" name="Receitas" fill="#10b981" radius={[4,4,0,0]} barSize={32} onClick={(data) => navigate(`/financeiro?tab=Historico&mes=${data.sortKey}&tipo=Receita`)} className="cursor-pointer hover:opacity-80 transition-opacity" />
+                <Bar dataKey="despesas" name="Despesas" fill="#ef4444" radius={[4,4,0,0]} barSize={32} onClick={(data) => navigate(`/financeiro?tab=Historico&mes=${data.sortKey}&tipo=Despesa`)} className="cursor-pointer hover:opacity-80 transition-opacity" />
               </BarChart>
             </ResponsiveContainer>
           </div>

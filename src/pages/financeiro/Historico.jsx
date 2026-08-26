@@ -7,9 +7,10 @@ import autoTable from 'jspdf-autotable'
 export default function Historico({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
   const { user } = useAuth()
   const isMorador = user?.role === 'Morador'
+  const searchParams = new URLSearchParams(window.location.search)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('Todos')
-  const [mesFiltro, setMesFiltro] = useState('')
+  const [filter, setFilter] = useState(searchParams.get('tipo') || 'Todos')
+  const [mesFiltro, setMesFiltro] = useState(searchParams.get('mes') || '')
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const statusBadge = (s) => ({ Recebido: 'badge-green', Pago: 'badge-blue', Pendente: 'badge-yellow', 'Aguardando Aprovação': 'bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-[10px] font-bold border border-orange-200' }[s] || 'badge-blue')
