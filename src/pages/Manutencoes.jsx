@@ -185,6 +185,7 @@ function ModalProposta({ proposta, onClose }) {
 
 export default function Manutencoes() {
   const { user } = useAuth()
+  const isMorador = user?.role === 'Morador'
   const isAdminOrSindico = ['Administrador', 'Síndico'].includes(user?.role)
   
   const [tab, setTab] = useState('cronograma') // cronograma, cotacoes

@@ -187,7 +187,7 @@ export default function Financeiro() {
   const { items: contas, addItem: addConta, updateItem: updateConta, deleteItem: deleteConta } = useFirestore('financeiro_contas')
   const { items: condominiosList } = useFirestore('condominios')
 
-  const [activeTab, setActiveTab] = useState('Dashboard')
+  const [activeTab, setActiveTab] = useState(isMorador ? 'Historico' : 'Dashboard')
   const [modalLanc, setModalLanc] = useState(null)
   const [modalConta, setModalConta] = useState(null)
   const [condoFilter, setCondoFilter] = useState('Todos')
@@ -247,7 +247,7 @@ export default function Financeiro() {
     setModalConta(null)
   }
 
-  const tabs = [
+  let tabs = [
     { id: 'Dashboard', label: 'Visão Geral', icon: LayoutDashboard },
     { id: 'Pagar', label: 'Contas a Pagar', icon: CreditCard },
     { id: 'Receber', label: 'Contas a Receber', icon: Wallet },
@@ -256,6 +256,11 @@ export default function Financeiro() {
     { id: 'Historico', label: 'Histórico (Todos)', icon: FileText },
   ]
   
+  
+  if (isMorador) {
+    tabs = [{ id: 'Historico', label: 'Histórico (Todos)', icon: FileText }]
+  }
+
   if (user?.role === 'Administrador' || user?.role === 'Financeiro') {
     tabs.push({ id: 'Reserva', label: 'Caixa Alpha', icon: ShieldAlert })
     tabs.push({ id: 'Conciliacao', label: 'Conciliação (OFX)', icon: LayoutDashboard })
