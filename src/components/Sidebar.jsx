@@ -30,7 +30,7 @@ function NavGroup({ group, collapsed }) {
     <div>
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-widest hover:text-brand-600 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-bold text-gray-600 uppercase tracking-widest hover:text-brand-600 transition-colors"
       >
         <span>{group.label}</span>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
