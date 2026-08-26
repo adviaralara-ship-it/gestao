@@ -144,8 +144,8 @@ export default function Historico({ lancamentos, setModalLanc, deleteLancamento 
                     <td className="table-cell">
                       <div className="flex gap-2">
                         {t.arquivoUrl && <a href={t.arquivoUrl} target="_blank" rel="noreferrer" title="Ver Anexo" className="p-1.5 rounded-lg bg-cream-100 hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-all">📄</a>}
-                        {!isMorador && <button onClick={() => setModalLanc(t)} title="Editar" className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={14} /></button>
-                        <button onClick={() => deleteLancamento(t.id)} title="Excluir" className="p-1.5 rounded-lg bg-cream-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={14} /></button>}
+                        {!isMorador && <><button onClick={() => setModalLanc(t)} title="Editar" className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={14} /></button>
+                        <button onClick={() => deleteLancamento(t.id)} title="Excluir" className="p-1.5 rounded-lg bg-cream-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={14} /></button></>}
                       </div>
                     </td>
                   </tr>
