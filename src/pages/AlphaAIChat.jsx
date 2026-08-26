@@ -183,17 +183,11 @@ export default function AlphaAIChat() {
   const chatDocRef = user ? doc(db, 'ai_chats', user.uid || user.id) : null
 
   useEffect(() => {
-    if (user && isOpen) {
+    if (user) {
       loadHistory()
       loadKnowledgeBase()
     }
-  }, [user, isOpen])
-
-  useEffect(() => {
-    const handleOpenChat = () => setIsOpen(true)
-    window.addEventListener('open-ai-chat', handleOpenChat)
-    return () => window.removeEventListener('open-ai-chat', handleOpenChat)
-  }, [])
+  }, [user])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
