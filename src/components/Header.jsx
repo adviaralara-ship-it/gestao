@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Bell, Search, LogOut, ChevronDown, X, CheckCircle2, Trash2, Home, Signal } from 'lucide-react'
+import { Menu, Bell, Search, LogOut, ChevronDown, X, CheckCircle2, Trash2, Home, Signal, Bot } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import OneSignal from 'react-onesignal'
 import { useFirestore } from '../hooks/useFirestore'
@@ -193,6 +193,15 @@ export default function Header({ onMenuClick }) {
       <div className="flex items-center gap-2">
         <WhatsAppHeaderButton />
         
+        {/* Botão Alpha AI */}
+        <button
+          onClick={() => navigate('/alpha-ai')}
+          className="relative p-2 rounded-lg text-brand-600 hover:text-brand-800 hover:bg-pale-100 transition-all flex items-center justify-center"
+          title="Alpha AI — Concierge Virtual"
+        >
+          <Bot size={20} />
+          <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-emerald-400 border-2 border-white rounded-full"></span>
+        </button>
 
         {/* Notificações – somente para ADM/Síndico/Financeiro */}
         {podeVerNotif && (
