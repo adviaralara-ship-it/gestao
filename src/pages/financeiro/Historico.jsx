@@ -4,7 +4,7 @@ import { Search, Edit2, Trash2, Download } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
-export default function Historico({ lancamentos, setModalLanc, deleteLancamento }) {
+export default function Historico({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
   const { user } = useAuth()
   const isMorador = user?.role === 'Morador'
   const [search, setSearch] = useState('')
@@ -12,7 +12,7 @@ export default function Historico({ lancamentos, setModalLanc, deleteLancamento 
   const [mesFiltro, setMesFiltro] = useState('')
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  const statusBadge = (s) => ({ Recebido: 'badge-green', Pago: 'badge-blue', Pendente: 'badge-yellow' }[s] || 'badge-blue')
+  const statusBadge = (s) => ({ Recebido: 'badge-green', Pago: 'badge-blue', Pendente: 'badge-yellow', 'Aguardando Aprovação': 'bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-[10px] font-bold border border-orange-200' }[s] || 'badge-blue')
 
   const filtered = lancamentos.filter(t => {
     const matchSearch = (t.descricao || '').toLowerCase().includes(search.toLowerCase())
@@ -144,8 +144,17 @@ export default function Historico({ lancamentos, setModalLanc, deleteLancamento 
                     <td className="table-cell">
                       <div className="flex gap-2">
                         {t.arquivoUrl && <a href={t.arquivoUrl} target="_blank" rel="noreferrer" title="Ver Anexo" className="p-1.5 rounded-lg bg-cream-100 hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-all">📄</a>}
-                        {!isMorador && <><button onClick={() => setModalLanc(t)} title="Editar" className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={14} /></button>
-                        <button onClick={() => deleteLancamento(t.id)} title="Excluir" className="p-1.5 rounded-lg bg-cream-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={14} /></button></>}
+                        {!isMorador && (
+                          <>
+                            {t.status === 'Aguardando Aprovação' && (user?.role === 'Síndico' || user?.role === 'Administrador') && (
+                              <button onClick={() => { if(window.confirm('Confirma a aprovação desta despesa? O status mudará para Pendente.')) updateLancamento(t.id, { ...t, status: 'Pendente' }) }} title="Aprovar Despesa" className="p-1.5 rounded-lg bg-orange-100 hover:bg-emerald-100 text-orange-600 hover:text-emerald-600 border border-transparent hover:border-emerald-200 transition-all">
+                                <CheckCircle2 size={14} />
+                              </button>
+                            )}
+                            <button onClick={() => setModalLanc(t)} title="Editar" className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={14} /></button>
+                            <button onClick={() => deleteLancamento(t.id)} title="Excluir" className="p-1.5 rounded-lg bg-cream-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={14} /></button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

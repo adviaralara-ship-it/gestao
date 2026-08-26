@@ -111,7 +111,7 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
           <div className="col-span-2">
             <label className="label">Status</label>
             <select className="input" value={form.status} onChange={e => set('status', e.target.value)}>
-              <option>Recebido</option><option>Pago</option><option>Pendente</option>
+              <option>Recebido</option><option>Pago</option><option>Pendente</option><option>Aguardando Aprovação</option>
             </select>
           </div>
           
