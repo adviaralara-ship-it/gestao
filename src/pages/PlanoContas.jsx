@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { Target, Plus, Search, Edit2, Trash2, ArrowRight, Save, PieChart, TrendingUp, Calculator, AlertTriangle, FileText, Building, Users } from 'lucide-react'
+import { Target, Plus, Search, Edit2, Trash2, ArrowRight, Save, PieChart, TrendingUp, Calculator, AlertTriangle, FileText, Building, Users, Shield, Percent, Wallet } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore'
@@ -26,7 +26,6 @@ export default function PlanoContas() {
   const [anoBase, setAnoBase] = useState(new Date().getFullYear().toString())
   const [filtroCondominio, setFiltroCondominio] = useState(user?.role === 'Síndico' || user?.role === 'Morador' ? user?.condominio : 'Alpha Soluções')
   
-  // Combina as contas padrão com as personalizadas
   const contas = useMemo(() => {
     return [...DEFAULT_CONTAS, ...customContas.map(c => ({...c, isDefault: false}))]
   }, [customContas])
@@ -34,12 +33,17 @@ export default function PlanoContas() {
   const [formConta, setFormConta] = useState({ nome: '', tipo: 'Despesa', participacaoOrcamento: true })
   const [isModalOpen, setIsModalOpen] = useState(false)
 
-  // SIMULADOR STATES
+  // ADVANCED SIMULADOR STATES
   const [metaArrecadacao, setMetaArrecadacao] = useState(0)
-  const [tipoRateio, setTipoRateio] = useState('Fração Ideal')
-  const [isentarTerreo, setIsentarTerreo] = useState(true)
+  const [receitasAcessorias, setReceitasAcessorias] = useState(0)
+  const [inadimplenciaPrevista, setInadimplenciaPrevista] = useState(5) // % default
+  const [fundoReservaPerc, setFundoReservaPerc] = useState(10) // % default
+  const [fundoObras, setFundoObras] = useState(0) // R$ fixo
   const [custoElevador, setCustoElevador] = useState(0)
+  
+  const [tipoRateio, setTipoRateio] = useState('Fração Ideal')
   const [fractions, setFractions] = useState({})
+  const [isencaoElevador, setIsencaoElevador] = useState({}) // { key: boolean }
 
   const handleSalvarConta = async () => {
     if(!formConta.nome) return alert('Preencha o nome')
@@ -63,12 +67,10 @@ export default function PlanoContas() {
     await deleteDoc(doc(db, 'plano_contas', id))
   }
 
-  // Lógica de Previsto x Realizado
   const balancoOrcamentario = useMemo(() => {
     const balanco = contas.filter(c => c.participacaoOrcamento).map(c => ({
       ...c, previsto: 0, realizado: 0
     }))
-
     const despesasFiltradas = filtroCondominio === 'Todos' 
       ? despesas : despesas.filter(d => d.condominio === filtroCondominio || (!d.condominio && filtroCondominio === 'Alpha Soluções'))
     const receitasFiltradas = filtroCondominio === 'Todos'
@@ -91,22 +93,18 @@ export default function PlanoContas() {
     return balanco
   }, [contas, despesas, receitas, anoBase, filtroCondominio])
 
-  // Quando mudar o filtro ou o balanço, podemos pré-preencher a Meta do Simulador
   useEffect(() => {
     const totalDespesas = balancoOrcamentario.filter(b => b.tipo === 'Despesa').reduce((acc, curr) => acc + curr.realizado, 0)
-    // Transforma anual em meta mensal sugerida (Total Despesas Anual / 12)
     setMetaArrecadacao(totalDespesas > 0 ? (totalDespesas / 12).toFixed(2) : 0)
   }, [balancoOrcamentario])
 
-  // Lógica das Unidades (Agrupa moradores por Apartamento)
   const unidadesMapeadas = useMemo(() => {
     const moradoresDoCondominio = filtroCondominio === 'Todos' ? moradoresList : moradoresList.filter(m => m.condominio === filtroCondominio)
     const unidades = {}
     moradoresDoCondominio.forEach(m => {
-        if(!m.apt) return // ignora se não tiver apto
+        if(!m.apt) return 
         const key = `${m.bloco ? m.bloco + ' - ' : ''}Apt ${m.apt}`
         if (!unidades[key]) {
-            // Verifica heurística básica de Térreo (ex: apto < 100, ou que comece com T)
             const isT = String(m.apt).toLowerCase().includes('térreo') || String(m.apt).toLowerCase().includes('terreo') || (!isNaN(m.apt) && parseInt(m.apt) < 100 && parseInt(m.apt) > 0)
             unidades[key] = {
                 key,
@@ -120,65 +118,99 @@ export default function PlanoContas() {
     return Object.values(unidades).sort((a,b) => a.key.localeCompare(b.key))
   }, [moradoresList, filtroCondominio])
 
-  // Lógica do Motor de Rateio
   const rateioCalculado = useMemo(() => {
     if (unidadesMapeadas.length === 0) return []
-    
     const totalUnidades = unidadesMapeadas.length
-    let total = parseFloat(metaArrecadacao) || 0
+    
+    // 1. Meta Base e Ajustes Iniciais
+    const base = parseFloat(metaArrecadacao) || 0
+    const recAcess = parseFloat(receitasAcessorias) || 0
+    const liquidoMeta = Math.max(0, base - recAcess)
+
+    // 2. Margem de Inadimplência (Gross up)
+    const inadimplencia = parseFloat(inadimplenciaPrevista) || 0
+    // Fator = 1 / (1 - %/100) -> para garantir a liquidez
+    const metaAjustada = inadimplencia < 100 ? liquidoMeta / (1 - (inadimplencia / 100)) : liquidoMeta
+
+    // 3. Custos Separados (Elevador e Obras)
     let elevador = parseFloat(custoElevador) || 0
+    if (elevador > metaAjustada) elevador = metaAjustada
+    
+    const valorComum = metaAjustada - elevador
+    const totalObras = parseFloat(fundoObras) || 0
+    const percFundoReserva = parseFloat(fundoReservaPerc) || 0
 
-    if (elevador > total) elevador = total
-    const valorComum = total - elevador
-
-    const unidadesNãoIsentas = unidadesMapeadas.filter(u => !isentarTerreo || !u.isTerreo)
-    const totalNãoIsentas = unidadesNãoIsentas.length || 1
+    // Quem paga elevador
+    const pagantesElevador = unidadesMapeadas.filter(u => isencaoElevador[u.key] !== true)
+    const totalPagantesElevador = pagantesElevador.length || 1
 
     return unidadesMapeadas.map(u => {
-        let taxaComum = 0
-        let taxaElevador = 0
-
         const defaultFracao = 100 / totalUnidades
         const myFraction = fractions[u.key] !== undefined ? parseFloat(fractions[u.key]) : defaultFracao
 
+        let taxaComum = 0
+        let taxaObras = 0
+        let taxaElevador = 0
+
+        // Regra Comum e Obras
         if (tipoRateio === 'Cota Igual') {
             taxaComum = valorComum / totalUnidades
+            taxaObras = totalObras / totalUnidades
         } else {
             taxaComum = valorComum * (myFraction / 100)
+            taxaObras = totalObras * (myFraction / 100)
         }
 
-        if (isentarTerreo && u.isTerreo) {
+        // Fundo de Reserva sobre a Taxa Comum
+        const fundoReserva = taxaComum * (percFundoReserva / 100)
+
+        // Elevador
+        if (isencaoElevador[u.key] === true) {
             taxaElevador = 0
         } else {
             if (tipoRateio === 'Cota Igual') {
-                taxaElevador = elevador / (isentarTerreo ? totalNãoIsentas : totalUnidades)
+                taxaElevador = elevador / totalPagantesElevador
             } else {
-                // Soma frações apenas das não isentas para recalibrar a fatia do elevador
-                let totalFracoesAtivas = 0
-                const ativos = isentarTerreo ? unidadesNãoIsentas : unidadesMapeadas
-                ativos.forEach(ativa => {
-                  totalFracoesAtivas += (fractions[ativa.key] !== undefined ? parseFloat(fractions[ativa.key]) : defaultFracao)
+                let totalFracoesElevador = 0
+                pagantesElevador.forEach(p => {
+                  totalFracoesElevador += (fractions[p.key] !== undefined ? parseFloat(fractions[p.key]) : defaultFracao)
                 })
-                taxaElevador = elevador * (myFraction / (totalFracoesAtivas || 100))
+                taxaElevador = elevador * (myFraction / (totalFracoesElevador || 100))
             }
         }
+
+        const cotaTotalMensal = taxaComum + fundoReserva + taxaObras + taxaElevador
 
         return {
             ...u,
             fracaoReal: myFraction,
             taxaComum,
+            fundoReserva,
+            taxaObras,
             taxaElevador,
-            totalMensal: taxaComum + taxaElevador
+            cotaTotalMensal
         }
     })
-  }, [unidadesMapeadas, metaArrecadacao, tipoRateio, isentarTerreo, custoElevador, fractions])
+  }, [unidadesMapeadas, metaArrecadacao, receitasAcessorias, inadimplenciaPrevista, fundoReservaPerc, fundoObras, custoElevador, tipoRateio, fractions, isencaoElevador])
 
-  const handleFractionChange = (key, val) => {
-    setFractions(prev => ({...prev, [key]: val}))
-  }
+  // Inicializa Isenção de Elevador baseada no Térreo (apenas 1 vez por mudança de unidades)
+  useEffect(() => {
+    const isencoes = {}
+    unidadesMapeadas.forEach(u => {
+      if(isencaoElevador[u.key] === undefined) {
+        isencoes[u.key] = !!u.isTerreo // Isenta térreo por padrão
+      }
+    })
+    if(Object.keys(isencoes).length > 0) {
+      setIsencaoElevador(prev => ({...prev, ...isencoes}))
+    }
+  }, [unidadesMapeadas])
+
+  const handleFractionChange = (key, val) => setFractions(prev => ({...prev, [key]: val}))
+  const handleToggleIsencao = (key) => setIsencaoElevador(prev => ({...prev, [key]: !prev[key]}))
 
   return (
-    <div className="p-6 max-w-7xl mx-auto flex flex-col h-full animate-fade-in">
+    <div className="p-4 lg:p-6 max-w-7xl mx-auto flex flex-col h-full animate-fade-in">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-brand-700 flex items-center gap-2">
@@ -190,46 +222,41 @@ export default function PlanoContas() {
           </p>
         </div>
         
-        <div className="flex flex-col items-end gap-3">
-          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-cream-200 shadow-sm">
+        <div className="flex flex-col items-end gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-cream-200 shadow-sm w-full justify-between md:w-auto">
             <Building size={16} className="text-brand-500" />
             <select 
-              className="bg-transparent border-none text-sm font-bold text-gray-700 focus:ring-0 cursor-pointer outline-none"
+              className="bg-transparent border-none text-sm font-bold text-gray-700 focus:ring-0 cursor-pointer outline-none w-full text-right"
               value={filtroCondominio}
               onChange={e => setFiltroCondominio(e.target.value)}
             >
-              <option value="Todos">Visão Global (Todos)</option>
-              <option value="Alpha Soluções">Matriz: Alpha Soluções</option>
-              {condominiosList.map(c => (
-                <option key={c.id} value={c.nome}>{c.nome}</option>
-              ))}
+              <option value="Todos">Visão Global</option>
+              <option value="Alpha Soluções">Alpha Soluções</option>
+              {condominiosList.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
             </select>
           </div>
 
-          <div className="flex bg-white rounded-lg p-1 shadow-sm border border-cream-200">
-            <button onClick={() => setActiveTab('plano')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='plano'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Plano de Contas</button>
-            <button onClick={() => setActiveTab('previsto')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='previsto'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Previsto x Realizado</button>
-            <button onClick={() => setActiveTab('simulador')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='simulador'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Simulador de Rateio</button>
+          <div className="flex bg-white rounded-lg p-1 shadow-sm border border-cream-200 w-full overflow-x-auto custom-scrollbar">
+            <button onClick={() => setActiveTab('plano')} className={`whitespace-nowrap px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='plano'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Plano de Contas</button>
+            <button onClick={() => setActiveTab('previsto')} className={`whitespace-nowrap px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='previsto'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Previsto x Realizado</button>
+            <button onClick={() => setActiveTab('simulador')} className={`whitespace-nowrap px-4 py-2 rounded-md text-sm font-semibold transition-colors ${activeTab==='simulador'?'bg-brand-50 text-brand-700':'text-gray-500 hover:text-gray-700'}`}>Simulador de Rateio</button>
           </div>
         </div>
       </div>
 
       {activeTab === 'plano' && (
         <div className="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
-          {/* ...mesmo código do plano... */}
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-bold text-gray-800">Modelo Contábil</h2>
             <button onClick={() => setIsModalOpen(true)} className="btn-primary">
               <Plus size={16} /> Nova Conta
             </button>
           </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {['Receita', 'Despesa'].map(tipo => (
               <div key={tipo}>
                 <h3 className={`font-bold mb-4 flex items-center gap-2 ${tipo === 'Receita' ? 'text-green-600' : 'text-red-600'}`}>
-                  {tipo === 'Receita' ? <TrendingUp size={18}/> : <PieChart size={18}/>}
-                  Grupo de {tipo}s
+                  {tipo === 'Receita' ? <TrendingUp size={18}/> : <PieChart size={18}/>} Grupo de {tipo}s
                 </h3>
                 <div className="flex flex-col gap-3">
                   {contas.filter(c => c.tipo === tipo).map(conta => (
@@ -237,7 +264,7 @@ export default function PlanoContas() {
                       <div>
                         <p className="font-semibold text-gray-800 text-sm">{conta.nome}</p>
                         <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                          {conta.participacaoOrcamento ? <span className="text-blue-600 font-medium">● Participa da Previsão</span> : <span className="text-gray-400">○ Não participa da Previsão</span>}
+                          {conta.participacaoOrcamento ? <span className="text-blue-600 font-medium">● Participa da Previsão</span> : <span className="text-gray-400">○ Não participa</span>}
                           {conta.isDefault && <span className="ml-2 bg-gray-200 text-gray-600 px-2 py-0.5 rounded text-[10px]">Padrão</span>}
                         </p>
                       </div>
@@ -257,17 +284,14 @@ export default function PlanoContas() {
 
       {activeTab === 'previsto' && (
         <div className="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
-          {/* ...mesmo código do balanço... */}
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <FileText size={20} className="text-gray-400"/>
-              Balanço Anual: {anoBase}
+              <FileText size={20} className="text-gray-400"/> Balanço Anual: {anoBase}
             </h2>
             <select className="input w-32" value={anoBase} onChange={e => setAnoBase(e.target.value)}>
               {[2023, 2024, 2025, 2026, 2027].map(a => <option key={a}>{a}</option>)}
             </select>
           </div>
-
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -300,36 +324,67 @@ export default function PlanoContas() {
       )}
 
       {activeTab === 'simulador' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-cream-200 p-6">
-          <div className="flex flex-col mb-8">
+        <div className="bg-white rounded-2xl shadow-sm border border-cream-200 p-6 flex flex-col gap-8">
+          <div className="flex flex-col">
             <h2 className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
-              <Calculator size={24} className="text-blue-600"/>
-              Motor de Rateio e Fração Ideal
+              <Calculator size={24} className="text-blue-600"/> Rateio & Segurança Financeira
             </h2>
-            <p className="text-gray-500 text-sm">Simule as cotas condominiais configurando o regime de rateio e as isenções. A meta mensal sugerida baseia-se na média do Balanço do ano selecionado.</p>
+            <p className="text-gray-500 text-sm max-w-3xl">Configure a estrutura do prédio, inadimplência e fundos específicos. O sistema calculará a cota exata (ordinária + extras) aplicando frações ideais ou cotas iguais, garantindo liquidez.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 bg-blue-50/50 p-6 rounded-xl border border-blue-100">
-            <div>
-              <label className="label text-blue-900">Meta Mensal a Ratear (R$)</label>
-              <input type="number" className="input bg-white" value={metaArrecadacao} onChange={e => setMetaArrecadacao(e.target.value)} />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Bloco 1: Base e Inadimplência */}
+            <div className="bg-gray-50 p-5 rounded-xl border border-cream-200 flex flex-col gap-4">
+              <h3 className="font-bold text-gray-700 flex items-center gap-2 text-sm"><Wallet size={16}/> 1. Base e Inadimplência</h3>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Meta Despesas Ordinárias (R$)</label>
+                <input type="number" className="input bg-white mt-1" value={metaArrecadacao} onChange={e => setMetaArrecadacao(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Receitas Acessórias / Abatimentos (R$)</label>
+                <input type="number" className="input bg-white mt-1 text-green-700 font-bold" value={receitasAcessorias} onChange={e => setReceitasAcessorias(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Margem de Inadimplência (%)</label>
+                <div className="relative mt-1">
+                  <input type="number" step="0.5" className="input bg-white pr-8" value={inadimplenciaPrevista} onChange={e => setInadimplenciaPrevista(e.target.value)} />
+                  <Percent size={14} className="absolute right-3 top-3 text-gray-400"/>
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="label text-blue-900">Tipo de Rateio</label>
-              <select className="input bg-white" value={tipoRateio} onChange={e => setTipoRateio(e.target.value)}>
-                <option value="Fração Ideal">Fração Ideal</option>
-                <option value="Cota Igual">Cota Igualitária</option>
-              </select>
+
+            {/* Bloco 2: Fundos e Reservas */}
+            <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100 flex flex-col gap-4">
+              <h3 className="font-bold text-brand-800 flex items-center gap-2 text-sm"><Shield size={16}/> 2. Fundos Extras</h3>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Fundo de Reserva Obrigatório (%)</label>
+                <div className="relative mt-1">
+                  <input type="number" step="0.5" className="input bg-white pr-8" value={fundoReservaPerc} onChange={e => setFundoReservaPerc(e.target.value)} />
+                  <Percent size={14} className="absolute right-3 top-3 text-gray-400"/>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">Incide sobre a cota ordinária (sem elevador).</p>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Fundo de Obras/Específico (R$ Total)</label>
+                <input type="number" className="input bg-white mt-1" value={fundoObras} onChange={e => setFundoObras(e.target.value)} />
+              </div>
             </div>
-            <div>
-              <label className="label text-blue-900">Custo Elevador / Manutenção (R$)</label>
-              <input type="number" className="input bg-white" value={custoElevador} onChange={e => setCustoElevador(e.target.value)} />
-            </div>
-            <div className="flex items-center pt-6">
-              <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-gray-700">
-                <input type="checkbox" className="w-5 h-5 text-blue-600 rounded" checked={isentarTerreo} onChange={e => setIsentarTerreo(e.target.checked)} />
-                Isentar aptos Térreo do Elevador
-              </label>
+
+            {/* Bloco 3: Estrutura do Prédio */}
+            <div className="bg-amber-50/50 p-5 rounded-xl border border-amber-100 flex flex-col gap-4">
+              <h3 className="font-bold text-amber-800 flex items-center gap-2 text-sm"><Building size={16}/> 3. Estrutura e Rateio</h3>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Base de Cálculo</label>
+                <select className="input bg-white mt-1 font-bold text-amber-900" value={tipoRateio} onChange={e => setTipoRateio(e.target.value)}>
+                  <option value="Fração Ideal">Por Fração Ideal</option>
+                  <option value="Cota Igual">Cota Igualitária</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Custo de Elevador / Manutenção (R$)</label>
+                <input type="number" className="input bg-white mt-1" value={custoElevador} onChange={e => setCustoElevador(e.target.value)} />
+                <p className="text-[10px] text-gray-400 mt-1">Use a tabela abaixo para especificar quais unidades <b>não pagam</b> essa taxa (ex: Térreo).</p>
+              </div>
             </div>
           </div>
 
@@ -337,67 +392,66 @@ export default function PlanoContas() {
             <div className="text-center p-12 bg-gray-50 rounded-xl border border-cream-100">
               <Users size={32} className="mx-auto text-gray-300 mb-2"/>
               <p className="text-gray-500 font-medium">Nenhuma unidade/morador cadastrado neste condomínio.</p>
-              <p className="text-xs text-gray-400 mt-1">O motor agrupa automaticamente as unidades com base no cadastro de Moradores.</p>
             </div>
           ) : (
             <div className="overflow-x-auto border border-cream-200 rounded-xl shadow-sm">
-              <table className="w-full text-left border-collapse bg-white">
+              <table className="w-full text-left border-collapse bg-white whitespace-nowrap">
                 <thead>
-                  <tr className="bg-gray-100 border-b border-cream-200">
-                    <th className="p-4 text-xs font-bold text-gray-500 uppercase">Unidade</th>
-                    <th className="p-4 text-xs font-bold text-gray-500 uppercase">Morador Principal</th>
-                    <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center">Fração Ideal (%)</th>
-                    <th className="p-4 text-xs font-bold text-gray-500 uppercase text-right">Tx Comum</th>
-                    <th className="p-4 text-xs font-bold text-gray-500 uppercase text-right">Tx Elevador</th>
-                    <th className="p-4 text-xs font-bold text-brand-700 uppercase text-right">Cota Mensal</th>
+                  <tr className="bg-gray-800 text-white border-b border-cream-200">
+                    <th className="p-3 text-xs font-bold uppercase">Unidade</th>
+                    <th className="p-3 text-xs font-bold uppercase text-center">Fração (%)</th>
+                    <th className="p-3 text-xs font-bold uppercase text-center" title="Desmarque para isentar do elevador">Elevador?</th>
+                    <th className="p-3 text-xs font-bold uppercase text-right text-gray-300">Cota Ordinária</th>
+                    <th className="p-3 text-xs font-bold uppercase text-right text-gray-300">F. Reserva</th>
+                    <th className="p-3 text-xs font-bold uppercase text-right text-gray-300">Obras/Extras</th>
+                    <th className="p-3 text-xs font-bold uppercase text-right text-gray-300">Elevador</th>
+                    <th className="p-3 text-xs font-bold uppercase text-right text-emerald-400">Total Mensal</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rateioCalculado.map((u, i) => (
-                    <tr key={u.key} className="border-b border-cream-100 hover:bg-blue-50/30 transition-colors">
-                      <td className="p-4 font-bold text-gray-800">
-                        {u.key} 
-                        {u.isTerreo && <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded uppercase">Térreo</span>}
+                    <tr key={u.key} className="border-b border-cream-100 hover:bg-gray-50/50 transition-colors">
+                      <td className="p-3">
+                        <p className="font-bold text-gray-800">{u.key} {u.isTerreo && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded">TÉRREO</span>}</p>
+                        <p className="text-[10px] text-gray-500 truncate max-w-[120px]">{u.titular}</p>
                       </td>
-                      <td className="p-4 text-sm text-gray-600">{u.titular}</td>
-                      <td className="p-4 text-center">
+                      <td className="p-3 text-center">
                         {tipoRateio === 'Cota Igual' ? (
-                          <span className="text-gray-400 text-xs">N/A</span>
+                          <span className="text-gray-300 text-xs">Igual</span>
                         ) : (
-                          <div className="flex justify-center items-center gap-1">
-                            <input 
-                              type="number" 
-                              step="0.01" 
-                              className="w-20 p-1 text-center border border-cream-200 rounded text-sm bg-gray-50 focus:bg-white"
-                              value={u.fracaoReal.toFixed(2)}
-                              onChange={e => handleFractionChange(u.key, e.target.value)}
-                            />
-                            <span className="text-xs text-gray-400">%</span>
-                          </div>
+                          <input 
+                            type="number" step="0.01" 
+                            className="w-16 p-1 text-center border border-cream-200 rounded text-xs bg-gray-50"
+                            value={u.fracaoReal.toFixed(2)}
+                            onChange={e => handleFractionChange(u.key, e.target.value)}
+                          />
                         )}
                       </td>
-                      <td className="p-4 text-right text-sm text-gray-500">
-                        R$ {u.taxaComum.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}
+                      <td className="p-3 text-center">
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 text-brand-600 rounded cursor-pointer"
+                          checked={!isencaoElevador[u.key]}
+                          onChange={() => handleToggleIsencao(u.key)}
+                          title="Desmarque para isentar"
+                        />
                       </td>
-                      <td className="p-4 text-right text-sm text-gray-500">
-                        R$ {u.taxaElevador.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}
-                      </td>
-                      <td className="p-4 text-right font-bold text-brand-700 text-base">
-                        R$ {u.totalMensal.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}
+                      <td className="p-3 text-right text-sm text-gray-600">R$ {u.taxaComum.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                      <td className="p-3 text-right text-sm text-gray-600">R$ {u.fundoReserva.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                      <td className="p-3 text-right text-sm text-gray-600">R$ {u.taxaObras.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                      <td className="p-3 text-right text-sm text-gray-600">R$ {u.taxaElevador.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                      <td className="p-3 text-right font-bold text-brand-700 text-base bg-brand-50/30">
+                        R$ {u.cotaTotalMensal.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}
                       </td>
                     </tr>
                   ))}
-                  <tr className="bg-gray-50 font-bold border-t-2 border-cream-200">
-                    <td className="p-4 text-right" colSpan="3">Total Simulação:</td>
-                    <td className="p-4 text-right text-gray-600">
-                      R$ {rateioCalculado.reduce((a,b)=>a+b.taxaComum,0).toLocaleString('pt-BR', {minimumFractionDigits:2})}
-                    </td>
-                    <td className="p-4 text-right text-gray-600">
-                      R$ {rateioCalculado.reduce((a,b)=>a+b.taxaElevador,0).toLocaleString('pt-BR', {minimumFractionDigits:2})}
-                    </td>
-                    <td className="p-4 text-right text-brand-800 text-lg">
-                      R$ {rateioCalculado.reduce((a,b)=>a+b.totalMensal,0).toLocaleString('pt-BR', {minimumFractionDigits:2})}
-                    </td>
+                  <tr className="bg-gray-800 text-white font-bold border-t-2 border-brand-500">
+                    <td className="p-4 text-right" colSpan="3">TOTAIS (Líquido Esperado):</td>
+                    <td className="p-4 text-right text-gray-300">R$ {rateioCalculado.reduce((a,b)=>a+b.taxaComum,0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</td>
+                    <td className="p-4 text-right text-gray-300">R$ {rateioCalculado.reduce((a,b)=>a+b.fundoReserva,0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</td>
+                    <td className="p-4 text-right text-gray-300">R$ {rateioCalculado.reduce((a,b)=>a+b.taxaObras,0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</td>
+                    <td className="p-4 text-right text-gray-300">R$ {rateioCalculado.reduce((a,b)=>a+b.taxaElevador,0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</td>
+                    <td className="p-4 text-right text-emerald-400 text-lg">R$ {rateioCalculado.reduce((a,b)=>a+b.cotaTotalMensal,0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</td>
                   </tr>
                 </tbody>
               </table>
@@ -409,7 +463,6 @@ export default function PlanoContas() {
       {isModalOpen && (
         <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
           <div className="modal-content max-w-md" onClick={e => e.stopPropagation()}>
-            {/* Modal de Nova Conta */}
             <div className="p-6 border-b border-cream-300">
               <h3 className="font-bold text-gray-800">Nova Conta Contábil</h3>
             </div>
