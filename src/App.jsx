@@ -93,7 +93,7 @@ function AuthorizedRoute({ module, children }) {
   }
 
   // Verifica se o usuário tem permissão para a rota específica
-  let hasPerm = user.permissoes?.includes(module) || user.role === 'Administrador' || module === 'pets' || module === 'mediacao'
+  let hasPerm = user.permissoes?.includes(module) || user.role === 'Administrador' || module === 'pets' || module === 'mediacao' || module === 'alpha-ai'
   if ((module === 'conferencias' || module === 'recrutamento') && user.permissoes?.includes('rh')) hasPerm = true
   
   if (!hasPerm) {
@@ -152,6 +152,7 @@ function AppRoutes() {
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<AuthorizedRoute module=""><span /></AuthorizedRoute>} />
           <Route path="dashboard" element={<AuthorizedRoute module="dashboard"><Dashboard /></AuthorizedRoute>} />
+          <Route path="alpha-ai" element={<AuthorizedRoute module="alpha-ai"><AlphaAIChat /></AuthorizedRoute>} />
           <Route path="whatsapp" element={<AuthorizedRoute module="whatsapp"><WhatsApp /></AuthorizedRoute>} />
           <Route path="email" element={<AuthorizedRoute module="email"><Email /></AuthorizedRoute>} />
           <Route path="encomendas" element={<AuthorizedRoute module="encomendas"><Encomendas /></AuthorizedRoute>} />
