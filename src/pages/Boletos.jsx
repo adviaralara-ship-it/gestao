@@ -42,8 +42,9 @@ function generateStaticPix(chavePix, valor, nome = "Condominio", cidade = "Sao P
 
 function BoletoPrintModal({ boleto, condominio, onClose }) {
   const [copied, setCopied] = useState(false)
-  const chavePixFinal = condominio?.chave_pix || 'alpha.solucoes@condominios.com.br'
-  const pixFinal = boleto.pix_emv || generateStaticPix(chavePixFinal, boleto.valor, condominio?.nome || "Alpha Solucoes", "BR")
+  const chavePixFinal = boleto.chave_pix || condominio?.chave_pix || 'alpha.solucoes@condominios.com.br'
+  const nomeCondo = condominio?.nome || boleto.condominio || "Condominio Residencial"
+  const pixFinal = boleto.pix_emv || generateStaticPix(chavePixFinal, boleto.valor, nomeCondo, "BR")
   const linhaDigitavel = boleto.linha || gerarLinhaDigitavel(boleto.apt, boleto.valor, boleto.vencimento)
   const valorFormatado = Number(boleto.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
   const dataVencFormatada = boleto.vencimento ? (boleto.vencimento.includes('-') ? boleto.vencimento.split('-').reverse().join('/') : boleto.vencimento) : '—'
@@ -255,6 +256,15 @@ function ModalBoleto({ data, onClose, onSave, moradores = [] }) {
             <select className="input" value={form.status} onChange={e=>set('status',e.target.value)}>
               <option>Pendente</option><option>Pago</option><option>Vencido</option>
             </select>
+          </div>
+
+          <div>
+            <label className="label">Condomínio</label>
+            <input className="input" value={form.condominio || ''} onChange={e=>set('condominio',e.target.value)} placeholder="Nome do condomínio"/>
+          </div>
+          <div>
+            <label className="label">Chave PIX para Recebimento</label>
+            <input className="input" value={form.chave_pix || ''} onChange={e=>set('chave_pix',e.target.value)} placeholder="CNPJ, E-mail, Celular ou Aleatória"/>
           </div>
 
           <div className="col-span-2 mt-2 pt-4 border-t border-cream-200">
@@ -689,6 +699,39 @@ export default function Boletos() {
       {/* ── ABA BOLETOS ─────────────────────────────────────────────── */}
       {tab==='boletos' && (
         <>
+          {/* Banner de Chave PIX Ativa do Condomínio Selecionado */}
+          {condoFilter !== 'Todos' && (
+            <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-lg">
+                  💠
+                </div>
+                <div>
+                  <p className="text-xs font-black text-emerald-900">
+                    Chave PIX de Recebimento do Condomínio: <span className="underline">{condoFilter}</span>
+                  </p>
+                  <p className="text-xs text-emerald-700 font-mono font-bold mt-0.5">
+                    {allCondominios.find(c => c.nome === condoFilter)?.chave_pix || '⚠️ Nenhuma chave cadastrada — Clique ao lado para definir'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  const condoDoc = allCondominios.find(c => c.nome === condoFilter)
+                  if (!condoDoc) return
+                  const novaChave = prompt(`Digite a Chave PIX do condomínio "${condoFilter}" (CNPJ, E-mail, Celular ou Aleatória):`, condoDoc.chave_pix || '')
+                  if (novaChave !== null) {
+                    updateCondominio(condoDoc.id, { chave_pix: novaChave.trim() })
+                    alert(`✅ Chave PIX do condomínio "${condoFilter}" atualizada com sucesso!`)
+                  }
+                }}
+                className="btn-secondary py-2 px-3 text-xs bg-white text-emerald-900 font-black border-emerald-300 hover:bg-emerald-100 shrink-0 shadow-sm flex items-center gap-1.5"
+              >
+                ✏️ Alterar Chave PIX do Condomínio
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[{label:'Total',val:boletos.length,color:'text-brand-700'},{label:'Pagos',val:pago,color:'text-emerald-600'},{label:'Pendentes',val:pendente,color:'text-amber-600'},{label:'Vencidos',val:vencido,color:'text-red-600'}].map(s=>(
               <div key={s.label} className="card text-center">
