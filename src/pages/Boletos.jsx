@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { FileText, Plus, Download, DollarSign, Printer, CheckCircle2, Clock, AlertCircle, Trash2, Edit2, X, MessageSquare, Sparkles, Check, TrendingUp, Bell, Building, Upload } from 'lucide-react'
+import { FileText, Plus, Download, DollarSign, Printer, CheckCircle2, Clock, AlertCircle, Trash2, Edit2, X, MessageSquare, Sparkles, Check, TrendingUp, Bell, Building, Upload, Copy, Share2, QrCode } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
@@ -40,45 +41,177 @@ function generateStaticPix(chavePix, valor, nome = "Condominio", cidade = "Sao P
 }
 
 function BoletoPrintModal({ boleto, condominio, onClose }) {
-  const pixFinal = boleto.pix_emv || generateStaticPix(condominio?.chave_pix, boleto.valor, condominio?.nome || "Condominio", "BR");
+  const [copied, setCopied] = useState(false)
+  const chavePixFinal = condominio?.chave_pix || 'alpha.solucoes@condominios.com.br'
+  const pixFinal = boleto.pix_emv || generateStaticPix(chavePixFinal, boleto.valor, condominio?.nome || "Alpha Solucoes", "BR")
+  const linhaDigitavel = boleto.linha || gerarLinhaDigitavel(boleto.apt, boleto.valor, boleto.vencimento)
+  const valorFormatado = Number(boleto.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+  const dataVencFormatada = boleto.vencimento ? (boleto.vencimento.includes('-') ? boleto.vencimento.split('-').reverse().join('/') : boleto.vencimento) : '—'
+
+  const handleCopyPix = async () => {
+    try {
+      await navigator.clipboard.writeText(pixFinal)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 3000)
+    } catch(e) {
+      prompt("Copie o código PIX Copia e Cola abaixo:", pixFinal)
+    }
+  }
+
+  const shareWhatsApp = () => {
+    const msg = `*Alpha Soluções Condominiais*\nOlá *${boleto.morador}* (Apt ${boleto.apt}), segue sua fatura condominial referente a *${boleto.competencia || 'Mês Atual'}*:\n\n💰 *Valor:* R$ ${valorFormatado}\n📅 *Vencimento:* ${dataVencFormatada}\n\n💠 *PIX Copia e Cola:*\n\`\`\`${pixFinal}\`\`\`\n\nAbra o aplicativo do seu banco, escolha *PIX Copia e Cola* e cole o código acima para efetuar o pagamento instantâneo.`
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-2xl" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">Boleto – {boleto.morador}</h3>
-          <button onClick={onClose}><X size={18} className="text-gray-400 hover:text-gray-700" /></button>
-        </div>
-        <div className="p-6">
-          <div className="border-2 border-gray-200 rounded-xl overflow-hidden font-mono">
-            <div className="bg-brand-700 text-white p-4 flex items-center justify-between">
-              <div><p className="font-black text-lg">Alpha Soluções Condominiais</p><p className="text-xs opacity-80">CNPJ: 00.000.000/0001-00</p></div>
-              <div className="text-right"><p className="text-xs opacity-80">Banco</p><p className="text-2xl font-black">341-7</p></div>
-            </div>
-            <div className="p-4 bg-white grid grid-cols-2 gap-4 text-sm border-b border-gray-200">
-              <div><p className="text-xs text-gray-400">Sacado</p><p className="font-bold text-gray-800">{boleto.morador}</p></div>
-              <div><p className="text-xs text-gray-400">Unidade</p><p className="font-bold text-gray-800">Apt {boleto.apt}</p></div>
-              <div><p className="text-xs text-gray-400">Competência</p><p className="font-bold text-gray-800">{boleto.competencia}</p></div>
-              <div><p className="text-xs text-gray-400">Vencimento</p><p className="font-bold text-gray-800">{boleto.vencimento}</p></div>
-              <div><p className="text-xs text-gray-400">Descrição</p><p className="font-bold text-gray-800">Taxa de Condomínio</p></div>
-              <div><p className="text-xs text-gray-400">Valor</p><p className="font-black text-brand-700 text-lg">R$ {Number(boleto.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</p></div>
-            </div>
-            {pixFinal ? (
-              <div className="p-4 bg-gray-50"><p className="text-xs text-gray-500 mb-2">Pix Copia e Cola:</p><p className="text-sm font-bold text-gray-800 tracking-wider break-all">{pixFinal}</p></div>
-            ) : (
-              <div className="p-4 bg-gray-50"><p className="text-xs text-gray-500 mb-2">Código de Barras:</p><p className="text-sm font-bold text-gray-800 tracking-wider break-all">{boleto.linha || gerarLinhaDigitavel(boleto.apt, boleto.valor, boleto.vencimento)}</p></div>
-            )}
-            <div className="p-4 bg-white flex justify-center"><div className="flex gap-px h-12">{Array.from({length:80}).map((_,i)=><div key={i} className="bg-gray-900" style={{width:Math.random()>0.5?3:1}}/>)}</div></div>
-            <div className="p-3 bg-gray-50 text-center text-xs text-gray-400">Este é um recibo oficial emitido via Alpha Soluções Condominiais © 2025</div>
+      <div className="modal-content max-w-3xl p-0 overflow-hidden bg-slate-100 rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
+        
+        {/* Barra superior de ações */}
+        <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
+          <div className="flex items-center gap-2">
+            <span className="text-emerald-400 font-mono text-sm font-bold">💠 Boleto PIX Condominial</span>
+            <span className="text-xs text-gray-400">• {condominio?.nome || 'Condomínio'}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={shareWhatsApp} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm">
+              <Share2 size={14} /> WhatsApp
+            </button>
+            <button onClick={() => window.print()} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm">
+              <Printer size={14} /> Imprimir / Salvar PDF
+            </button>
+            <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-white rounded-lg"><X size={18} /></button>
           </div>
         </div>
-        <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
-          <button onClick={onClose} className="btn-secondary">Fechar</button>
-          {boleto.url ? (
-             <a href={boleto.url} target="_blank" rel="noreferrer" className="btn-primary"><Printer size={14}/>Imprimir PDF</a>
-          ) : (
-             <button onClick={()=>window.print()} className="btn-primary"><Printer size={14}/>Imprimir</button>
-          )}
+
+        {/* Corpo do Boleto / Fatura (Formatado para tela e folha A4) */}
+        <div className="p-6 md:p-8 bg-white font-sans text-gray-900 overflow-y-auto max-h-[85vh]">
+          
+          {/* Cabeçalho Bancário Oficial */}
+          <div className="border-b-2 border-slate-900 pb-3 mb-4 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-brand-700 text-white flex items-center justify-center font-black text-xl shadow-sm">
+                🏢
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-slate-900 leading-tight">ALPHA SOLUÇÕES CONDOMINIAIS</h2>
+                <p className="text-[11px] text-gray-500 font-bold">Gestão & Administração de Condomínios</p>
+                <p className="text-[10px] text-gray-400 font-mono">CNPJ: 00.000.000/0001-00</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1 rounded-full uppercase tracking-wider">
+                Fatura / Boleto PIX
+              </span>
+              <p className="text-xs text-gray-400 font-mono mt-1">Recibo do Sacado</p>
+            </div>
+          </div>
+
+          {/* Dados do Condomínio e Morador */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-gray-200 text-xs mb-4">
+            <div>
+              <span className="text-[10px] font-bold text-gray-400 uppercase">Condomínio Beneficiário</span>
+              <p className="font-black text-gray-900 text-sm">{condominio?.nome || boleto.condominio || 'Condomínio Residencial'}</p>
+              <p className="text-gray-500">{condominio?.endereco || 'Endereço Cadastrado'}</p>
+              <p className="text-emerald-700 font-mono font-bold mt-1">Chave Pix: {chavePixFinal}</p>
+            </div>
+
+            <div>
+              <span className="text-[10px] font-bold text-gray-400 uppercase">Pagador / Morador</span>
+              <p className="font-black text-gray-900 text-sm">{boleto.morador}</p>
+              <p className="text-gray-700 font-bold">Unidade: {boleto.apt ? `Apt ${boleto.apt}` : '—'}</p>
+              <p className="text-gray-400 font-mono">Competência: {boleto.competencia || 'Mês Vigente'}</p>
+            </div>
+
+            <div className="bg-emerald-50/80 p-3 rounded-xl border border-emerald-200 flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-black text-emerald-800 uppercase">Data de Vencimento</span>
+                <p className="text-base font-black text-emerald-900">{dataVencFormatada}</p>
+              </div>
+              <div className="mt-2">
+                <span className="text-[10px] font-black text-emerald-800 uppercase">Valor Total do Documento</span>
+                <p className="text-2xl font-black text-emerald-700">R$ {valorFormatado}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Demonstrativo da Taxa Condominial */}
+          <div className="border border-gray-200 rounded-2xl overflow-hidden mb-5">
+            <div className="bg-slate-100 p-2.5 px-4 font-bold text-xs text-gray-700 border-b border-gray-200">
+              Demonstrativo de Composição da Cobrança
+            </div>
+            <div className="p-4 divide-y divide-gray-100 text-xs">
+              <div className="py-2 flex justify-between">
+                <span className="text-gray-700 font-medium">Taxa Condominial Ordinária (Manutenção, Limpeza, Portaria)</span>
+                <span className="font-bold text-gray-900">R$ {(Number(boleto.valor || 0) * 0.9).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="py-2 flex justify-between">
+                <span className="text-gray-700 font-medium">Fundo de Reserva (10%)</span>
+                <span className="font-bold text-gray-900">R$ {(Number(boleto.valor || 0) * 0.1).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="py-2.5 flex justify-between font-black text-sm bg-slate-50 px-2 rounded-lg mt-1 text-slate-900">
+                <span>VALOR TOTAL COBRADO</span>
+                <span className="text-emerald-700">R$ {valorFormatado}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ÁREA CENTRAL PIX & QR CODE */}
+          <div className="bg-gradient-to-br from-emerald-50 via-teal-50 to-slate-50 p-6 rounded-3xl border-2 border-emerald-400 shadow-sm flex flex-col md:flex-row items-center gap-6 mb-5">
+            
+            {/* QR Code */}
+            <div className="flex flex-col items-center shrink-0">
+              <div className="bg-white p-3 rounded-2xl border-2 border-emerald-500 shadow-md">
+                <QRCodeSVG value={pixFinal} size={150} level="H" includeMargin={false} />
+              </div>
+              <span className="text-[10px] font-black uppercase text-emerald-800 mt-2 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                QR Code PIX Instantâneo
+              </span>
+            </div>
+
+            {/* Instruções e Copia e Cola */}
+            <div className="flex-1 text-center md:text-left">
+              <div className="flex items-center gap-2 mb-1 justify-center md:justify-start">
+                <QrCode size={18} className="text-emerald-600" />
+                <h4 className="font-black text-gray-900 text-sm">Pague em 1 segundo via PIX no seu Banco</h4>
+              </div>
+              <p className="text-xs text-gray-600 leading-relaxed mb-3">
+                1. Abra o aplicativo do seu banco.<br />
+                2. Aponte a câmera para o QR Code ao lado <b>OU</b> clique no botão abaixo para copiar o código.
+              </p>
+
+              {/* Botão Copiar Pix */}
+              <button
+                onClick={handleCopyPix}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-95"
+              >
+                {copied ? <><Check size={16} /> Código PIX Copiado com Sucesso!</> : <><Copy size={16} /> 📋 Copiar Código PIX Copia e Cola</>}
+              </button>
+
+              <p className="text-[10px] text-gray-400 font-mono mt-2 truncate bg-white/80 p-1.5 rounded-lg border border-gray-200">
+                {pixFinal}
+              </p>
+            </div>
+          </div>
+
+          {/* Linha Digitável e Código de Barras Tradicional */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-gray-200">
+            <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+              <span className="font-bold">Linha Digitável / Código de Compensação:</span>
+              <span className="font-mono">{linhaDigitavel}</span>
+            </div>
+            <div className="flex justify-center mt-3">
+              <div className="flex gap-px h-10 w-full max-w-md justify-center">
+                {Array.from({ length: 90 }).map((_, i) => (
+                  <div key={i} className="bg-gray-900" style={{ width: (i % 3 === 0 ? 3 : i % 5 === 0 ? 4 : 1.5) }} />
+                ))}
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-400 text-center mt-2">
+              Instruções: Pagamento com compensação bancária e baixa automática. Em caso de dúvidas, contate a administração Alpha.
+            </p>
+          </div>
+
         </div>
       </div>
     </div>
