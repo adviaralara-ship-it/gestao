@@ -44,7 +44,8 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
   const [copied, setCopied] = useState(false)
   const chavePixFinal = boleto.chave_pix || condominio?.chave_pix || 'alpha.solucoes@condominios.com.br'
   const nomeCondo = condominio?.nome || boleto.condominio || "Condominio Residencial"
-  const pixFinal = boleto.pix_emv || generateStaticPix(chavePixFinal, boleto.valor, nomeCondo, "BR")
+  // Sempre gera o PIX com o valor atualizado do boleto para garantir que qualquer alteração de valor seja refletida
+  const pixFinal = generateStaticPix(chavePixFinal, Number(boleto.valor || 0), nomeCondo, "BR")
   const linhaDigitavel = boleto.linha || gerarLinhaDigitavel(boleto.apt, boleto.valor, boleto.vencimento)
   const valorFormatado = Number(boleto.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
   const dataVencFormatada = boleto.vencimento ? (boleto.vencimento.includes('-') ? boleto.vencimento.split('-').reverse().join('/') : boleto.vencimento) : '—'
@@ -311,6 +312,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
   
   const condoSelecionado = condominios.find(c => c.nome === condoNome)
   const [chavePix, setChavePix] = useState(condoSelecionado?.chave_pix || '')
+  const [valoresCustom, setValoresCustom] = useState({})
 
   useEffect(() => {
     const c = condominios.find(c => c.nome === condoNome)
@@ -337,10 +339,14 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
     }
   }
 
+  const handleCustomValChange = (id, val) => {
+    setValoresCustom(prev => ({ ...prev, [id]: val }))
+  }
+
   const handleGerar = () => {
-    const valorNum = parseFloat(valorStr.replace(/\./g, '').replace(',', '.')) || 0
-    if (valorNum <= 0) {
-      alert("Por favor, informe um valor válido para a taxa condominial.")
+    const valorPadraoNum = parseFloat(valorStr.replace(/\./g, '').replace(',', '.')) || 0
+    if (valorPadraoNum <= 0) {
+      alert("Por favor, informe um valor válido para a taxa condominial padrão.")
       return
     }
     if (!vencimento) {
@@ -354,20 +360,25 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
 
     const listaParaCriar = moradoresDoCondo
       .filter(m => selecionados.includes(m.id))
-      .map(m => ({
-        morador: m.nome,
-        apt: m.apt || m.unidade || '',
-        condominio: condoNome,
-        competencia,
-        vencimento,
-        valor: valorNum,
-        chave_pix: chavePix,
-        status: 'Pendente',
-        emitido: true,
-        linha: gerarLinhaDigitavel(m.apt || '101', valorNum, vencimento),
-        pix_emv: generateStaticPix(chavePix, valorNum, condoNome, "BR"),
-        _createdAt: new Date().toISOString()
-      }))
+      .map(m => {
+        const valMoradorStr = valoresCustom[m.id] !== undefined ? valoresCustom[m.id] : valorStr
+        const valFinal = parseFloat(String(valMoradorStr).replace(/\./g, '').replace(',', '.')) || valorPadraoNum
+
+        return {
+          morador: m.nome,
+          apt: m.apt || m.unidade || '',
+          condominio: condoNome,
+          competencia,
+          vencimento,
+          valor: valFinal,
+          chave_pix: chavePix,
+          status: 'Pendente',
+          emitido: true,
+          linha: gerarLinhaDigitavel(m.apt || '101', valFinal, vencimento),
+          pix_emv: generateStaticPix(chavePix, valFinal, condoNome, "BR"),
+          _createdAt: new Date().toISOString()
+        }
+      })
 
     onSave(listaParaCriar)
   }
@@ -380,7 +391,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
             <h3 className="font-black text-lg flex items-center gap-2">
               📦 Gerar Boletos do Mês em Lote
             </h3>
-            <p className="text-xs text-gray-400">Emissão em massa com QR Code PIX individual para cada morador</p>
+            <p className="text-xs text-gray-400">Emissão em massa com QR Code PIX individual e valores editáveis por morador</p>
           </div>
           <button onClick={onClose}><X size={20} className="text-gray-400 hover:text-white" /></button>
         </div>
@@ -403,7 +414,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
           {/* Dados da Cobrança */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="label text-xs font-black">Valor da Cota (R$) *</label>
+              <label className="label text-xs font-black">Valor Padrão da Cota (R$) *</label>
               <input className="input text-sm font-bold text-emerald-700 w-full" value={valorStr} onChange={e => setValorStr(e.target.value)} placeholder="Ex: 450,00" />
             </div>
             <div>
@@ -416,7 +427,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
             </div>
           </div>
 
-          {/* Lista de Moradores com Checkboxes */}
+          {/* Lista de Moradores com Checkboxes e Edição de Valor Individual */}
           <div className="border border-gray-200 rounded-2xl overflow-hidden mt-2">
             <div className="p-3 bg-slate-100 border-b border-gray-200 flex items-center justify-between">
               <span className="text-xs font-black text-gray-800">
@@ -433,9 +444,11 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
               ) : (
                 moradoresDoCondo.map(m => {
                   const isChecked = selecionados.includes(m.id)
+                  const valMorador = valoresCustom[m.id] !== undefined ? valoresCustom[m.id] : valorStr
+
                   return (
-                    <label key={m.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl cursor-pointer">
-                      <div className="flex items-center gap-3">
+                    <div key={m.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl gap-3">
+                      <label className="flex items-center gap-3 cursor-pointer flex-1">
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -446,11 +459,19 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
                           <p className="font-bold text-gray-900 text-xs">{m.nome}</p>
                           <p className="text-[10px] text-gray-500">Unidade / Apt: <b>{m.apt || m.unidade || '—'}</b> {m.bloco ? `• Bloco ${m.bloco}` : ''}</p>
                         </div>
+                      </label>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-xs font-bold text-gray-400">R$</span>
+                        <input
+                          type="text"
+                          value={valMorador}
+                          onChange={e => handleCustomValChange(m.id, e.target.value)}
+                          className="w-24 px-2 py-1 border border-gray-300 rounded-lg text-xs font-black text-emerald-700 text-right bg-white focus:ring-1 focus:ring-emerald-500"
+                          placeholder="0,00"
+                        />
                       </div>
-                      <span className="text-xs font-bold text-emerald-700 font-mono">
-                        R$ {valorStr || '0,00'}
-                      </span>
-                    </label>
+                    </div>
                   )
                 })
               )}
@@ -668,10 +689,21 @@ export default function Boletos() {
   const marcarPago  = async b => updateItem(b.id,{...b,status:'Pago'})
   
   const handleSaveBoleto = async form => {
-    const clean = {...form,valor:Number(form.valor)}
-    if (!clean.emitido) { clean.linha = ''; clean.url = ''; clean.pix_emv = ''; }
-    if (modal!=='new') await updateItem(modal.id,clean); else await addItem(clean)
+    const val = Number(form.valor) || 0
+    const mor = moradores.find(m => m.nome === form.morador)
+    const condoDoc = allCondominios.find(c => c.nome === (form.condominio || mor?.condominio))
+    const chavePix = form.chave_pix || condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
+    
+    const clean = {
+      ...form,
+      valor: val,
+      linha: form.linha || gerarLinhaDigitavel(form.apt || '101', val, form.vencimento),
+      pix_emv: generateStaticPix(chavePix, val, form.condominio || condoDoc?.nome || "Alpha Solucoes", "BR"),
+      emitido: true
+    }
+    if (modal !== 'new') await updateItem(modal.id, clean); else await addItem(clean)
     setModal(null)
+    alert("✅ Boleto salvo com sucesso! O novo valor já está atualizado na fatura e no PIX.")
   }
   
   const gerarSegundaVia = async b => {
