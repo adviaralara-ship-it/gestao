@@ -102,11 +102,12 @@ async function fetchUserProfile(firebaseUser) {
           permissoes: userPerms,
           condominio: data.condominio || '',
           bloco: data.bloco || '',
-          unidade: data.unidade || '',
+          unidade: data.unidade || data.apt || '',
+          apt: data.apt || data.unidade || '',
         }
     }
 
-    // Fallback: busca por email
+    // Fallback: busca por email na coleção usuarios
     const q = query(collection(db, 'usuarios'), where('email', '==', emailLower), where('ativo', '==', true))
     const qSnap = await getDocs(q)
     if (!qSnap.empty) {
@@ -136,7 +137,27 @@ async function fetchUserProfile(firebaseUser) {
         permissoes: userPerms,
         condominio: data.condominio || '',
         bloco: data.bloco || '',
-        unidade: data.unidade || '',
+        unidade: data.unidade || data.apt || '',
+        apt: data.apt || data.unidade || '',
+      }
+    }
+
+    // Fallback 2: busca por email na coleção moradores
+    const qMor = query(collection(db, 'moradores'), where('email', '==', emailLower))
+    const qMorSnap = await getDocs(qMor)
+    if (!qMorSnap.empty) {
+      const morDoc = qMorSnap.docs[0]
+      const morData = morDoc.data()
+      return {
+        id: morDoc.id,
+        nome: morData.nome || firebaseUser.displayName || 'Morador',
+        email: emailLower,
+        role: 'Morador',
+        permissoes: moradorPerms,
+        condominio: morData.condominio || '',
+        bloco: morData.bloco || '',
+        unidade: morData.apt || morData.unidade || '',
+        apt: morData.apt || morData.unidade || '',
       }
     }
   } catch (e) {
