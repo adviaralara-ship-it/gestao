@@ -27,6 +27,7 @@ const modulosMorador = [
   { icon: '🗳️', label: 'Assembleias & Votação' },
   { icon: '🚗', label: 'Cadastro de Veículos' },
   { icon: '👥', label: 'Autorização de Visitantes' },
+  { icon: '📹', label: 'Câmeras de Segurança' },
   { icon: '📊', label: 'Prestação de Contas' },
 ]
 

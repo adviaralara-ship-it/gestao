@@ -304,7 +304,7 @@ export default function Dashboard() {
         {/* Atalhos Rápidos para o Morador */}
         <div className="bg-white p-6 rounded-2xl border border-pale-300 shadow-sm">
           <h3 className="font-bold text-gray-900 text-sm mb-4">Serviços Rápidos do Condomínio</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-3 text-center">
             <button
               onClick={() => navigate('/veiculos')}
               className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
@@ -319,6 +319,14 @@ export default function Dashboard() {
             >
               <QrCode size={22} className="text-gray-600 group-hover:text-brand-600" />
               <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Autorizar Visitante</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/cameras')}
+              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <Camera size={22} className="text-gray-600 group-hover:text-brand-600" />
+              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Câmeras CFTV</span>
             </button>
 
             <button

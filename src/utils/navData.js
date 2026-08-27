@@ -143,6 +143,7 @@ export function getFilteredNavGroups(user) {
           { to: '/assembleias', label: 'Assembleias & Votação',     icon: Gavel },
           { to: '/veiculos',    label: 'Cadastro de Veículos',      icon: Car },
           { to: '/visitantes',  label: 'Autorizar Visitantes',      icon: QrCode },
+          { to: '/cameras',     label: 'Câmeras de Segurança',      icon: Camera },
           { to: '/relatorios',  label: 'Prestação de Contas',       icon: FileSpreadsheet }
         ]
       }

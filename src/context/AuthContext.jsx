@@ -18,7 +18,7 @@ export const porteiroPerms   = ['dashboard','moradores','portaria','veiculos','c
 export const portariaRemotaPerms = ['dashboard','cameras','visitantes','ocorrencias','reservas','portaria','veiculos']
 export const moradorPerms = [
   'dashboard', 'alpha-ai', 'boletos', 'documentos', 'mural',
-  'ocorrencias', 'reservas', 'assembleias', 'veiculos', 'visitantes', 'relatorios'
+  'ocorrencias', 'reservas', 'assembleias', 'veiculos', 'visitantes', 'cameras', 'relatorios'
 ]
 
 // ─── Perfis de usuários master (dados de perfil, SEM senha) ───────────────
