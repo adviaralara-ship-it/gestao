@@ -6,14 +6,29 @@ import { db } from '../firebase'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import QRCode from 'react-qr-code'
 
-// Chave da API e InstÃ¢ncia do Gemini
+// Chave da API e Instância do Gemini
 const API_KEY = "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
 const genAI = new GoogleGenerativeAI(API_KEY)
 const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
 
+// Função auxiliar para sanitizar textos corrompidos por encoding UTF-8 antigo
+const fixEncoding = (str) => {
+  if (!str || typeof str !== 'string') return str
+  return str
+    .replace(/OlÃ¡/g, 'Olá')
+    .replace(/Olï¿½/g, 'Olá')
+    .replace(/condomÃ­nio/g, 'condomínio')
+    .replace(/VocÃª/g, 'Você')
+    .replace(/vocÃª/g, 'você')
+    .replace(/estÃ¡/g, 'está')
+    .replace(/usuÃ¡rio/g, 'usuário')
+    .replace(/AÃ‡ÃƒO/g, 'AÇÃO')
+    .replace(/CONDOMÃ NIO/g, 'CONDOMÍNIO')
+}
+
 // Componente interno para processar e renderizar os "Widgets" de Ação no meio da mensagem
 const RenderMessage = ({ message, user }) => {
-  let text = message.text
+  let text = fixEncoding(message.text)
 
   // Ocorrência
   const matchOcorrencia = text.match(/\[CRIAR_OCORRENCIA:(.*?)\]/)
@@ -44,7 +59,7 @@ const RenderMessage = ({ message, user }) => {
     const cleanText = text.replace(/\[.*?\]/g, '').replace(/\*/g, '')
     const utterance = new SpeechSynthesisUtterance(cleanText)
     utterance.lang = 'pt-BR'
-    utterance.pitch = 1.1 // Voz um pouco mais animada
+    utterance.pitch = 1.1
     utterance.rate = 1.05
     
     utterance.onend = () => setIsPlaying(false)
@@ -99,15 +114,12 @@ const RenderMessage = ({ message, user }) => {
         espaco: espaco,
         data: dataStr,
         horario: horarioStr,
-        pessoas: '',
         status: 'Pendente',
-        uid: user.uid || user.id,
         _createdAt: serverTimestamp()
       })
       
-      // Notificação
       await addDoc(collection(db,'notificacoes'),{
-        text:`[${user.condominio}] Nova Reserva (Via AI): ${espaco} - Pendente Aprovação`,
+        text:`[${user.condominio}] Nova Reserva (Via AI): ${espaco} por ${user.nome}`,
         time:new Date().toISOString(), tipo:'reserva', lida:false, condominio: user.condominio, _createdAt:serverTimestamp()
       })
       setActionStatus('done')
@@ -118,51 +130,72 @@ const RenderMessage = ({ message, user }) => {
   }
 
   return (
-    <div className={`p-3 rounded-2xl max-w-[85%] shadow-sm relative ${message.role === 'user' ? 'bg-brand-600 text-white rounded-br-none ml-auto' : 'bg-white border border-cream-200 text-gray-700 rounded-bl-none mr-auto'}`}>
-      <p className="text-sm whitespace-pre-wrap leading-relaxed">{text}</p>
-      
-      {message.role === 'model' && (
-        <div className="mt-2 pt-2 border-t border-cream-100 flex justify-end">
-          <button 
-            onClick={handleSpeak} 
-            className="flex items-center gap-1 p-1 px-2 bg-cream-50 rounded-lg text-gray-500 hover:text-brand-600 hover:bg-brand-50 transition-all text-[10px] font-medium"
-            title="Ouvir resposta"
-          >
-            <Volume2 size={12} className={isPlaying ? 'text-brand-600 animate-pulse' : ''} />
-            {isPlaying ? 'Ouvindo...' : 'Ouvir resposta'}
-          </button>
-        </div>
-      )}
-      
-      {/* Widget de Ocorrência */}
+    <div className="flex flex-col gap-2">
+      <div className="whitespace-pre-wrap leading-relaxed text-sm">
+        {text}
+      </div>
+
+      {/* Widget Interativo de Criação de Ocorrência */}
       {matchOcorrencia && (
-        <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-xl">
-          <p className="text-xs font-bold text-red-800 mb-2 flex items-center gap-1"><Zap size={14}/> Abertura de Ocorrência</p>
-          <p className="text-xs text-red-700 mb-3">{ocorrenciaDesc}</p>
+        <div className="mt-3 p-4 bg-brand-50 border border-brand-200 rounded-xl flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-brand-700 font-bold text-xs uppercase tracking-wider">
+            <AlertCircle size={16} /> Ação Detectada: Registrar Ocorrência
+          </div>
+          <p className="text-xs text-gray-700 font-medium bg-white p-2.5 rounded-lg border border-brand-100">
+            "{ocorrenciaDesc}"
+          </p>
           {actionStatus === 'done' ? (
-            <div className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={14}/> Ocorrência Registrada!</div>
+            <div className="flex items-center gap-1.5 text-xs text-green-600 font-bold bg-green-50 p-2 rounded-lg border border-green-200">
+              <CheckCircle size={16} /> Ocorrência enviada para a Administração!
+            </div>
           ) : (
-            <button onClick={handleCriarOcorrencia} disabled={actionStatus==='loading'} className="btn-primary py-1.5 px-3 text-xs w-full justify-center bg-red-600 hover:bg-red-700 border-none">
-              {actionStatus === 'loading' ? 'Registrando...' : 'Confirmar e Abrir Chamado'}
+            <button 
+              onClick={handleCriarOcorrencia}
+              disabled={actionStatus === 'loading'}
+              className="btn-primary text-xs py-2 px-3 flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 w-full"
+            >
+              {actionStatus === 'loading' ? 'Registrando...' : 'Confirmar e Enviar para o Síndico'}
             </button>
           )}
         </div>
       )}
 
-      {/* Widget de Reserva */}
+      {/* Widget Interativo de Reserva de Espaço */}
       {matchReserva && (
-        <div className="mt-3 p-3 bg-brand-50 border border-brand-100 rounded-xl">
-          <p className="text-xs font-bold text-brand-800 mb-2 flex items-center gap-1"><Zap size={14}/> Pré-Reserva Gerada</p>
-          <p className="text-xs text-brand-700 mb-3">{reservaDetails}</p>
+        <div className="mt-3 p-4 bg-purple-50 border border-purple-200 rounded-xl flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-purple-700 font-bold text-xs uppercase tracking-wider">
+            <Calendar size={16} /> Ação Detectada: Pré-Reserva de Espaço
+          </div>
+          <p className="text-xs text-gray-700 font-medium bg-white p-2.5 rounded-lg border border-purple-100">
+            "{reservaDetails}"
+          </p>
           {actionStatus === 'done' ? (
-            <div className="flex flex-col items-center gap-2 mt-2 pt-2 border-t border-brand-200">
-              <div className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle size={14}/> Pedido de reserva enviado para aprovação!</div>
+            <div className="flex items-center gap-1.5 text-xs text-green-600 font-bold bg-green-50 p-2 rounded-lg border border-green-200">
+              <CheckCircle size={16} /> Solicitação de Reserva Enviada!
             </div>
           ) : (
-            <button onClick={handleCriarReserva} disabled={actionStatus==='loading'} className="btn-primary py-1.5 px-3 text-xs w-full justify-center">
-              {actionStatus === 'loading' ? 'Enviando...' : 'Confirmar Pedido de Reserva'}
+            <button 
+              onClick={handleCriarReserva}
+              disabled={actionStatus === 'loading'}
+              className="btn-primary text-xs py-2 px-3 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 w-full"
+            >
+              {actionStatus === 'loading' ? 'Solicitando...' : 'Confirmar Solicitação de Reserva'}
             </button>
           )}
+        </div>
+      )}
+
+      {/* Botão de Ouvir Mensagem */}
+      {message.role === 'model' && (
+        <div className="flex justify-end mt-1">
+          <button 
+            onClick={handleSpeak}
+            className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-brand-600 transition-colors"
+            title="Ouvir mensagem"
+          >
+            <Volume2 size={13} className={isPlaying ? "text-brand-600 animate-pulse" : ""} />
+            <span>{isPlaying ? 'Parar áudio' : 'Ouvir resposta'}</span>
+          </button>
         </div>
       )}
     </div>
@@ -171,12 +204,11 @@ const RenderMessage = ({ message, user }) => {
 
 export default function AlphaAIChat() {
   const { user } = useAuth()
-  
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef(null)
-  
+
   // Base de Conhecimento
   const [knowledgeBase, setKnowledgeBase] = useState("")
 
@@ -207,10 +239,13 @@ export default function AlphaAIChat() {
     if (!chatDocRef) return
     const snap = await getDoc(chatDocRef)
     if (snap.exists()) {
-      setMessages(snap.data().messages || [])
+      const savedMessages = snap.data().messages || []
+      // Sanitizar mensagens anteriores corrigindo eventuais acentos corrompidos
+      const cleanMessages = savedMessages.map(m => ({ ...m, text: fixEncoding(m.text) }))
+      setMessages(cleanMessages)
     } else {
-      // Mensagem de boas vindas inicial
-      const welcomeMsg = { role: 'model', text: `OlÃ¡, ${user.nome}! Eu sou o Alpha AI, seu Concierge Virtual. Como posso te ajudar hoje?` }
+      // Mensagem de boas vindas inicial em Português do Brasil
+      const welcomeMsg = { role: 'model', text: `Olá, ${user.nome}! Eu sou o Alpha AI, seu Concierge Virtual. Como posso te ajudar hoje?` }
       setMessages([welcomeMsg])
       await setDoc(chatDocRef, {
         userId: user.uid || user.id,
@@ -232,145 +267,148 @@ export default function AlphaAIChat() {
     setLoading(true)
 
     try {
-      // Salva a mensagem do usuÃ¡rio no banco
       await updateDoc(chatDocRef, {
         messages: arrayUnion(userMsg),
         lastActivity: serverTimestamp()
       })
 
-      // Prompt de Sistema para definir a personalidade e capacidades
       const systemPrompt = `
-VocÃª Ã© o "Alpha AI", o Concierge Virtual extremamente educado e inteligente do condomÃ­nio "${user.condominio}".
-O morador com quem vocÃª estÃ¡ falando se chama "${user.nome}" (Apartamento ${user.apt}).
-Seja amigÃ¡vel, direto, e use emojis ocasionalmente.
+Você é o "Alpha AI", o Concierge Virtual extremamente educado e inteligente do condomínio "${user.condominio}".
+O morador com quem você está falando se chama "${user.nome}" (Apartamento ${user.apt}).
+Seja amigável, direto, e use português brasileiro formal e acolhedor.
 
-BASE DE CONHECIMENTO DO CONDOMÃNIO:
-${knowledgeBase || "Nenhuma regra extra adicionada."}
+BASE DE CONHECIMENTO DO CONDOMÍNIO:
+${knowledgeBase || "Regras padrão de boa convivência e gestão condominial."}
 
-REGRAS ESPECIAIS DE AÃ‡ÃƒO (SIMULAÃ‡ÃƒO DE TOOL CALLING):
-Se o morador pedir para abrir uma ocorrÃªncia ou registrar um problema (ex: lÃ¢mpada queimada, barulho), responda normalmente e INCLUA EXATAMENTE este texto na sua resposta:
-[CRIAR_OCORRENCIA: Resumo do Problema]
-Exemplo: "Claro, vou registrar isso para vocÃª! [CRIAR_OCORRENCIA: LÃ¢mpada queimada no corredor]"
-
-Se o morador quiser reservar um espaÃ§o (ex: salÃ£o de festas, churrasqueira), vocÃª DEVE pedir a data e o HORÃRIO de inÃ­cio e fim. Se ele jÃ¡ informou tudo, INCLUA EXATAMENTE:
-[CRIAR_RESERVA: Nome do EspaÃ§o - Data - HorÃ¡rio]
-Exemplo: "Reserva prÃ©-aprovada! [CRIAR_RESERVA: SalÃ£o de Festas - 15/10/2026 - 14:00 as 22:00]"
+REGRAS ESPECIAIS DE AÇÃO (TOOL CALLING):
+1. Se o morador relatar um problema/ocorrência (ex: barulho, vazamento, lâmpada queimada), inclua no final da sua resposta a tag:
+[CRIAR_OCORRENCIA: resumo curto da ocorrência]
+2. Se o morador quiser agendar ou reservar uma área comum (ex: salão de festas, churrasqueira), inclua no final:
+[CRIAR_RESERVA: Espaço - Data - Horário]
 `
-      
-      // ConstrÃ³i o histÃ³rico para a API do Gemini
-      const rawHistory = messages.map(m => ({
-        role: m.role === 'model' ? 'model' : 'user',
-        parts: [{ text: m.text }]
-      }))
-      
-      // Remove a primeira mensagem se for do model (boas vindas) para nÃ£o quebrar a regra de alternÃ¢ncia
-      if (rawHistory.length > 0 && rawHistory[0].role === 'model') {
-        rawHistory.shift()
-      }
-
-      // Garante que nÃ£o haja dois papÃ©is iguais seguidos
-      const validHistory = []
-      let lastRole = null
-      for (const msg of rawHistory) {
-        const clonedMsg = { role: msg.role, parts: [{ text: msg.parts[0].text }] }
-        if (clonedMsg.role !== lastRole) {
-          validHistory.push(clonedMsg)
-          lastRole = clonedMsg.role
-        } else {
-          validHistory[validHistory.length - 1].parts[0].text += '\n' + clonedMsg.parts[0].text
-        }
-      }
-
-      // Gemini exige que sendMessage() seja chamado apÃ³s uma mensagem de 'model' (ou histÃ³rico vazio)
-      let textToSend = userMsg.text
-      if (validHistory.length > 0 && validHistory[validHistory.length - 1].role === 'user') {
-        const lastUser = validHistory.pop()
-        textToSend = lastUser.parts[0].text + '\n\n' + textToSend
-      }
-      
-      const chatModel = genAI.getGenerativeModel({ 
-        model: "gemini-3.5-flash",
-        systemInstruction: systemPrompt
+      const chat = model.startChat({
+        history: [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          { role: 'model', parts: [{ text: `Olá! Sou o assistente virtual do condomínio ${user.condominio}. Como posso ajudar?` }] },
+          ...messages.slice(-8).map(m => ({
+            role: m.role,
+            parts: [{ text: m.text }]
+          }))
+        ]
       })
 
-      const chat = chatModel.startChat({
-        history: validHistory,
-        generationConfig: { maxOutputTokens: 1000 },
-      })
-
-      const result = await chat.sendMessage(textToSend)
+      const result = await chat.sendMessage(input)
       const aiResponse = result.response.text()
 
       const modelMsg = { role: 'model', text: aiResponse }
       setMessages(prev => [...prev, modelMsg])
 
-      // Salva a resposta da IA no banco
       await updateDoc(chatDocRef, {
         messages: arrayUnion(modelMsg),
         lastActivity: serverTimestamp()
       })
-
-    } catch (error) {
-      console.error("Erro no Gemini:", error)
-      const errorMsg = { role: 'model', text: `Desculpe, estou com problemas de conexÃ£o. Tente novamente. Detalhes: ${error.message}` }
+    } catch (e) {
+      console.error(e)
+      const errorMsg = { role: 'model', text: "Desculpe, tive uma instabilidade momentânea. Pode repetir a sua mensagem?" }
       setMessages(prev => [...prev, errorMsg])
     } finally {
       setLoading(false)
     }
   }
 
-  if (!user) return null
+  const handleClearHistory = async () => {
+    if (!window.confirm("Deseja realmente limpar o histórico da conversa?")) return
+    const welcomeMsg = { role: 'model', text: `Olá, ${user.nome}! Histórico limpo. Como posso te ajudar agora?` }
+    setMessages([welcomeMsg])
+    if (chatDocRef) {
+      await updateDoc(chatDocRef, {
+        messages: [welcomeMsg],
+        lastActivity: serverTimestamp()
+      })
+    }
+  }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 rounded-2xl shadow-sm border border-cream-200 overflow-hidden animate-fade-in">
-      {/* Header */}
-      <div className="bg-brand-700 text-white p-4 flex items-center justify-between">
+    <div className="flex flex-col h-[calc(100vh-140px)] max-w-5xl mx-auto w-full bg-white rounded-2xl border border-pale-300 shadow-md overflow-hidden animate-fade-in">
+      {/* Header do Chat */}
+      <div className="p-4 bg-gradient-to-r from-[#2d3045] to-[#1e2030] text-white flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center relative">
-            <Bot size={26} className="text-white"/>
-            <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-400 border-2 border-brand-700 rounded-full"></span>
+          <div className="relative">
+            <div className="w-10 h-10 rounded-full bg-brand-500 flex items-center justify-center shadow-md">
+              <Bot size={22} className="text-white" />
+            </div>
+            <span className="w-3 h-3 bg-emerald-400 border-2 border-[#2d3045] rounded-full absolute bottom-0 right-0"></span>
           </div>
           <div>
-            <h3 className="font-bold text-lg">Alpha AI</h3>
-            <p className="text-xs text-brand-100">Seu Concierge Virtual Inteligente</p>
+            <h3 className="font-bold text-base flex items-center gap-2">
+              Alpha AI — Concierge Virtual
+              <span className="bg-brand-500/30 text-brand-200 text-[10px] px-2 py-0.5 rounded-full font-semibold border border-brand-400/30">
+                Online
+              </span>
+            </h3>
+            <p className="text-xs text-gray-300">
+              {user?.condominio || 'Condomínio'} • Atendimento inteligente 24h
+            </p>
           </div>
         </div>
+
+        <button
+          onClick={handleClearHistory}
+          className="text-xs text-gray-300 hover:text-white px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-all"
+        >
+          Limpar conversa
+        </button>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-4 custom-scrollbar">
+      {/* Lista de Mensagens */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-4 bg-slate-50/50 custom-scrollbar">
         {messages.map((m, idx) => (
-          <RenderMessage key={idx} message={m} user={user} />
+          <div
+            key={idx}
+            className={`flex items-start gap-2.5 max-w-[85%] ${m.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
+          >
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${m.role === 'user' ? 'bg-brand-700 text-white' : 'bg-[#2d3045] text-brand-200'}`}>
+              {m.role === 'user' ? <User size={16} /> : <Bot size={16} />}
+            </div>
+
+            <div className={`p-4 rounded-2xl shadow-sm ${m.role === 'user' ? 'bg-brand-700 text-white rounded-tr-none' : 'bg-white border border-gray-200 text-gray-800 rounded-tl-none'}`}>
+              <RenderMessage message={m} user={user} />
+            </div>
+          </div>
         ))}
+
         {loading && (
-          <div className="mr-auto bg-white border border-cream-200 rounded-2xl rounded-bl-none p-4 shadow-sm flex gap-1">
-            <span className="w-2.5 h-2.5 bg-brand-400 rounded-full animate-bounce"></span>
-            <span className="w-2.5 h-2.5 bg-brand-400 rounded-full animate-bounce" style={{animationDelay:'0.2s'}}></span>
-            <span className="w-2.5 h-2.5 bg-brand-400 rounded-full animate-bounce" style={{animationDelay:'0.4s'}}></span>
+          <div className="flex items-center gap-2 text-gray-400 text-xs italic mr-auto">
+            <Bot size={16} className="animate-spin text-brand-600" />
+            Alpha AI está digitando...
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="p-4 bg-white border-t border-cream-200">
-        <div className="relative flex items-center max-w-4xl mx-auto">
-          <input 
-            className="w-full bg-gray-100 border-none rounded-full pl-6 pr-14 py-4 text-sm md:text-base focus:ring-2 focus:ring-brand-500 transition-all outline-none"
-            placeholder="Pergunte ao Alpha AI..."
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
-          />
-          <button 
-            onClick={handleSend}
-            disabled={!input.trim() || loading}
-            className="absolute right-2 w-10 h-10 bg-brand-600 rounded-full flex items-center justify-center text-white disabled:bg-gray-300 disabled:text-gray-500 transition-colors hover:bg-brand-700"
-          >
-            <Send size={18} />
-          </button>
-        </div>
-        <p className="text-[10px] text-center text-gray-400 mt-2">A IA pode cometer erros. Verifique informações importantes.</p>
+      {/* Input de Mensagem */}
+      <div className="p-3 md:p-4 bg-white border-t border-gray-200 flex items-center gap-2">
+        <input
+          type="text"
+          className="input flex-1 text-sm bg-slate-50 border-gray-300 focus:bg-white"
+          placeholder="Pergunte ao Alpha AI sobre regras, boletos, reservas ou solicite ajuda..."
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              handleSend()
+            }
+          }}
+        />
+        <button
+          onClick={handleSend}
+          disabled={!input.trim() || loading}
+          className="btn-primary py-2.5 px-4 flex items-center gap-1.5 shadow-md disabled:opacity-50"
+        >
+          <Send size={16} />
+          <span className="hidden md:inline">Enviar</span>
+        </button>
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Gavel, Plus, Trash2, Download, FileText, Search, Video, X, BarChart3, Clock, CheckCircle2 } from 'lucide-react'
+import { Gavel, Plus, Trash2, Download, FileText, Search, Video, X, BarChart3, Clock, CheckCircle2, Sparkles, Loader2, Bot } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -9,34 +9,84 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage } from '../firebase'
 import { gerarAtaPorAudio } from '../utils/aiTranscricao'
 import { jsPDF } from 'jspdf'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+// Chave da API e Instância do Gemini
+const API_KEY = "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA"
+const genAI = new GoogleGenerativeAI(API_KEY)
+const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
 
 function ModalAssembleia({ onClose, onSave }) {
   const [form, setForm] = useState({ titulo:'', data:'', hora:'', local:'', tipo:'Ordinária', pauta:'' })
+  const [iaLoading, setIaLoading] = useState(false)
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
+
+  const elaborarPautaComIA = async () => {
+    if (!form.titulo && !form.pauta) {
+      alert('Digite o título ou anote palavras-chave na pauta para a IA elaborar os tópicos.')
+      return
+    }
+    setIaLoading(true)
+    try {
+      const prompt = `Você é um especialista em Direito Condominial Brasileiro. 
+Com base no título "${form.titulo || 'Assembleia Condominial'}" e nas anotações: "${form.pauta || form.titulo}", elabore uma pauta formal, numerada e profissional para o edital de convocação de assembleia condominial. Seja direto e estruturado.`
+      
+      const res = await model.generateContent(prompt)
+      const textoGerado = res.response.text().trim()
+      set('pauta', textoGerado)
+    } catch (e) {
+      console.error(e)
+      alert('Erro ao conectar com a IA. Tente novamente.')
+    } finally {
+      setIaLoading(false)
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e=>e.stopPropagation()}>
+      <div className="modal-content max-w-lg" onClick={e=>e.stopPropagation()}>
         <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">Nova Assembleia</h3>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">
+            <Gavel className="text-brand-600" size={20} /> Nova Assembleia
+          </h3>
           <button onClick={onClose} className="text-gray-400 text-lg hover:text-gray-700">✕</button>
         </div>
-        <div className="p-6 flex flex-col gap-4">
-          <div><label className="label">Título</label><input className="input" value={form.titulo} onChange={e=>set('titulo',e.target.value)} placeholder="Ex: Assembleia Geral Ordinária"/></div>
+        <div className="p-6 flex flex-col gap-4 text-xs">
+          <div><label className="label font-bold text-gray-700">Título</label><input className="input" value={form.titulo} onChange={e=>set('titulo',e.target.value)} placeholder="Ex: Assembleia Geral Ordinária - Prestação de Contas"/></div>
           <div className="grid grid-cols-2 gap-4">
-            <div><label className="label">Data</label><input type="date" className="input" value={form.data} onChange={e=>set('data',e.target.value)}/></div>
-            <div><label className="label">Hora</label><input type="time" className="input" value={form.hora} onChange={e=>set('hora',e.target.value)}/></div>
+            <div><label className="label font-bold text-gray-700">Data</label><input type="date" className="input" value={form.data} onChange={e=>set('data',e.target.value)}/></div>
+            <div><label className="label font-bold text-gray-700">Hora</label><input type="time" className="input" value={form.hora} onChange={e=>set('hora',e.target.value)}/></div>
           </div>
-          <div><label className="label">Local</label><input className="input" value={form.local} onChange={e=>set('local',e.target.value)} placeholder="Ex: Salão de Festas – Bloco A"/></div>
-          <div><label className="label">Tipo</label>
+          <div><label className="label font-bold text-gray-700">Local</label><input className="input" value={form.local} onChange={e=>set('local',e.target.value)} placeholder="Ex: Salão de Festas ou Link Online"/></div>
+          <div><label className="label font-bold text-gray-700">Tipo</label>
             <select className="input" value={form.tipo} onChange={e=>set('tipo',e.target.value)}>
               <option>Ordinária</option><option>Extraordinária</option>
             </select>
           </div>
-          <div><label className="label">Pauta</label><textarea className="input resize-none min-h-[80px]" value={form.pauta} onChange={e=>set('pauta',e.target.value)} placeholder="Descreva os itens da pauta..."/></div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="label font-bold text-gray-700 mb-0">Pauta da Assembleia</label>
+              <button
+                type="button"
+                onClick={elaborarPautaComIA}
+                disabled={iaLoading}
+                className="text-[11px] font-bold text-brand-600 hover:text-brand-800 flex items-center gap-1 bg-brand-50 px-2 py-0.5 rounded-md border border-brand-200 transition-colors cursor-pointer"
+              >
+                {iaLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                <span>{iaLoading ? 'Elaborando...' : '✨ Elaborar Pauta com IA'}</span>
+              </button>
+            </div>
+            <textarea 
+              className="input resize-none min-h-[100px] text-xs" 
+              value={form.pauta} 
+              onChange={e=>set('pauta',e.target.value)} 
+              placeholder="Descreva os itens da pauta ou clique em '✨ Elaborar Pauta com IA'..."
+            />
+          </div>
         </div>
         <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
-          <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={()=>{if(!form.titulo||!form.data)return;onSave({...form,status:'Agendada'})}} className="btn-primary"><Plus size={14}/>Agendar</button>
+          <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
+          <button onClick={()=>{if(!form.titulo||!form.data)return;onSave({...form,status:'Agendada'})}} className="btn-primary text-xs flex items-center gap-1.5"><Plus size={14}/>Agendar</button>
         </div>
       </div>
     </div>
@@ -47,6 +97,31 @@ function ModalAta({ assembleia, onClose, onSave }) {
   const [texto, setTexto] = useState('')
   const [file, setFile] = useState(null)
   const [uploading, setUploading] = useState(false)
+  const [iaLoading, setIaLoading] = useState(false)
+
+  const redigirAtaComIA = async () => {
+    setIaLoading(true)
+    try {
+      const prompt = `Você é um especialista em Direito Condominial e redação de atas para registro em cartório.
+Elabore uma ata formal e completa para a seguinte assembleia:
+Título: ${assembleia.titulo}
+Data: ${assembleia.data || 'Hoje'}
+Local: ${assembleia.local || 'Condomínio'}
+Pauta: ${assembleia.pauta || 'Deliberações gerais do condomínio'}
+Anotações / Resumo informado: ${texto || 'Pautas aprovadas por unanimidade dos presentes.'}
+
+Estruture a ata com abertura, verificação de quórum, presidente e secretário da mesa, deliberações de cada item da pauta e encerramento com espaço para assinaturas.`
+
+      const res = await model.generateContent(prompt)
+      const textoGerado = res.response.text().trim()
+      setTexto(textoGerado)
+    } catch (e) {
+      console.error(e)
+      alert('Erro ao redigir ata com IA. Tente novamente.')
+    } finally {
+      setIaLoading(false)
+    }
+  }
 
   const handleSave = async () => {
     if (!texto && !file) return
@@ -74,26 +149,42 @@ function ModalAta({ assembleia, onClose, onSave }) {
           <h3 className="font-bold text-gray-800">Registrar Ata – {assembleia.titulo}</h3>
           <button onClick={onClose} className="text-gray-400 text-lg hover:text-gray-700">✕</button>
         </div>
-        <div className="p-6 flex flex-col gap-4">
+        <div className="p-6 flex flex-col gap-4 text-xs">
           <div>
-            <label className="label">Conteúdo da Ata (Opcional se enviar anexo)</label>
-            <textarea className="input resize-none min-h-[120px]" value={texto} onChange={e=>setTexto(e.target.value)} placeholder="Digite o conteúdo da ata..."/>
+            <div className="flex items-center justify-between mb-1">
+              <label className="label font-bold text-gray-700 mb-0">Conteúdo da Ata</label>
+              <button
+                type="button"
+                onClick={redigirAtaComIA}
+                disabled={iaLoading}
+                className="text-[11px] font-bold text-brand-600 hover:text-brand-800 flex items-center gap-1 bg-brand-50 px-2.5 py-1 rounded-md border border-brand-200 transition-colors cursor-pointer"
+              >
+                {iaLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                <span>{iaLoading ? 'Redigindo Ata...' : '✨ Redigir Ata com IA'}</span>
+              </button>
+            </div>
+            <textarea 
+              className="input resize-none min-h-[160px] text-xs font-mono" 
+              value={texto} 
+              onChange={e=>setTexto(e.target.value)} 
+              placeholder="Digite o resumo ou anotações e clique em '✨ Redigir Ata com IA' para gerar o texto formal completo..."
+            />
           </div>
           <div className="bg-cream-50 p-4 rounded-xl border border-dashed border-cream-400">
-            <label className="label text-brand-600 mb-1">Ou Anexe a Ata Assinada (Foto/PDF)</label>
-            <p className="text-xs text-gray-500 mb-3">No celular, isso abrirá a câmera para você tirar uma foto do papel.</p>
+            <label className="label text-brand-600 mb-1 font-bold">Ou Anexe a Ata Assinada (Foto / PDF)</label>
+            <p className="text-xs text-gray-500 mb-3">No celular ou computador, anexe o arquivo escaneado ou foto da ata assinada.</p>
             <input 
               type="file" 
               accept="image/*,application/pdf"
               capture="environment"
-              className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
+              className="text-xs file:mr-4 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
               onChange={e=>setFile(e.target.files[0])}
             />
           </div>
         </div>
         <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
-          <button onClick={onClose} disabled={uploading} className="btn-secondary">Cancelar</button>
-          <button onClick={handleSave} disabled={uploading || (!texto && !file)} className="btn-primary">
+          <button onClick={onClose} disabled={uploading} className="btn-secondary text-xs">Cancelar</button>
+          <button onClick={handleSave} disabled={uploading || (!texto && !file)} className="btn-primary text-xs flex items-center gap-1.5">
             <FileText size={14}/> {uploading ? 'Enviando...' : 'Salvar Ata'}
           </button>
         </div>

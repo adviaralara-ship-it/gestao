@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { FileText, Printer, CheckCircle, Bot, Zap, Loader2, Sparkles, AlertCircle, FileEdit } from 'lucide-react'
+import { FileText, Printer, CheckCircle, Bot, Zap, Loader2, Sparkles, AlertCircle, FileEdit, Download } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
@@ -40,51 +40,49 @@ const modelos = [
     campos: ['condominio', 'morador', 'apt', 'data_infracao', 'motivo', 'sindico'],
     template: (dados) => `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <h2 style="text-align: center; text-transform: uppercase;">Termo de Advertência Formal</h2>
+        <h2 style="text-align: center; text-transform: uppercase;">Notificação de Advertência</h2>
+        <h3 style="text-align: center;">Condomínio ${dados.condominio || '[CONDOMÍNIO]'}</h3>
         <br/><br/>
-        <p><strong>Ao(s) Morador(es) da Unidade:</strong> ${dados.apt || '[UNIDADE]'}</p>
-        <p><strong>Nome:</strong> ${dados.morador || '[MORADOR]'}</p>
-        <p><strong>Condomínio:</strong> ${dados.condominio || '[CONDOMÍNIO]'}</p>
+        <p><strong>Ao(À) Condômino(a):</strong> ${dados.morador || '[NOME DO MORADOR]'}</p>
+        <p><strong>Unidade / Apartamento:</strong> ${dados.apt || '[UNIDADE]'}</p>
         <br/>
-        <p>Prezado(a) condômino(a),</p>
-        <p>Servimo-nos da presente para notificar e <strong>ADVERTIR</strong> formalmente V. Sa., em virtude de infração cometida no dia <strong>${dados.data_infracao ? dados.data_infracao.split('-').reverse().join('/') : '[DATA]'}</strong>, consubstanciada no seguinte fato:</p>
-        <p style="padding: 15px; background: #f9f9f9; border-left: 4px solid #cc0000; font-style: italic;">
-          ${dados.motivo || '[DESCRIÇÃO DA INFRAÇÃO]'}
-        </p>
-        <p>Tal conduta viola expressamente o disposto na Convenção e no Regimento Interno deste condomínio.</p>
-        <p>Solicitamos, portanto, a imediata adequação às normas condominiais, sob pena de aplicação de multa pecuniária, conforme previsto em nossa regulamentação.</p>
+        <p>Prezado(a) Morador(a),</p>
+        <p>Vimos por meio desta adverti-lo(a) formalmente quanto ao descumprimento das normas estabelecidas na Convenção Condominial e no Regimento Interno, ocorrido na data de <strong>${dados.data_infracao ? dados.data_infracao.split('-').reverse().join('/') : '[DATA DA INFRAÇÃO]'}</strong>, referente ao seguinte fato:</p>
+        <br/>
+        <div style="padding: 15px; border-left: 4px solid #c00; background: #fdf2f2; font-style: italic;">
+          "${dados.motivo || '[DESCREVA A INFRAÇÃO AQUI]'}"
+        </div>
+        <br/>
+        <p>Solicitamos a imediata cessação de tal conduta para mantermos a boa convivência e harmonia entre os moradores. Informamos que a reincidência poderá acarretar na aplicação das penalidades previstas, inclusive <strong>multa condominial</strong>.</p>
         <br/><br/>
-        <p style="text-align: right;">Atenciosamente, __________________, ${new Date().toLocaleDateString('pt-BR')}.</p>
-        <br/><br/>
-        <div style="text-align: center; margin-top: 50px;">
-          _________________________________<br/>${dados.sindico || '[SÍNDICO]'}<br/>Síndico / Administração
+        <p style="text-align: center;">Atenciosamente,</p>
+        <div style="text-align: center; margin-top: 40px;">
+          _________________________________<br/>
+          <strong>${dados.sindico || 'Administração / Síndico'}</strong><br/>
+          Condomínio ${dados.condominio || ''}
         </div>
       </div>
     `
   },
   {
-    id: 'prestacao-servico',
-    nome: 'Contrato de Prestação de Serviço (Terceirizados)',
-    campos: ['condominio', 'cnpj_condominio', 'sindico', 'contratado', 'cnpj_cpf_contratado', 'servico', 'valor', 'prazo', 'data_assinatura'],
+    id: 'prestacao-servicos',
+    nome: 'Contrato de Prestação de Serviços Simples',
+    campos: ['condominio', 'cnpj_condominio', 'contratado', 'cnpj_cpf_contratado', 'servico', 'valor', 'prazo', 'data_assinatura'],
     template: (dados) => `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
         <h2 style="text-align: center; text-transform: uppercase;">Contrato de Prestação de Serviços</h2>
         <br/>
-        <p><strong>CONTRATANTE:</strong> Condomínio ${dados.condominio || '[CONDOMÍNIO]'}, inscrito no CNPJ sob nº ${dados.cnpj_condominio || '[CNPJ DO CONDOMÍNIO]'}, representado neste ato por seu síndico, Sr(a). ${dados.sindico || '[SÍNDICO]'}.</p>
-        <p><strong>CONTRATADA:</strong> ${dados.contratado || '[NOME/EMPRESA CONTRATADA]'}, inscrita no CNPJ/CPF sob nº ${dados.cnpj_cpf_contratado || '[CNPJ/CPF]'}.</p>
+        <p><strong>CONTRATANTE:</strong> Condomínio ${dados.condominio || '[CONDOMÍNIO]'}, inscrito no CNPJ sob o nº ${dados.cnpj_condominio || '[CNPJ]'}.</p>
+        <p><strong>CONTRATADA:</strong> ${dados.contratado || '[NOME/RAZÃO SOCIAL]'}, inscrito(a) no CPF/CNPJ sob o nº ${dados.cnpj_cpf_contratado || '[CPF/CNPJ]'}.</p>
         <br/>
-        <p>As partes acima qualificadas celebram o presente Contrato de Prestação de Serviços, mediante as cláusulas e condições seguintes:</p>
-        
-        <p><strong>CLÁUSULA PRIMEIRA - DO OBJETO:</strong> A CONTRATADA compromete-se a prestar os serviços de <strong>${dados.servico || '[DESCRIÇÃO DO SERVIÇO]'}</strong> nas dependências do condomínio CONTRATANTE.</p>
-        
-        <p><strong>CLÁUSULA SEGUNDA - DO PREÇO E CONDIÇÕES DE PAGAMENTO:</strong> Pela prestação dos serviços objeto deste contrato, o CONTRATANTE pagará à CONTRATADA a quantia certa e ajustada de <strong>R$ ${dados.valor || '[VALOR]'}</strong>.</p>
-        
-        <p><strong>CLÁUSULA TERCEIRA - DO PRAZO:</strong> Os serviços deverão ser concluídos no prazo máximo de <strong>${dados.prazo || '[PRAZO]'}</strong> dias, a contar da assinatura deste instrumento.</p>
-        
-        <p><strong>CLÁUSULA QUARTA - DAS RESPONSABILIDADES:</strong> A CONTRATADA assume inteira responsabilidade por eventuais danos causados ao CONTRATANTE ou a terceiros, bem como pelas obrigações trabalhistas, previdenciárias e fiscais de seus funcionários.</p>
-        
+        <p>As partes acima qualificadas têm, entre si, justo e contratado o seguinte:</p>
+        <p><strong>CLÁUSULA 1ª - DO OBJETO:</strong> A CONTRATADA obriga-se a prestar para o CONTRATANTE os serviços de: <em>${dados.servico || '[DESCRIÇÃO DOS SERVIÇOS]'}</em>.</p>
+        <p><strong>CLÁUSULA 2ª - DO PRAZO:</strong> O prazo para a execução dos serviços será de <strong>${dados.prazo || '[DIAS]'} dias</strong> a contar da assinatura.</p>
+        <p><strong>CLÁUSULA 3ª - DO PREÇO E PAGAMENTO:</strong> Pela execução dos serviços, o CONTRATANTE pagará à CONTRATADA a quantia de <strong>R$ ${dados.valor || '[VALOR]'}</strong>.</p>
+        <p><strong>CLÁUSULA 4ª - DO FORO:</strong> Elegem o foro da Comarca deste condomínio para dirimir quaisquer dúvidas deste contrato.</p>
         <br/><br/>
-        <p style="text-align: right;">Firmado em __________________, ${dados.data_assinatura ? dados.data_assinatura.split('-').reverse().join('/') : '[DATA DA ASSINATURA]'}.</p>
+        <p style="text-align: center;">E, por estarem justos e contratados, assinam o presente em duas vias.</p>
+        <p style="text-align: center;">Data: ${dados.data_assinatura ? dados.data_assinatura.split('-').reverse().join('/') : '[DATA]'}</p>
         <br/><br/>
         <div style="display: flex; justify-content: space-around; text-align: center; margin-top: 40px;">
           <div>_________________________________<br/>CONTRATANTE</div>
@@ -194,13 +192,13 @@ export default function GeradorContratos() {
     try {
       const systemPrompt = `
 Você é o Alpha AI, o Assistente Jurídico especialista em Direito Condominial Brasileiro.
-Seu objetivo é redigir contratos, termos, atas e comunicados formais.
+Seu objetivo é redigir contratos, termos, atas e comunicados formais em Português do Brasil com máxima clareza e formalidade.
 O usuário pedirá um tipo de documento. Você deve escrever o documento INTEIRO, pronto para ser impresso e assinado.
-REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):
+REGRAS DE FORMATAÇÃO:
 1. A sua resposta DEVE ser EXCLUSIVAMENTE em formato HTML válido.
 2. Não use marcadores Markdown (\`\`\`html) no início ou fim.
 3. Use tags inline style como <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;"> no container principal.
-4. Use <h2>, <p>, <strong>, e <br/> para formatar o texto, deixando espaço para assinaturas no final usando <div> e _________________.
+4. Use <h2>, <h3>, <p>, <strong>, e <br/> para formatar o texto, deixando espaço para assinaturas no final usando <div> e _________________.
 5. Nunca adicione comentários fora do HTML, sua resposta inteira será injetada em um documento para impressão.
 `
       const chat = model.startChat({
@@ -213,11 +211,12 @@ REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):
       const result = await chat.sendMessage(iaPrompt)
       let aiResponse = result.response.text()
       
-      // Limpeza caso a IA teime em colocar aspas de markdown
+      // Limpeza caso a IA coloque aspas de markdown
       aiResponse = aiResponse.replace(/^\`\`\`html/gm, '').replace(/^\`\`\`/gm, '').trim()
       
       setIaDocHtml(aiResponse)
     } catch (e) {
+      console.error(e)
       alert("Erro ao gerar documento com IA. Tente novamente.")
     } finally {
       setIaLoading(false)
@@ -242,7 +241,7 @@ REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):
         </button>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-220px)] print:h-auto">
+      <div className="flex flex-col lg:flex-row gap-6 min-h-[600px] print:h-auto">
         {/* Lado Esquerdo - Formulário */}
         <div className="w-full lg:w-1/3 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2 pb-4 print:hidden">
           
@@ -291,8 +290,8 @@ REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):
               </div>
             </>
           ) : (
-            <div className="bg-brand-900 p-5 rounded-xl border border-brand-800 shadow-lg shrink-0 text-white flex flex-col h-full">
-              <div className="flex items-center gap-3 mb-4">
+            <div className="bg-brand-900 p-5 rounded-xl border border-brand-800 shadow-lg shrink-0 text-white flex flex-col gap-3">
+              <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center">
                   <Bot size={20} className="text-brand-300"/>
                 </div>
@@ -302,45 +301,48 @@ REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):
                 </div>
               </div>
               
-              <div className="bg-brand-800/50 p-3 rounded-lg border border-white/10 text-xs text-brand-100 mb-4 flex items-start gap-2">
+              <div className="bg-brand-800/50 p-3 rounded-lg border border-white/10 text-xs text-brand-100 flex items-start gap-2">
                 <AlertCircle size={14} className="shrink-0 mt-0.5 text-brand-300"/>
-                <p>Peça para a IA gerar qualquer contrato, termo ou aviso específico que não esteja na lista de modelos prontos. Ex: "Termo de Confidencialidade para Porteiro".</p>
+                <p>Peça para a IA redigir atas, termos ou avisos específicos. Ex: "Gere uma ata de reunião de condomínio para aprovação de contas".</p>
               </div>
 
-              <div className="flex-1 flex flex-col min-h-[250px]">
-                <label className="label text-brand-300 text-xs uppercase tracking-wider mb-2">Descreva o documento que você precisa:</label>
+              <div className="flex flex-col">
+                <label className="label text-brand-300 text-xs uppercase tracking-wider mb-2 font-bold">Descreva o documento que você precisa:</label>
                 <textarea 
-                  className="w-full bg-brand-950 border border-brand-800 rounded-xl p-4 text-sm text-white placeholder:text-gray-500 focus:ring-2 focus:ring-brand-500 outline-none flex-1 resize-none mb-4"
-                  placeholder='Ex: "Gere um termo de advertência severo para o apt 101 por jogar bituca de cigarro pela janela, citando multa de R$ 500,00 caso se repita."'
+                  rows={5}
+                  className="w-full bg-brand-950 border border-brand-800 rounded-xl p-4 text-sm text-white placeholder:text-gray-500 focus:ring-2 focus:ring-brand-500 outline-none resize-none"
+                  placeholder='Ex: "Gere uma ata completa de assembleia para o Condomínio Residencial Flores, realizada hoje às 19h30, com pauta sobre eleição de síndico e prestação de contas."'
                   value={iaPrompt}
                   onChange={e => setIaPrompt(e.target.value)}
                 />
               </div>
 
+              {/* Botão de Gerar com IA - Bem destacado e visível */}
               <button 
                 onClick={gerarComIA} 
                 disabled={!iaPrompt.trim() || iaLoading}
-                className="btn-primary bg-brand-500 hover:bg-brand-400 border-none w-full flex justify-center items-center gap-2 py-3 shadow-lg shadow-brand-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-black w-full flex justify-center items-center gap-2 py-3.5 rounded-xl shadow-lg shadow-emerald-900/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm uppercase tracking-wide cursor-pointer"
               >
                 {iaLoading ? (
-                  <><Loader2 size={20} className="animate-spin" /> Redigindo Documento...</>
+                  <><Loader2 size={18} className="animate-spin" /> Redigindo Documento...</>
                 ) : (
-                  <><Sparkles size={20} /> Gerar Documento Jurídico</>
+                  <><Sparkles size={18} /> ✨ Gerar Documento com IA</>
                 )}
               </button>
             </div>
           )}
 
-          <div className="sticky bottom-0 bg-cream-50 pt-2 pb-4">
-            <button onClick={handlePrint} className="btn-primary w-full flex justify-center items-center gap-2 py-4 text-lg shadow-xl shadow-brand-500/20 hover:scale-[1.02] transition-transform">
-              <Printer size={22} /> Salvar PDF / Imprimir
+          {/* Botão de Salvar PDF / Imprimir */}
+          <div className="bg-white p-3 rounded-xl border border-cream-300 shadow-sm mt-2">
+            <button onClick={handlePrint} className="btn-primary w-full flex justify-center items-center gap-2 py-3.5 text-base shadow-lg shadow-brand-500/20 hover:scale-[1.01] transition-transform">
+              <Printer size={20} /> Salvar PDF / Imprimir
             </button>
           </div>
         </div>
 
         {/* Lado Direito - Preview */}
         <div className="w-full lg:w-2/3 h-full pb-8 print:w-full print:p-0">
-          <div className="bg-gray-200 p-4 md:p-8 rounded-xl border border-cream-300 shadow-inner h-full overflow-y-auto flex justify-center custom-scrollbar print:bg-white print:border-none print:shadow-none print:h-auto print:overflow-visible print:p-0 relative group">
+          <div className="bg-gray-200 p-4 md:p-8 rounded-xl border border-cream-300 shadow-inner min-h-[600px] overflow-y-auto flex justify-center custom-scrollbar print:bg-white print:border-none print:shadow-none print:h-auto print:overflow-visible print:p-0 relative group">
             
             <div className="absolute top-4 right-4 bg-yellow-100 text-yellow-800 text-xs px-3 py-2 rounded-full font-medium shadow border border-yellow-300 print:hidden flex items-center gap-2 pointer-events-none opacity-80 group-hover:opacity-100 transition-opacity z-10">
               <FileEdit className="w-4 h-4" />
@@ -352,9 +354,9 @@ REGRAS DE FORMATAÇÃO (MUITO IMPORTANTE):
               ref={printRef}
               contentEditable={true}
               suppressContentEditableWarning={true}
-              className="bg-white shadow-2xl p-10 md:p-16 print:shadow-none print:p-0 transition-all outline-none"
+              className="bg-white shadow-2xl p-10 md:p-16 print:shadow-none print:p-0 transition-all outline-none rounded-sm"
               style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
-              dangerouslySetInnerHTML={{ __html: tab === 'modelos' ? modeloAtivo.template(form) : (iaDocHtml || `<div style="font-family: Arial; color: #999; text-align: center; margin-top: 50px;">O documento gerado pela IA aparecerá aqui.</div>`) }}
+              dangerouslySetInnerHTML={{ __html: tab === 'modelos' ? modeloAtivo.template(form) : (iaDocHtml || `<div style="font-family: Arial; color: #999; text-align: center; margin-top: 80px;"><p style="font-size: 16px;">O documento gerado pela IA aparecerá aqui.</p><p style="font-size: 12px; margin-top: 8px;">Digite o que você precisa no campo ao lado e clique em <strong>✨ Gerar Documento com IA</strong>.</p></div>`) }}
             />
           </div>
         </div>
