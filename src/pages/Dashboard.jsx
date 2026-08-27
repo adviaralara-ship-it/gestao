@@ -66,7 +66,7 @@ export default function Dashboard() {
 
     return (
       <div className="flex flex-col gap-6 animate-fade-in max-w-6xl mx-auto pb-12">
-        {/* Header do Morador */}
+        {/* 1. Header do Morador */}
         <div className="bg-gradient-to-r from-[#2d3045] to-[#1e2030] text-white p-6 rounded-3xl shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-2xl bg-brand-500 flex items-center justify-center font-black text-2xl text-white shadow-inner border-2 border-white/20">
@@ -105,7 +105,69 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Grade Principal: Financeiro & Avisos */}
+        {/* 2. Serviços Rápidos do Condomínio (POSICIONADO NO TOPO CONFORME SOLICITADO) */}
+        <div className="bg-white p-5 rounded-2xl border border-pale-300 shadow-sm">
+          <h3 className="font-bold text-gray-900 text-sm mb-3">Serviços Rápidos do Condomínio</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 text-center">
+            <button
+              onClick={() => navigate('/veiculos')}
+              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <Car size={22} className="text-gray-600 group-hover:text-brand-600" />
+              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Meus Veículos</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/visitantes')}
+              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <QrCode size={22} className="text-gray-600 group-hover:text-brand-600" />
+              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Autorizar Visitante</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/cameras')}
+              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <Camera size={22} className="text-gray-600 group-hover:text-brand-600" />
+              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Câmeras CFTV</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/documentos')}
+              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <FolderOpen size={22} className="text-gray-600 group-hover:text-brand-600" />
+              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Documentos</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/assembleias')}
+              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <Gavel size={22} className="text-gray-600 group-hover:text-brand-600" />
+              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Assembleias</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/relatorios')}
+              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <FileSpreadsheet size={22} className="text-gray-600 group-hover:text-brand-600" />
+              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Prestação Contas</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/alpha-ai')}
+              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <Bot size={22} className="text-brand-600" />
+              <span className="text-xs font-bold text-brand-700">Alpha IA</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 3. Grade Principal: Financeiro & Avisos */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Card: Minha Situação Financeira */}
           <div className="bg-white p-6 rounded-2xl border border-pale-300 shadow-sm flex flex-col justify-between">
@@ -170,7 +232,7 @@ export default function Dashboard() {
 
               <div className="space-y-3">
                 {avisosMorador.length === 0 ? (
-                  <p className="text-xs text-gray-400 py-6 text-center">Nenhum comunicado recente.</p>
+                  <p className="text-xs text-gray-400 py-6 text-center">Nenhum comunicado recente no momento.</p>
                 ) : (
                   avisosMorador.map(av => (
                     <div key={av.id} className="p-3.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-gray-200 transition-colors flex items-start justify-between gap-3">
@@ -198,7 +260,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Grade Secundária: Solicitações & Reservas */}
+        {/* 4. Grade Secundária: Solicitações & Reservas */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Minhas Solicitações */}
           <div className="bg-white p-6 rounded-2xl border border-pale-300 shadow-sm flex flex-col justify-between">
@@ -300,76 +362,14 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
-
-        {/* Atalhos Rápidos para o Morador */}
-        <div className="bg-white p-6 rounded-2xl border border-pale-300 shadow-sm">
-          <h3 className="font-bold text-gray-900 text-sm mb-4">Serviços Rápidos do Condomínio</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-3 text-center">
-            <button
-              onClick={() => navigate('/veiculos')}
-              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
-            >
-              <Car size={22} className="text-gray-600 group-hover:text-brand-600" />
-              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Meus Veículos</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/visitantes')}
-              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
-            >
-              <QrCode size={22} className="text-gray-600 group-hover:text-brand-600" />
-              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Autorizar Visitante</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/cameras')}
-              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
-            >
-              <Camera size={22} className="text-gray-600 group-hover:text-brand-600" />
-              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Câmeras CFTV</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/documentos')}
-              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
-            >
-              <FolderOpen size={22} className="text-gray-600 group-hover:text-brand-600" />
-              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Documentos</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/assembleias')}
-              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
-            >
-              <Gavel size={22} className="text-gray-600 group-hover:text-brand-600" />
-              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Assembleias</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/relatorios')}
-              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
-            >
-              <FileSpreadsheet size={22} className="text-gray-600 group-hover:text-brand-600" />
-              <span className="text-xs font-bold text-gray-700 group-hover:text-brand-700">Prestação Contas</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/alpha-ai')}
-              className="p-3.5 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
-            >
-              <Bot size={22} className="text-brand-600" />
-              <span className="text-xs font-bold text-brand-700">Alpha IA</span>
-            </button>
-          </div>
-        </div>
       </div>
     )
   }
 
   // =========================================================================
-  // GESTÃO / SÍNDICO / ADMINISTRADOR
+  // GESTÃO / SÍNDICO / ADMINISTRADOR / CONSELHO (100% DADOS REAIS DO FIRESTORE)
   // =========================================================================
-  const [condoFiltro, setCondoFiltro] = useState(user?.role === 'Síndico' ? user.condominio : (user?.condominio || 'Todos'))
+  const [condoFiltro, setCondoFiltro] = useState(user?.role === 'Síndico' || user?.role === 'Conselheiro' ? (user.condominio || 'Todos') : 'Todos')
 
   const filterByCondo = (items) => {
     if (!condoFiltro || condoFiltro === 'Todos') return items
@@ -470,25 +470,19 @@ export default function Dashboard() {
       .sort((a, b) => a.order - b.order)
       .slice(-6)
 
-    const finalChart = sortedChart.length > 0 ? sortedChart : [
-      { mes: 'Mar', receitas: 32000, despesas: 24000 },
-      { mes: 'Abr', receitas: 35000, despesas: 28000 },
-      { mes: 'Mai', receitas: 31000, despesas: 26000 },
-      { mes: 'Jun', receitas: 39000, despesas: 31000 },
-      { mes: 'Jul', receitas: 42000, despesas: 33000 },
-      { mes: 'Ago', receitas: 48520, despesas: 35400 }
-    ]
-
     return {
-      saldoAtual: recPagas - desPagas || 48520,
-      aReceber: recPendentes || 12300,
-      aPagar: desPendentes || 8750,
-      inadimplenciaTotal: inadimp || 4200,
+      saldoAtual: recPagas - desPagas,
+      aReceber: recPendentes,
+      aPagar: desPendentes,
+      inadimplenciaTotal: inadimp,
       contasVencidas: vencidas,
-      chartData: finalChart
+      chartData: sortedChart.length > 0 ? sortedChart : [
+        { mes: format(new Date(), 'MMM'), receitas: 0, despesas: 0 }
+      ]
     }
   }, [bolFiltrado, finFiltrado])
 
+  // 100% DADOS REAIS DE COTAÇÕES
   const statsCotacoes = useMemo(() => {
     let emAndamento = 0
     let aguardandoOrcamento = 0
@@ -499,7 +493,7 @@ export default function Dashboard() {
     cotFiltradas.forEach(c => {
       const st = (c.status || '').toLowerCase()
       if (st.includes('andamento') || st.includes('aberta')) emAndamento++
-      if (st.includes('orçamento') || st.includes('aguardando')) aguardandoOrcamento++
+      if (st.includes('orçamento') || st.includes('aguardando orc')) aguardandoOrcamento++
       if (st.includes('aprovação') || st.includes('analise')) aguardandoAprovacao++
       if (st.includes('aprovada') || st.includes('concluída') || st.includes('finalizada')) concluidasMes++
 
@@ -509,20 +503,15 @@ export default function Dashboard() {
     })
 
     return {
-      emAndamento: emAndamento || 4,
-      aguardandoOrcamento: aguardandoOrcamento || 2,
-      aguardandoAprovacao: aguardandoAprovacao || 1,
-      concluidasMes: concluidasMes || 3,
-      destaque: cotacaoDestaque || (cotFiltradas[0] || {
-        codigo: '#024',
-        titulo: 'Manutenção da piscina',
-        totalPropostas: 3,
-        menorPreco: 4850,
-        status: 'Aguardando aprovação'
-      })
+      emAndamento,
+      aguardandoOrcamento,
+      aguardandoAprovacao,
+      concluidasMes,
+      destaque: cotacaoDestaque || cotFiltradas[0] || null
     }
   }, [cotFiltradas])
 
+  // 100% DADOS REAIS DE MANUTENÇÕES
   const statsManutencoes = useMemo(() => {
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
@@ -556,15 +545,16 @@ export default function Dashboard() {
     })
 
     return {
-      pendentes: pendentes || 3,
-      emAndamento: emAndamento || 2,
-      concluidas: concluidas || 8,
-      vencendo30Dias: vencendo30Dias || 2,
+      pendentes,
+      emAndamento,
+      concluidas,
+      vencendo30Dias,
       atrasadas: atrasadas.slice(0, 2),
       proximas: proximas.slice(0, 2)
     }
   }, [manFiltradas])
 
+  // 100% DADOS REAIS DE CONTRATOS & APÓLICES
   const statsContratos = useMemo(() => {
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
@@ -598,14 +588,10 @@ export default function Dashboard() {
     })
 
     return {
-      ativos: ativos || (apoFiltradas.length || 18),
-      vencendo30Dias: vencendo30Dias || 2,
-      vencidos: vencidos || 1,
-      urgente: maisUrgente || {
-        titulo: 'Contrato de limpeza e conservação',
-        dias: 18,
-        dataFormatada: '15/09/2026'
-      }
+      ativos,
+      vencendo30Dias,
+      vencidos,
+      urgente: maisUrgente
     }
   }, [apoFiltradas])
 
@@ -628,7 +614,7 @@ export default function Dashboard() {
         id: 'contrato_vencendo',
         tipo: 'vermelho',
         icone: '🔴',
-        texto: `${statsContratos.urgente.titulo || 'Contrato'} vence em ${statsContratos.urgente.dias} dias (${statsContratos.urgente.dataFormatada})`,
+        texto: `${statsContratos.urgente.titulo || statsContratos.urgente.seguradora || 'Contrato/Seguro'} vence em ${statsContratos.urgente.dias} dias (${statsContratos.urgente.dataFormatada})`,
         rota: '/seguro'
       })
     }
@@ -648,7 +634,7 @@ export default function Dashboard() {
         id: 'manutencao_atrasada',
         tipo: 'vermelho',
         icone: '🔴',
-        texto: `Manutenção atrasada: ${statsManutencoes.atrasadas[0].titulo} (${statsManutencoes.atrasadas[0].dias} dias de atraso)`,
+        texto: `Manutenção atrasada: ${statsManutencoes.atrasadas[0].titulo || statsManutencoes.atrasadas[0].equipamento} (${statsManutencoes.atrasadas[0].dias} dias de atraso)`,
         rota: '/manutencoes'
       })
     } else if (statsManutencoes.proximas.length > 0) {
@@ -656,7 +642,7 @@ export default function Dashboard() {
         id: 'manutencao_proxima',
         tipo: 'amarelo',
         icone: '🟡',
-        texto: `Manutenção preventiva próxima: ${statsManutencoes.proximas[0].titulo} em ${statsManutencoes.proximas[0].dias} dias`,
+        texto: `Manutenção preventiva próxima: ${statsManutencoes.proximas[0].titulo || statsManutencoes.proximas[0].equipamento} em ${statsManutencoes.proximas[0].dias} dias`,
         rota: '/manutencoes'
       })
     }
@@ -684,7 +670,7 @@ export default function Dashboard() {
             Bom dia, {user?.nome?.split(' ')[0] || 'Gestor'}.
           </h2>
           <p className="text-gray-500 font-medium text-xs md:text-sm mt-0.5">
-            Central de Comando e Decisões Rápidas • {format(new Date(), "dd 'de' MMMM 'de' yyyy")}
+            Central de Comando e Decisões • {format(new Date(), "dd 'de' MMMM 'de' yyyy")}
           </p>
         </div>
 
@@ -712,7 +698,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 1. VISÃO FINANCEIRA (CARDS CLICÁVEIS + GRÁFICO MENSAL) */}
+      {/* 1. VISÃO FINANCEIRA (CARDS CLICÁVEIS + GRÁFICO MENSAL COM DADOS REAIS) */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Saldo Atual */}
         <div 
@@ -808,7 +794,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-bold text-gray-900 text-base">Receitas x Despesas</h3>
-            <p className="text-xs text-gray-400">Comparativo financeiro mensal</p>
+            <p className="text-xs text-gray-400">Comparativo financeiro mensal real</p>
           </div>
           <button 
             onClick={() => navigate('/financeiro')}
@@ -836,7 +822,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 2. OS 3 CARDS DE OPERAÇÃO & DECISÃO */}
+      {/* 2. OS 3 CARDS DE OPERAÇÃO & DECISÃO (100% REAIS E LIMPOS) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Card 1: Cotações */}
         <div 
@@ -873,17 +859,21 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {statsCotacoes.destaque && (
+            {statsCotacoes.destaque ? (
               <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 text-xs">
                 <div className="flex items-center justify-between font-bold text-blue-900 mb-1">
                   <span>{statsCotacoes.destaque.codigo || 'Cotação'} — {statsCotacoes.destaque.titulo}</span>
                 </div>
                 <p className="text-gray-600">
-                  {statsCotacoes.destaque.fornecedores?.length || statsCotacoes.destaque.totalPropostas || 3} fornecedores • Menor proposta: <b className="text-gray-900">R$ {(statsCotacoes.destaque.menorPreco || 4850).toLocaleString('pt-BR')}</b>
+                  {statsCotacoes.destaque.fornecedores?.length || 0} fornecedor(es) • Menor: <b className="text-gray-900">R$ {(parseFloat(statsCotacoes.destaque.menorPreco) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</b>
                 </p>
                 <span className="inline-block mt-2 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-black text-[10px] uppercase">
-                  {statsCotacoes.destaque.status || 'Aguardando aprovação'}
+                  {statsCotacoes.destaque.status || 'Em andamento'}
                 </span>
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-50 rounded-xl border border-gray-200 text-xs text-gray-400 text-center">
+                Nenhuma cotação ativa no momento.
               </div>
             )}
           </div>
@@ -930,14 +920,25 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-1.5 text-xs">
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-rose-50 border border-rose-100 text-rose-800 font-bold">
-                <span>🔴</span>
-                <span className="truncate">Bomba da piscina — Manutenção atrasada</span>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-100 text-amber-800 font-bold">
-                <span>🟡</span>
-                <span className="truncate">Elevador social — Manutenção em 12 dias</span>
-              </div>
+              {statsManutencoes.atrasadas.length > 0 ? (
+                statsManutencoes.atrasadas.map((m, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-rose-50 border border-rose-100 text-rose-800 font-bold">
+                    <span>🔴</span>
+                    <span className="truncate">{m.titulo || m.equipamento} — Atrasada ({m.dias}d)</span>
+                  </div>
+                ))
+              ) : statsManutencoes.proximas.length > 0 ? (
+                statsManutencoes.proximas.map((m, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-100 text-amber-800 font-bold">
+                    <span>🟡</span>
+                    <span className="truncate">{m.titulo || m.equipamento} — Em {m.dias} dias</span>
+                  </div>
+                ))
+              ) : (
+                <div className="p-2.5 bg-emerald-50 text-emerald-800 rounded-lg border border-emerald-100 text-xs font-bold text-center">
+                  ✅ Todas as manutenções preventivas em dia.
+                </div>
+              )}
             </div>
           </div>
 
@@ -978,11 +979,11 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {statsContratos.urgente && (
+            {statsContratos.urgente ? (
               <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-100 text-xs">
                 <div className="flex items-center gap-1.5 font-bold text-amber-900 mb-1">
                   <span>⚠️</span>
-                  <span className="truncate">{statsContratos.urgente.titulo}</span>
+                  <span className="truncate">{statsContratos.urgente.titulo || statsContratos.urgente.seguradora || 'Contrato/Apólice'}</span>
                 </div>
                 <p className="text-gray-600 font-medium">
                   Vence em <b className="text-gray-900">{statsContratos.urgente.dias} dias</b> ({statsContratos.urgente.dataFormatada})
@@ -990,6 +991,10 @@ export default function Dashboard() {
                 <span className="inline-block mt-2 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">
                   Renovação necessária
                 </span>
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-50 rounded-xl border border-gray-200 text-xs text-gray-400 text-center">
+                Nenhum contrato com vencimento próximo.
               </div>
             )}
           </div>
@@ -1018,26 +1023,32 @@ export default function Dashboard() {
           </span>
         </div>
 
-        <div className="space-y-2.5">
-          {alertasCriticos.map(alerta => (
-            <div
-              key={alerta.id}
-              onClick={() => navigate(alerta.rota)}
-              className="p-3.5 bg-slate-50 hover:bg-brand-50/60 rounded-xl border border-gray-200 hover:border-brand-300 transition-all cursor-pointer flex items-center justify-between group"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-lg">{alerta.icone}</span>
-                <span className="text-sm font-bold text-gray-800 group-hover:text-brand-800 transition-colors">
-                  {alerta.texto}
-                </span>
+        {alertasCriticos.length === 0 ? (
+          <div className="p-6 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 text-center text-xs font-bold">
+            ✨ Excelente! Não há alertas críticos ou pendências urgentes para este condomínio hoje.
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {alertasCriticos.map(alerta => (
+              <div
+                key={alerta.id}
+                onClick={() => navigate(alerta.rota)}
+                className="p-3.5 bg-slate-50 hover:bg-brand-50/60 rounded-xl border border-gray-200 hover:border-brand-300 transition-all cursor-pointer flex items-center justify-between group"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">{alerta.icone}</span>
+                  <span className="text-sm font-bold text-gray-800 group-hover:text-brand-800 transition-colors">
+                    {alerta.texto}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 text-xs font-bold text-brand-600 group-hover:translate-x-1 transition-transform">
+                  <span>Resolver</span>
+                  <ArrowRight size={14} />
+                </div>
               </div>
-              <div className="flex items-center gap-1 text-xs font-bold text-brand-600 group-hover:translate-x-1 transition-transform">
-                <span>Resolver</span>
-                <ArrowRight size={14} />
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
