@@ -30,13 +30,13 @@ const STATUS_FLUXO = [
   'Resolvida'
 ]
 
-function Modal({ data, user, onClose, onSave }) {
+function Modal({ data, user, condominios = [], onClose, onSave }) {
   const [form, setForm] = useState(data || {
     titulo: '',
     descricao: '',
     local: '',
     apt: user?.apt || user?.unidade || '',
-    condominio: user?.condominio || '',
+    condominio: user?.condominio || condominios[0]?.nome || '',
     categoria: 'Manutenção',
     prioridade: 'Média',
     status: 'Aberta',
@@ -83,6 +83,16 @@ function Modal({ data, user, onClose, onSave }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg">✕</button>
         </div>
         <div className="p-6 flex flex-col gap-4 text-xs">
+          {!isMorador && condominios.length > 0 && (
+            <div>
+              <label className="label font-bold text-gray-700">Condomínio *</label>
+              <select className="input font-bold" value={form.condominio} onChange={e => set('condominio', e.target.value)}>
+                <option value="">Selecione o Condomínio...</option>
+                {condominios.map(c => <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>)}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="label font-bold text-gray-700">Assunto / Título da Solicitação *</label>
             <input
@@ -138,23 +148,29 @@ function Modal({ data, user, onClose, onSave }) {
             </div>
           </div>
 
+          {/* Anexar Foto */}
+          <div>
+            <label className="label font-bold text-gray-700">Foto / Evidência (Opcional)</label>
+            <input type="file" accept="image/*" onChange={handleImage} className="text-xs text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100" />
+            {form.foto && (
+              <div className="mt-2 relative w-24 h-24 rounded-lg overflow-hidden border border-gray-200">
+                <img src={form.foto} alt="Evidência" className="w-full h-full object-cover" />
+                <button onClick={() => set('foto', '')} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 text-[10px]">✕</button>
+              </div>
+            )}
+          </div>
+
+          {/* Gestão ADM / Síndico */}
           {!isMorador && (
-            <div className="grid grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-gray-200">
+            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-cream-200">
               <div>
                 <label className="label font-bold text-gray-700">Status</label>
                 <select className="input font-bold" value={form.status} onChange={e => set('status', e.target.value)}>
                   {STATUS_FLUXO.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-
               <div>
                 <label className="label font-bold text-gray-700">Responsável</label>
-                <input className="input font-medium" value={form.responsavel} onChange={e => set('responsavel', e.target.value)} placeholder="Ex: Síndico, Zelador, Manutenção..." />
-              </div>
-
-              <div>
-                <label className="label font-bold text-gray-700">Previsão</label>
-                <input type="date" className="input font-medium" value={form.previsao} onChange={e => set('previsao', e.target.value)} />
               </div>
             </div>
           )}
@@ -217,10 +233,12 @@ const prioBadge = p => {
 export default function Ocorrencias() {
   const { user } = useAuth()
   const { items: allOcorrencias, addItem, updateItem, deleteItem } = useFirestore('ocorrencias')
+  const { items: allCondominios } = useFirestore('condominios')
   const [modal, setModal] = useState(null)
   const [search, setSearch] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('Todos')
   const [filtroCategoria, setFiltroCategoria] = useState('Todos')
+  const [filtroCondo, setFiltroCondo] = useState('Todos')
 
   const isMorador = user?.role === 'Morador'
 
@@ -234,6 +252,9 @@ export default function Ocorrencias() {
     if (user?.role === 'Síndico' || user?.role === 'Subsíndico') {
       return !o.condominio || o.condominio === user?.condominio
     }
+    if (filtroCondo && filtroCondo !== 'Todos') {
+      return o.condominio === filtroCondo
+    }
     return true
   }).filter(o => {
     const matchBusca = (o.titulo || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -242,7 +263,8 @@ export default function Ocorrencias() {
                        (o.apt || '').toLowerCase().includes(search.toLowerCase())
     const matchStatus = filtroStatus === 'Todos' || o.status === filtroStatus
     const matchCat = filtroCategoria === 'Todos' || o.categoria === filtroCategoria
-    return matchBusca && matchStatus && matchCat
+    const matchCondo = filtroCondo === 'Todos' || !o.condominio || o.condominio === filtroCondo
+    return matchBusca && matchStatus && matchCat && matchCondo
   }).sort((a, b) => new Date(b.data || b._createdAt || 0) - new Date(a.data || a._createdAt || 0))
 
   return (
@@ -275,6 +297,17 @@ export default function Ocorrencias() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+
+        {!isMorador && allCondominios.length > 0 && (
+          <select
+            className="input text-xs py-2 w-full md:w-auto font-bold bg-white text-gray-800 border-gray-300"
+            value={filtroCondo}
+            onChange={e => setFiltroCondo(e.target.value)}
+          >
+            <option value="Todos">Todos os Condomínios</option>
+            {allCondominios.map(c => <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>)}
+          </select>
+        )}
 
         <select
           className="input text-xs py-2 w-full md:w-auto font-bold"
@@ -378,6 +411,7 @@ export default function Ocorrencias() {
         <Modal
           data={modal.id ? modal : null}
           user={user}
+          condominios={allCondominios}
           onClose={() => setModal(null)}
           onSave={async (formData) => {
             if (modal.id) {
