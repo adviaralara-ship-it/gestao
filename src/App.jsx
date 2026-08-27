@@ -56,6 +56,7 @@ import Totem from './pages/Totem'
 import Mediacao from './pages/Mediacao'
 import MediacaoNova from './pages/MediacaoNova'
 import MediacaoSalaExterna from './pages/MediacaoSalaExterna'
+import Cotacoes from './pages/Cotacoes'
 
 // Spinner de carregamento enquanto o Firebase Auth verifica a sessão
 function AuthLoader() {
@@ -93,7 +94,7 @@ function AuthorizedRoute({ module, children }) {
   }
 
   // Verifica se o usuário tem permissão para a rota específica
-  let hasPerm = user.permissoes?.includes(module) || user.role === 'Administrador' || module === 'pets' || module === 'mediacao' || module === 'alpha-ai'
+  let hasPerm = user.permissoes?.includes(module) || user.role === 'Administrador' || module === 'pets' || module === 'mediacao' || module === 'alpha-ai' || module === 'cotacoes'
   if ((module === 'conferencias' || module === 'recrutamento') && user.permissoes?.includes('rh')) hasPerm = true
   
   if (!hasPerm) {
@@ -168,6 +169,7 @@ function AppRoutes() {
           <Route path="mural" element={<AuthorizedRoute module="mural"><Mural /></AuthorizedRoute>} />
           <Route path="monitoramento-ia" element={<AuthorizedRoute module="monitoramento-ia"><MonitoramentoIA /></AuthorizedRoute>} />
           <Route path="prestadores" element={<AuthorizedRoute module="prestadores"><Prestadores /></AuthorizedRoute>} />
+          <Route path="cotacoes" element={<AuthorizedRoute module="cotacoes"><Cotacoes /></AuthorizedRoute>} />
           <Route path="usuarios" element={<AuthorizedRoute module="usuarios"><Usuarios /></AuthorizedRoute>} />
           <Route path="financeiro" element={<AuthorizedRoute module="financeiro"><Financeiro /></AuthorizedRoute>} />
           <Route path="plano-contas" element={<AuthorizedRoute module="financeiro"><PlanoContas /></AuthorizedRoute>} />

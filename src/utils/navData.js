@@ -6,7 +6,8 @@ import {
   Building2, FolderOpen, BookOpen, FileSignature, Receipt, Shield, FileText,
   CreditCard, Target, Scale, Building, Calculator,
   CalendarCheck as Reservas, Wrench, DoorOpen, Package, QrCode, Car, Camera,
-  Briefcase, UserCog, Settings, MessageCircleCode, Mail, UserCog as Usuarios2
+  Briefcase, UserCog, Settings, MessageCircleCode, Mail, UserCog as Usuarios2,
+  FileSpreadsheet
 } from 'lucide-react'
 
 export const navGroups = [
@@ -97,7 +98,9 @@ export const navGroups = [
     label: '🤝 Fornecedores',
     emoji: '🤝',
     items: [
-      { to: '/prestadores',   label: 'Prestadores',              icon: Briefcase },
+      { to: '/prestadores',   label: 'Fornecedores',             icon: Briefcase },
+      { to: '/cotacoes',      label: 'Cotações & Comparativos',  icon: FileSpreadsheet },
+      { to: '/contratos',     label: 'Contratos',                icon: FileSignature },
     ]
   },
   // 👨‍💼 RH
@@ -129,7 +132,8 @@ export function getFilteredNavGroups(user) {
     'alpha-ai', 'pets', 'mediacao', 'conviver', 'radar',
     'mural', 'enquetes', 'classificados', 'comunicacao',
     'seguro', 'regime', 'documentos', 'monitoramento-ia',
-    'whatsapp', 'email', 'condominios', 'relatorios', 'tarefas'
+    'whatsapp', 'email', 'condominios', 'relatorios', 'tarefas',
+    'cotacoes'
   ])
 
   const MORADOR_ALLOWED = new Set([
