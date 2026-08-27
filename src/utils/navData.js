@@ -245,7 +245,30 @@ export function getFilteredNavGroups(user) {
     ]
   }
 
-  // 4. SE FOR ADMIN MASTER (Alpha): Visão Completa Global
+  // 4. SE FOR PORTEIRO / PORTARIA: Operação e Acesso Restrito
+  const isPorteiro = role === 'Porteiro' || role === 'Portaria'
+  if (isPorteiro) {
+    return [
+      {
+        label: '🚪 Central da Portaria',
+        emoji: '🚪',
+        items: [
+          { to: '/dashboard',   label: 'Dashboard da Portaria',     icon: LayoutDashboard },
+          { to: '/portaria',    label: 'Portaria & Entradas',       icon: DoorOpen },
+          { to: '/visitantes',  label: 'Visitantes & Convites',     icon: QrCode },
+          { to: '/moradores',   label: 'Consultar Moradores',       icon: Users },
+          { to: '/encomendas',  label: 'Controle de Encomendas',    icon: Package },
+          { to: '/veiculos',    label: 'Garagem & Veículos',        icon: Car },
+          { to: '/cameras',     label: 'Câmeras de Segurança',      icon: Camera },
+          { to: '/ocorrencias', label: 'Ocorrências & Livro',       icon: AlertTriangle },
+          { to: '/reservas',    label: 'Reservas de Espaços',       icon: Reservas },
+          { to: '/mural',       label: 'Avisos da Portaria',        icon: Megaphone }
+        ]
+      }
+    ]
+  }
+
+  // 5. SE FOR ADMIN MASTER (Alpha): Visão Completa Global
   const userPerms = user?.permissoes || []
   return navGroups.map(group => ({
     ...group,

@@ -35,12 +35,15 @@ function CameraModal({ data, onClose, onSave, currentUser }) {
 export default function Cameras() {
   const { user } = useAuth()
   const { items, addItem, updateItem, deleteItem } = useFirestore('cameras')
+  const { items: condominios } = useFirestore('condominios')
   const isMorador = user?.role === 'Morador'
   
+  const [condoFiltro, setCondoFiltro] = useState(isMorador ? user?.condominio : 'Todos')
   const [modal, setModal] = useState(null)
   
   const filtered = items.filter(c => {
-    if (isMorador && c.condominio !== user.condominio) return false
+    if (isMorador && user?.condominio && c.condominio !== user.condominio) return false
+    if (!isMorador && condoFiltro !== 'Todos' && c.condominio !== condoFiltro) return false
     return true
   })
 
@@ -52,12 +55,26 @@ export default function Cameras() {
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
-      <div className="page-header">
+      <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="section-title text-xl">Monitoramento e Câmeras</h2>
-          <p className="section-sub">{isMorador ? 'Acesse as câmeras do seu condomínio' : `Gerenciamento de streams de CFTV`}</p>
+          <h2 className="section-title text-xl">Monitoramento e Câmeras (CFTV)</h2>
+          <p className="section-sub">{isMorador ? 'Acesse as câmeras do seu condomínio' : `Gerenciamento de streams de CFTV em tempo real`}</p>
         </div>
-        {!isMorador && <button onClick={()=>setModal('new')} className="btn-primary"><Plus size={16}/>Nova Câmera</button>}
+        <div className="flex items-center gap-3">
+          {!isMorador && (
+            <select
+              className="input py-2 text-xs font-bold text-gray-800 bg-white border-gray-300 rounded-xl"
+              value={condoFiltro}
+              onChange={e => setCondoFiltro(e.target.value)}
+            >
+              <option value="Todos">🏢 Todos os Condomínios</option>
+              {condominios.map(c => (
+                <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+              ))}
+            </select>
+          )}
+          {!isMorador && <button onClick={()=>setModal('new')} className="btn-primary"><Plus size={16}/>Nova Câmera</button>}
+        </div>
       </div>
 
       {filtered.length===0 ? (

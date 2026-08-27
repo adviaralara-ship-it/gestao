@@ -6,7 +6,8 @@ import {
   TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck,
   CreditCard, DollarSign, FileText, Bell, Clock, Wrench, Shield, Plus,
   FileSpreadsheet, ArrowRight, CheckCircle2, AlertCircle, Sparkles, ChevronRight,
-  ExternalLink, Layers, Eye, Bot, Megaphone, Car, QrCode, Gavel, FolderOpen, Check, User, Camera
+  ExternalLink, Layers, Eye, Bot, Megaphone, Car, QrCode, Gavel, FolderOpen, Check, User, Camera,
+  DoorOpen, Package, PhoneCall, AlertOctagon, Truck, BookOpen, RefreshCw
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useNavigate } from 'react-router-dom'
@@ -28,12 +29,17 @@ export default function Dashboard() {
   const { items: assembleias }  = useFirestore('assembleias')
   const { items: avisos }       = useFirestore('avisos')
   const { items: reservas }     = useFirestore('reservas')
+  const { items: moradores }    = useFirestore('moradores')
+  const { items: veiculos }     = useFirestore('veiculos')
+  const { items: visitantes }   = useFirestore('visitantes')
+  const { items: acessosPortaria } = useFirestore('portaria_visitantes')
+  const { items: prestadores }  = useFirestore('portaria_prestadores')
+  const { items: encomendas }   = useFirestore('encomendas')
 
   // =========================================================================
-  // SE FOR MORADOR -> PORTAL DO MORADOR
+  // 1. SE FOR MORADOR -> PORTAL DO MORADOR
   // =========================================================================
   if (user?.role === 'Morador') {
-    // 1. Boletos do morador
     const meusBoletos = boletos.filter(b => {
       const matchApt = b.apt === user?.apt || b.apt === user?.unidade
       const matchNome = (b.morador || '').toLowerCase() === (user?.nome || '').toLowerCase()
@@ -43,21 +49,18 @@ export default function Dashboard() {
     const proximoBoleto = meusBoletos.find(b => b.status === 'Pendente' || b.status === 'Vencido') || meusBoletos[0]
     const emDia = !meusBoletos.some(b => b.status === 'Vencido')
 
-    // 2. Avisos e Comunicados para o condomínio dele
     const avisosMorador = avisos.filter(a => {
       if (a.condominio && a.condominio !== 'Todos' && user?.condominio && a.condominio !== user.condominio) return false
       if (a.destino === 'Colaboradores') return false
       return true
     }).slice(0, 3)
 
-    // 3. Minhas Reservas
     const minhasReservas = reservas.filter(r => {
       const matchNome = (r.morador || '').toLowerCase() === (user?.nome || '').toLowerCase()
       const matchApt = r.apt === user?.apt || r.apt === user?.unidade
       return matchNome || matchApt
     }).slice(0, 3)
 
-    // 4. Minhas Solicitações Abertas
     const minhasSolicitacoes = ocorrencias.filter(o => {
       const matchApt = o.apt === user?.apt || o.apt === user?.unidade
       const matchAutor = o.autor === user?.nome || o.nome_morador === user?.nome || o.uid === user?.uid
@@ -66,7 +69,7 @@ export default function Dashboard() {
 
     return (
       <div className="flex flex-col gap-6 animate-fade-in max-w-6xl mx-auto pb-12">
-        {/* 1. Header do Morador */}
+        {/* Header do Morador */}
         <div className="bg-gradient-to-r from-[#2d3045] to-[#1e2030] text-white p-6 rounded-3xl shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-2xl bg-brand-500 flex items-center justify-center font-black text-2xl text-white shadow-inner border-2 border-white/20">
@@ -105,7 +108,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 2. Serviços Rápidos do Condomínio (POSICIONADO NO TOPO CONFORME SOLICITADO) */}
+        {/* Serviços Rápidos no Topo */}
         <div className="bg-white p-5 rounded-2xl border border-pale-300 shadow-sm">
           <h3 className="font-bold text-gray-900 text-sm mb-3">Serviços Rápidos do Condomínio</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 text-center">
@@ -167,7 +170,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 3. Grade Principal: Financeiro & Avisos */}
+        {/* Grade Principal: Financeiro & Avisos */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Card: Minha Situação Financeira */}
           <div className="bg-white p-6 rounded-2xl border border-pale-300 shadow-sm flex flex-col justify-between">
@@ -260,7 +263,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 4. Grade Secundária: Solicitações & Reservas */}
+        {/* Grade Secundária: Solicitações & Reservas */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Minhas Solicitações */}
           <div className="bg-white p-6 rounded-2xl border border-pale-300 shadow-sm flex flex-col justify-between">
@@ -367,7 +370,210 @@ export default function Dashboard() {
   }
 
   // =========================================================================
-  // GESTÃO / SÍNDICO / ADMINISTRADOR / CONSELHO (100% DADOS REAIS DO FIRESTORE)
+  // 2. SE FOR PORTEIRO -> DASHBOARD DA PORTARIA
+  // =========================================================================
+  if (user?.role === 'Porteiro' || user?.role === 'Portaria') {
+    const hojeStr = new Date().toISOString().split('T')[0]
+    const condo = user?.condominio || 'Todos'
+
+    const filterCondo = (items) => {
+      if (!condo || condo === 'Todos') return items
+      return items.filter(i => !i.condominio || i.condominio === condo)
+    }
+
+    const visEsperados = filterCondo(visitantes).filter(v => {
+      const isHoje = !v.dataVisita || v.dataVisita === hojeStr || v.dataVisita.startsWith(hojeStr)
+      return v.status === 'Autorizado' && isHoje
+    })
+
+    const noLocal = filterCondo(acessosPortaria).filter(a => a.status === 'No local')
+    const prestadoresNoLocal = filterCondo(prestadores).filter(p => p.status === 'No local')
+    const encPendentes = filterCondo(encomendas).filter(e => e.status !== 'Retirada' && e.status !== 'Entregue')
+    const totalMoradores = filterCondo(moradores).length
+    const totalVeiculos = filterCondo(veiculos).length
+
+    return (
+      <div className="flex flex-col gap-6 animate-fade-in max-w-7xl mx-auto pb-16">
+        {/* Header da Portaria */}
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-3xl shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-2xl bg-brand-600 flex items-center justify-center font-black text-2xl text-white shadow-inner border border-white/20">
+              🚪
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-black">{user?.nome || 'Porteiro'}</h1>
+                <span className="bg-emerald-500/30 text-emerald-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-400/30">
+                  Portaria Ativa
+                </span>
+              </div>
+              <p className="text-gray-300 text-xs md:text-sm font-medium mt-0.5 flex items-center gap-2">
+                <Building2 size={14} className="text-brand-300" /> {user?.condominio || 'Condomínio'}
+                <span>•</span>
+                <span>Turno: {format(new Date(), "EEEE, dd 'de' MMMM", { locale: undefined })}</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/portaria')}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-md flex items-center gap-2 transition-transform hover:scale-105"
+            >
+              <QrCode size={16} /> Ler QR Code de Acesso
+            </button>
+            <button
+              onClick={() => navigate('/ocorrencias')}
+              className="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2"
+            >
+              <AlertTriangle size={16} /> Nova Ocorrência
+            </button>
+          </div>
+        </div>
+
+        {/* Métricas Operacionais da Portaria */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div onClick={() => navigate('/moradores')} className="bg-white p-4 rounded-2xl border border-pale-300 shadow-sm hover:border-brand-400 cursor-pointer transition-all">
+            <span className="text-[11px] font-bold text-gray-400 uppercase">Moradores</span>
+            <p className="text-2xl font-black text-emerald-600 mt-1">{totalMoradores}</p>
+            <span className="text-[10px] text-gray-500">Cadastrados</span>
+          </div>
+
+          <div onClick={() => navigate('/portaria')} className="bg-white p-4 rounded-2xl border border-pale-300 shadow-sm hover:border-brand-400 cursor-pointer transition-all">
+            <span className="text-[11px] font-bold text-gray-400 uppercase">Esperados Hoje</span>
+            <p className="text-2xl font-black text-amber-600 mt-1">{visEsperados.length}</p>
+            <span className="text-[10px] text-gray-500">Pré-autorizados</span>
+          </div>
+
+          <div onClick={() => navigate('/portaria')} className="bg-white p-4 rounded-2xl border border-pale-300 shadow-sm hover:border-brand-400 cursor-pointer transition-all">
+            <span className="text-[11px] font-bold text-gray-400 uppercase">No Condomínio</span>
+            <p className="text-2xl font-black text-emerald-600 mt-1">{noLocal.length}</p>
+            <span className="text-[10px] text-gray-500">Visitantes agora</span>
+          </div>
+
+          <div onClick={() => navigate('/portaria')} className="bg-white p-4 rounded-2xl border border-pale-300 shadow-sm hover:border-brand-400 cursor-pointer transition-all">
+            <span className="text-[11px] font-bold text-gray-400 uppercase">Prestadores</span>
+            <p className="text-2xl font-black text-blue-600 mt-1">{prestadoresNoLocal.length}</p>
+            <span className="text-[10px] text-gray-500">Em serviço</span>
+          </div>
+
+          <div onClick={() => navigate('/encomendas')} className="bg-white p-4 rounded-2xl border border-pale-300 shadow-sm hover:border-brand-400 cursor-pointer transition-all">
+            <span className="text-[11px] font-bold text-gray-400 uppercase">Encomendas</span>
+            <p className="text-2xl font-black text-purple-600 mt-1">{encPendentes.length}</p>
+            <span className="text-[10px] text-gray-500">Aguardando retirada</span>
+          </div>
+
+          <div onClick={() => navigate('/veiculos')} className="bg-white p-4 rounded-2xl border border-pale-300 shadow-sm hover:border-brand-400 cursor-pointer transition-all">
+            <span className="text-[11px] font-bold text-gray-400 uppercase">Veículos</span>
+            <p className="text-2xl font-black text-gray-800 mt-1">{totalVeiculos}</p>
+            <span className="text-[10px] text-gray-500">Na garagem</span>
+          </div>
+        </div>
+
+        {/* Atalhos Rápidos da Portaria */}
+        <div className="bg-white p-6 rounded-3xl border border-pale-300 shadow-sm">
+          <h3 className="font-bold text-gray-900 text-sm mb-4">Atalhos Rápidos de Operação</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-center">
+            <button
+              onClick={() => navigate('/portaria')}
+              className="p-4 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 rounded-2xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <QrCode size={24} className="text-emerald-600" />
+              <span className="text-xs font-bold text-gray-800">Ler QR Code</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/moradores')}
+              className="p-4 bg-slate-50 hover:bg-brand-50 hover:border-brand-300 rounded-2xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <Users size={24} className="text-brand-600" />
+              <span className="text-xs font-bold text-gray-800">Consultar Morador</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/encomendas')}
+              className="p-4 bg-slate-50 hover:bg-purple-50 hover:border-purple-300 rounded-2xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <Package size={24} className="text-purple-600" />
+              <span className="text-xs font-bold text-gray-800">Encomendas</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/veiculos')}
+              className="p-4 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 rounded-2xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <Car size={24} className="text-blue-600" />
+              <span className="text-xs font-bold text-gray-800">Consultar Veículo</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/cameras')}
+              className="p-4 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-300 rounded-2xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <Camera size={24} className="text-indigo-600" />
+              <span className="text-xs font-bold text-gray-800">Câmeras CFTV</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/ocorrencias')}
+              className="p-4 bg-slate-50 hover:bg-rose-50 hover:border-rose-300 rounded-2xl border border-gray-200 transition-all flex flex-col items-center gap-2 group cursor-pointer"
+            >
+              <AlertTriangle size={24} className="text-rose-600" />
+              <span className="text-xs font-bold text-gray-800">Livro de Ocorrências</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Visitantes Esperados Hoje com Liberação Rápida */}
+        <div className="bg-white rounded-3xl border border-amber-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="p-4 bg-amber-50/70 border-b border-amber-100 flex items-center justify-between">
+            <h3 className="font-black text-amber-900 text-sm">
+              🟡 Visitantes Pré-Autorizados Esperados Hoje
+            </h3>
+            <button onClick={() => navigate('/portaria')} className="text-xs font-bold text-brand-600 hover:text-brand-800">
+              Abrir Controle Completo da Portaria →
+            </button>
+          </div>
+
+          <div className="divide-y divide-gray-100">
+            {visEsperados.length === 0 ? (
+              <p className="text-xs text-gray-400 p-6 text-center">Nenhum visitante pré-autorizado aguardando chegada hoje.</p>
+            ) : (
+              visEsperados.map(v => (
+                <div key={v.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-amber-50/30 transition-colors">
+                  <div className="flex items-center gap-3">
+                    {v.foto ? (
+                      <img src={v.foto} alt={v.nome} className="w-10 h-10 rounded-full object-cover border-2 border-emerald-500 shadow-sm" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-slate-100 border border-gray-200 flex items-center justify-center text-gray-400">
+                        <User size={16} />
+                      </div>
+                    )}
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-sm">{v.nome}</h4>
+                      <p className="text-xs text-gray-600 mt-0.5">
+                        Anfitrião: <b className="text-gray-900">{v.moradorNome || 'Morador'}</b> {v.apt ? `(Apt ${v.apt})` : ''} • Doc: {v.documento || '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => navigate('/portaria')}
+                    className="btn-primary py-2 px-4 text-xs font-black bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Check size={14} /> Liberar na Portaria
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // =========================================================================
+  // 3. GESTÃO / SÍNDICO / ADMINISTRADOR / CONSELHO (100% DADOS REAIS DO FIRESTORE)
   // =========================================================================
   const [condoFiltro, setCondoFiltro] = useState(user?.role === 'Síndico' || user?.role === 'Conselheiro' ? (user.condominio || 'Todos') : 'Todos')
 
@@ -482,7 +688,6 @@ export default function Dashboard() {
     }
   }, [bolFiltrado, finFiltrado])
 
-  // 100% DADOS REAIS DE COTAÇÕES
   const statsCotacoes = useMemo(() => {
     let emAndamento = 0
     let aguardandoOrcamento = 0
@@ -511,7 +716,6 @@ export default function Dashboard() {
     }
   }, [cotFiltradas])
 
-  // 100% DADOS REAIS DE MANUTENÇÕES
   const statsManutencoes = useMemo(() => {
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
@@ -554,7 +758,6 @@ export default function Dashboard() {
     }
   }, [manFiltradas])
 
-  // 100% DADOS REAIS DE CONTRATOS & APÓLICES
   const statsContratos = useMemo(() => {
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
@@ -698,7 +901,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 1. VISÃO FINANCEIRA (CARDS CLICÁVEIS + GRÁFICO MENSAL COM DADOS REAIS) */}
+      {/* 1. VISÃO FINANCEIRA */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Saldo Atual */}
         <div 
@@ -822,7 +1025,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 2. OS 3 CARDS DE OPERAÇÃO & DECISÃO (100% REAIS E LIMPOS) */}
+      {/* 2. OS 3 CARDS DE OPERAÇÃO & DECISÃO */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Card 1: Cotações */}
         <div 

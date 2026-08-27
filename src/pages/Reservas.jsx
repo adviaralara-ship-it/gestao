@@ -149,11 +149,22 @@ export default function Reservas() {
   const today=new Date()
   const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
 
+  const { items: condominios } = useFirestore('condominios')
+  const isMorador = user?.role === 'Morador'
+  const [condoFiltro, setCondoFiltro] = useState(isMorador ? user?.condominio : 'Todos')
+
   const getReservationsForDay = dayStr =>
-    items.filter(i=>{if(selectedEspaco!=='Todos'&&i.espaco!==selectedEspaco)return false;return i.data===dayStr})
+    items.filter(i=>{
+      if (isMorador && user?.condominio && i.condominio !== user.condominio) return false
+      if (!isMorador && condoFiltro !== 'Todos' && i.condominio !== condoFiltro) return false
+      if (selectedEspaco!=='Todos'&&i.espaco!==selectedEspaco) return false
+      return i.data===dayStr
+    })
 
   // Lista filtrada para a seção abaixo do calendário
   const listaFiltrada = items.filter(i=>{
+    if (isMorador && user?.condominio && i.condominio !== user.condominio) return false
+    if (!isMorador && condoFiltro !== 'Todos' && i.condominio !== condoFiltro) return false
     const okEspaco = selectedEspaco==='Todos'||i.espaco===selectedEspaco
     const okSearch = !search || i.morador?.toLowerCase().includes(search.toLowerCase())||i.espaco?.toLowerCase().includes(search.toLowerCase())
     return okEspaco&&okSearch
@@ -161,9 +172,23 @@ export default function Reservas() {
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
-      <div className="page-header">
-        <div><h2 className="section-title text-xl">Calendário de Reservas</h2><p className="section-sub">{items.filter(i=>i.status==='Pendente').length} aguardando aprovação</p></div>
-        <button onClick={()=>setModal({espaco:selectedEspaco==='Todos'?'Salão de Festas':selectedEspaco,condominio:user?.condominio||'',morador:user?.nome||'',apt:user?.apt||'',data:'',horario:'',pessoas:'',status:'Pendente'})} className="btn-primary"><Plus size={16}/>Nova Reserva</button>
+      <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div><h2 className="section-title text-xl">Calendário de Reservas</h2><p className="section-sub">{listaFiltrada.filter(i=>i.status==='Pendente').length} aguardando aprovação</p></div>
+        <div className="flex items-center gap-3">
+          {!isMorador && (
+            <select
+              className="input py-2 text-xs font-bold text-gray-800 bg-white border-gray-300 rounded-xl"
+              value={condoFiltro}
+              onChange={e => setCondoFiltro(e.target.value)}
+            >
+              <option value="Todos">🏢 Todos os Condomínios</option>
+              {condominios.map(c => (
+                <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+              ))}
+            </select>
+          )}
+          <button onClick={()=>setModal({espaco:selectedEspaco==='Todos'?'Salão de Festas':selectedEspaco,condominio:user?.condominio||(condoFiltro!=='Todos'?condoFiltro:''),morador:user?.nome||'',apt:user?.apt||'',data:'',horario:'',pessoas:'',status:'Pendente'})} className="btn-primary"><Plus size={16}/>Nova Reserva</button>
+        </div>
       </div>
 
       {/* Filtros de espaço */}

@@ -199,15 +199,23 @@ export default function Manutencoes() {
   const [modalDemanda, setModalDemanda] = useState(null)
   const [modalProposta, setModalProposta] = useState(null)
   
+  const [condoFiltro, setCondoFiltro] = useState(isMorador ? user?.condominio : 'Todos')
+
   // Cronograma Visuals
   const hojeStr = new Date().toISOString().split('T')[0]
-  const viewManutencoes = manutencoes.map(m => {
-    let statusVisual = m.status
-    if (m.status !== 'Concluída' && m.dataPrevista < hojeStr) {
-      statusVisual = 'Atrasada'
-    }
-    return { ...m, statusVisual }
-  }).sort((a,b) => new Date(a.dataPrevista) - new Date(b.dataPrevista))
+  const viewManutencoes = manutencoes
+    .filter(m => {
+      if (isMorador && user?.condominio && m.condominio !== user.condominio) return false
+      if (!isMorador && condoFiltro !== 'Todos' && m.condominio !== condoFiltro) return false
+      return true
+    })
+    .map(m => {
+      let statusVisual = m.status
+      if (m.status !== 'Concluída' && m.dataPrevista < hojeStr) {
+        statusVisual = 'Atrasada'
+      }
+      return { ...m, statusVisual }
+    }).sort((a,b) => new Date(a.dataPrevista) - new Date(b.dataPrevista))
 
   const handleSaveManu = async (form) => {
     if (form.id) await updateItem(form.id, form)
@@ -236,10 +244,24 @@ export default function Manutencoes() {
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in w-full h-full print:bg-white print:p-0">
-      <div className="page-header print:hidden">
+      <div className="page-header print:hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="section-title text-xl flex items-center gap-2"><Wrench className="text-brand-600"/> Manutenção Inteligente e Compras</h2>
           <p className="section-sub">Controle o cronograma de ativos e receba propostas de fornecedores pelo Portal Público.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {!isMorador && (
+            <select
+              className="input py-2 text-xs font-bold text-gray-800 bg-white border-gray-300 rounded-xl"
+              value={condoFiltro}
+              onChange={e => setCondoFiltro(e.target.value)}
+            >
+              <option value="Todos">🏢 Todos os Condomínios</option>
+              {condominios.map(c => (
+                <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 

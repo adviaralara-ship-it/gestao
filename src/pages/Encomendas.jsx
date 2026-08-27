@@ -53,11 +53,18 @@ export default function Encomendas() {
     window.open(`https://wa.me/${telDefault}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
-  const filtradas = encomendas.filter(e => 
-    e.morador.toLowerCase().includes(busca.toLowerCase()) || 
-    (e.apt || '').toLowerCase().includes(busca.toLowerCase()) ||
-    (e.codigo || '').toLowerCase().includes(busca.toLowerCase())
-  ).sort((a, b) => {
+  const { items: condominios } = useFirestore('condominios')
+  const isMorador = user?.role === 'Morador'
+  const [condoFiltro, setCondoFiltro] = useState(isMorador ? user?.condominio : 'Todos')
+
+  const filtradas = encomendas.filter(e => {
+    if (isMorador && user?.condominio && e.condominio !== user.condominio) return false
+    if (!isMorador && condoFiltro !== 'Todos' && e.condominio !== condoFiltro) return false
+    const matchBusca = (e.morador || '').toLowerCase().includes(busca.toLowerCase()) || 
+      (e.apt || '').toLowerCase().includes(busca.toLowerCase()) ||
+      (e.codigo || '').toLowerCase().includes(busca.toLowerCase())
+    return matchBusca
+  }).sort((a, b) => {
     if (a.status === 'Aguardando Retirada' && b.status !== 'Aguardando Retirada') return -1;
     if (b.status === 'Aguardando Retirada' && a.status !== 'Aguardando Retirada') return 1;
     return new Date(b.dataRecebimento || 0) - new Date(a.dataRecebimento || 0);
@@ -65,9 +72,23 @@ export default function Encomendas() {
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
-      <div className="page-header">
+      <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div><h2 className="section-title text-xl">Gestão de Encomendas</h2><p className="section-sub">Controle de recebimento e entrega de pacotes</p></div>
-        <button onClick={() => setModal({})} className="btn-primary"><Plus size={16} />Nova Encomenda</button>
+        <div className="flex items-center gap-3">
+          {!isMorador && (
+            <select
+              className="input py-2 text-xs font-bold text-gray-800 bg-white border-gray-300 rounded-xl"
+              value={condoFiltro}
+              onChange={e => setCondoFiltro(e.target.value)}
+            >
+              <option value="Todos">🏢 Todos os Condomínios</option>
+              {condominios.map(c => (
+                <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+              ))}
+            </select>
+          )}
+          <button onClick={() => setModal({})} className="btn-primary"><Plus size={16} />Nova Encomenda</button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

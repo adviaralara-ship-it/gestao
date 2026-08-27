@@ -47,13 +47,16 @@ function VeiculoModal({ data, onClose, onSave, isMorador, currentUser }) {
 export default function Veiculos() {
   const { user } = useAuth()
   const { items, addItem, updateItem, deleteItem } = useFirestore('veiculos')
+  const { items: condominios } = useFirestore('condominios')
   const isMorador = user?.role === 'Morador'
   
+  const [condoFiltro, setCondoFiltro] = useState(isMorador ? user?.condominio : 'Todos')
   const [search, setSearch] = useState('')
   const [modal, setModal]   = useState(null)
   
   const filtered = items.filter(v => {
     if (isMorador && (v.condominio !== user.condominio || v.apt !== user.unidade)) return false
+    if (!isMorador && condoFiltro !== 'Todos' && v.condominio !== condoFiltro) return false
     
     if (!search) return true
     const s = search.toLowerCase()
@@ -64,19 +67,33 @@ export default function Veiculos() {
   })
 
   const handleSave = async form => {
-    if (modal==='new') await addItem(form)
-    else await updateItem(modal.id,form)
+    if (modal==='new') await addItem({ ...form, condominio: form.condominio || (condoFiltro !== 'Todos' ? condoFiltro : user?.condominio || '') })
+    else await updateItem(modal.id, form)
     setModal(null)
   }
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
-      <div className="page-header">
+      <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="section-title text-xl">Veículos e Garagem</h2>
-          <p className="section-sub">{isMorador ? 'Gerencie os veículos da sua unidade' : `${items.length} veículos cadastrados`}</p>
+          <p className="section-sub">{isMorador ? 'Gerencie os veículos da sua unidade' : `${filtered.length} veículos cadastrados`}</p>
         </div>
-        <button onClick={()=>setModal('new')} className="btn-primary"><Plus size={16}/>Novo Veículo</button>
+        <div className="flex items-center gap-3">
+          {!isMorador && (
+            <select
+              className="input py-2 text-xs font-bold text-gray-800 bg-white border-gray-300 rounded-xl"
+              value={condoFiltro}
+              onChange={e => setCondoFiltro(e.target.value)}
+            >
+              <option value="Todos">🏢 Todos os Condomínios</option>
+              {condominios.map(c => (
+                <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+              ))}
+            </select>
+          )}
+          <button onClick={()=>setModal('new')} className="btn-primary"><Plus size={16}/>Novo Veículo</button>
+        </div>
       </div>
 
       <div className="relative">
