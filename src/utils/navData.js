@@ -17,24 +17,29 @@ export const navGroups = [
     items: [
       { to: '/dashboard',        label: 'Dashboard',            icon: LayoutDashboard },
       { to: '/alpha-ai',         label: 'Alpha IA',             icon: Bot },
+      { to: '/monitoramento-ia', label: 'Monitoramento IA',     icon: BarChart3 },
+      { to: '/whatsapp',         label: 'WhatsApp',             icon: MessageCircleCode },
+      { to: '/email',            label: 'E-mail Alpha',         icon: Mail },
       { to: '/radar',            label: 'Radar de Convivência', icon: Radar },
       { to: '/tarefas',          label: 'Agenda & Tarefas',     icon: CheckSquare },
     ]
   },
-  // 👥 Pessoas & Convivência
+  // 👥 Pessoas
   {
-    label: '👥 Pessoas & Convivência',
+    label: '👥 Pessoas',
     emoji: '👥',
     items: [
-      { to: '/moradores',    label: 'Moradores',            icon: Users },
-      { to: '/pets',         label: 'Pets',                 icon: PawPrint },
-      { to: '/ocorrencias',  label: 'Solicitações',         icon: AlertTriangle },
-      { to: '/conviver',     label: 'Conviver+',            icon: HeartHandshake },
-      { to: '/comunicacao',  label: 'Comunicação',          icon: MessageSquare },
-      { to: '/mural',        label: '↳ Mural de Recados',   icon: Megaphone },
-      { to: '/enquetes',     label: '↳ Enquetes',           icon: PieChart },
-      { to: '/classificados',label: '↳ Classificados',      icon: ShoppingBag },
-      { to: '/mediacao',     label: 'Mediação & ODR',       icon: Handshake },
+      { to: '/moradores',    label: 'Moradores',             icon: Users },
+      { to: '/pets',         label: 'Pets',                  icon: PawPrint },
+      { to: '/condominios',  label: 'Condomínios',           icon: Building2 },
+      { to: '/usuarios',     label: 'Usuários & Permissões', icon: Settings },
+      { to: '/ocorrencias',  label: 'Solicitações',          icon: AlertTriangle },
+      { to: '/conviver',     label: 'Conviver+',             icon: HeartHandshake },
+      { to: '/comunicacao',  label: 'Comunicação',           icon: MessageSquare },
+      { to: '/mural',        label: '↳ Mural de Recados',    icon: Megaphone },
+      { to: '/enquetes',     label: '↳ Enquetes',            icon: PieChart },
+      { to: '/classificados',label: '↳ Classificados',       icon: ShoppingBag },
+      { to: '/mediacao',     label: 'Mediação & ODR',        icon: Handshake },
     ]
   },
   // 📅 Eventos & Reuniões
@@ -102,6 +107,7 @@ export const navGroups = [
     items: [
       { to: '/rh',            label: 'Funcionários',             icon: UserCog },
       { to: '/recrutamento',  label: 'Recrutamento',             icon: Users },
+      { to: '/financeiro',    label: 'Receitas & Despesas',      icon: CreditCard },
     ]
   },
   // 📊 Relatórios
@@ -110,19 +116,6 @@ export const navGroups = [
     emoji: '📊',
     items: [
       { to: '/relatorios',    label: 'Relatórios',               icon: FileText },
-    ]
-  },
-  // ⚙️ Configurações
-  {
-    label: '⚙️ Configurações',
-    emoji: '⚙️',
-    isConfig: true,
-    items: [
-      { to: '/condominios',      label: 'Condomínios',           icon: Building2 },
-      { to: '/usuarios',         label: 'Usuários & Permissões', icon: Settings },
-      { to: '/whatsapp',         label: 'WhatsApp',             icon: MessageCircleCode },
-      { to: '/email',            label: 'E-mail Alpha',         icon: Mail },
-      { to: '/monitoramento-ia', label: 'Monitoramento IA',      icon: Bot },
     ]
   },
 ]
@@ -142,7 +135,7 @@ export function getFilteredNavGroups(user) {
   const MORADOR_ALLOWED = new Set([
     'financeiro', 'manutencoes', 'seguro', 'regime', 'documentos',
     'comunicacao', 'mural', 'enquetes', 'classificados',
-    'ocorrencias', 'reservas', 'visitantes'
+    'ocorrencias', 'reservas', 'visitantes', 'relatorios'
   ])
 
   return navGroups.map(group => ({

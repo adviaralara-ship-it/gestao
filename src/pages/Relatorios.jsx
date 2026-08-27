@@ -1,76 +1,273 @@
 import React, { useState, useEffect } from 'react'
-import { FileText, Download, Building, Loader2 } from 'lucide-react'
+import { FileText, Download, Building, Loader2, DollarSign, Calendar, TrendingUp, TrendingDown, CheckCircle2, History, AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { collection, getDocs } from 'firebase/firestore'
+import { collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, subMonths } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
 export default function Relatorios() {
   const { user } = useAuth()
   const [condominios, setCondominios] = useState([])
-  const [selectedCondominio, setSelectedCondominio] = useState(user?.role === 'Síndico' ? user.condominio : 'Todos')
+  const [selectedCondominio, setSelectedCondominio] = useState(user?.role === 'Síndico' ? user.condominio : (user?.condominio || 'Todos'))
   const [mes, setMes] = useState(() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
+  const [tipoRelatorio, setTipoRelatorio] = useState('financeiro') // 'financeiro' ou 'operacional'
   const [loading, setLoading] = useState(false)
+  const [downloadingMes, setDownloadingMes] = useState(null)
+
+  // Gerar lista dos últimos 12 meses para o histórico rápido
+  const ultimos12Meses = Array.from({ length: 12 }, (_, i) => {
+    const d = subMonths(new Date(), i)
+    return {
+      valor: format(d, 'yyyy-MM'),
+      label: format(d, 'MMMM yyyy', { locale: ptBR }),
+      mesAnoFormatado: format(d, 'MM/yyyy')
+    }
+  })
 
   // Buscar lista de condomínios
   useEffect(() => {
     async function fetchCondominios() {
-      const snap = await getDocs(collection(db, 'condominios'))
-      const list = snap.docs.map(d => d.data().nome).filter(Boolean)
-      setCondominios(list)
+      try {
+        const snap = await getDocs(collection(db, 'condominios'))
+        const list = snap.docs.map(d => d.data().nome).filter(Boolean)
+        setCondominios(list)
+        if (user?.role !== 'Administrador' && user?.condominio) {
+          setSelectedCondominio(user.condominio)
+        }
+      } catch (err) {
+        console.error("Erro ao carregar condomínios:", err)
+      }
     }
     fetchCondominios()
-  }, [])
+  }, [user])
 
-  const gerarRelatorio = async () => {
+  // Função para gerar Relatório Financeiro (Receitas & Despesas)
+  const gerarRelatorioFinanceiro = async (mesAlvo = mes, condoAlvo = selectedCondominio) => {
+    setLoading(true)
+    try {
+      const filtroCondominio = condoAlvo === 'Todos' ? null : condoAlvo
+      const [anoStr, mesStr] = mesAlvo.split('-')
+
+      // Buscar Lançamentos Financeiros
+      const snapFin = await getDocs(collection(db, 'financeiro_lancamentos'))
+      let lancamentos = snapFin.docs.map(d => ({ id: d.id, ...d.data() }))
+
+      // Buscar Boletos
+      const snapBol = await getDocs(collection(db, 'boletos'))
+      let boletos = snapBol.docs.map(d => ({ id: d.id, ...d.data() }))
+
+      // Filtro de condomínio
+      if (filtroCondominio) {
+        lancamentos = lancamentos.filter(l => !l.condominio || l.condominio === filtroCondominio)
+        boletos = boletos.filter(b => !b.condominio || b.condominio === filtroCondominio)
+      }
+
+      // Filtro de mês para Lançamentos
+      lancamentos = lancamentos.filter(l => {
+        let dStr = l.data || ''
+        if (!dStr && l._createdAt?.seconds) {
+          dStr = new Date(l._createdAt.seconds * 1000).toISOString()
+        }
+        return dStr.startsWith(`${anoStr}-${mesStr}`)
+      })
+
+      // Filtro de mês para Boletos (vencimento ou pagamento)
+      boletos = boletos.filter(b => {
+        let dStr = b.vencimento || b.data || ''
+        if (!dStr && b._createdAt?.seconds) {
+          dStr = new Date(b._createdAt.seconds * 1000).toISOString()
+        }
+        return dStr.startsWith(`${anoStr}-${mesStr}`)
+      })
+
+      // Separar Receitas e Despesas
+      const despesas = lancamentos.filter(l => l.tipo === 'Despesa')
+      const receitasLancadas = lancamentos.filter(l => l.tipo === 'Receita')
+
+      // Total de Boletos Pagos vs Pendentes
+      const boletosPagos = boletos.filter(b => b.status === 'Pago')
+      const boletosPendentes = boletos.filter(b => b.status === 'Pendente' || b.status === 'Vencido')
+
+      const totalBoletosPagos = boletosPagos.reduce((acc, b) => acc + (parseFloat(b.valor) || 0), 0)
+      const totalBoletosPendentes = boletosPendentes.reduce((acc, b) => acc + (parseFloat(b.valor) || 0), 0)
+      const totalReceitasExtras = receitasLancadas.reduce((acc, r) => acc + (parseFloat(r.valor) || 0), 0)
+      const totalReceitas = totalBoletosPagos + totalReceitasExtras
+      const totalDespesas = despesas.reduce((acc, d) => acc + (parseFloat(d.valor) || 0), 0)
+      const saldoMes = totalReceitas - totalDespesas
+
+      // --- GERAR PDF ---
+      const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.width
+
+      // Cabeçalho
+      doc.setFillColor(26, 43, 78)
+      doc.rect(0, 0, pageWidth, 28, 'F')
+      doc.setFontSize(18)
+      doc.setTextColor(255, 255, 255)
+      doc.text('Prestação de Contas & Relatório Financeiro', pageWidth / 2, 12, { align: 'center' })
+      doc.setFontSize(11)
+      doc.setTextColor(200, 220, 255)
+      doc.text(`Condomínio: ${filtroCondominio || 'Todos os Condomínios'}  |  Mês de Referência: ${mesStr}/${anoStr}`, pageWidth / 2, 20, { align: 'center' })
+
+      let startY = 36
+
+      // Quadro Resumo Balanço
+      doc.setFontSize(13)
+      doc.setTextColor(26, 43, 78)
+      doc.text('1. Demonstrativo Sintético do Mês', 14, startY)
+
+      autoTable(doc, {
+        startY: startY + 4,
+        head: [['Total Receitas Arrecadadas', 'Total de Despesas Pagas', 'Saldo Operacional do Mês', 'Inadimplência em Aberto']],
+        body: [[
+          `R$ ${totalReceitas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+          `R$ ${totalDespesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+          `R$ ${saldoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+          `R$ ${totalBoletosPendentes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+        ]],
+        theme: 'grid',
+        headStyles: { fillColor: [26, 43, 78], halign: 'center', fontSize: 9 },
+        bodyStyles: { halign: 'center', fontStyle: 'bold', fontSize: 10, textColor: [30, 41, 59] }
+      })
+
+      startY = doc.lastAutoTable.finalY + 12
+
+      // Tabela de Despesas Detalhadas
+      doc.setFontSize(13)
+      doc.setTextColor(26, 43, 78)
+      doc.text('2. Discriminação de Despesas', 14, startY)
+
+      if (despesas.length === 0) {
+        doc.setFontSize(10)
+        doc.setTextColor(120)
+        doc.text('Nenhuma despesa registrada para este período.', 14, startY + 8)
+        startY += 16
+      } else {
+        autoTable(doc, {
+          startY: startY + 4,
+          head: [['Data', 'Categoria', 'Descrição / Fornecedor', 'Status', 'Valor (R$)']],
+          body: despesas.map(d => [
+            d.data ? format(parseISO(d.data), 'dd/MM/yyyy') : '-',
+            d.categoria || 'Geral',
+            d.descricao || '-',
+            d.status || 'Pago',
+            `R$ ${(parseFloat(d.valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+          ]),
+          theme: 'striped',
+          headStyles: { fillColor: [185, 28, 28] },
+          styles: { fontSize: 8 },
+          columnStyles: { 4: { halign: 'right', fontStyle: 'bold' } }
+        })
+        startY = doc.lastAutoTable.finalY + 12
+      }
+
+      // Tabela de Receitas Detalhadas
+      if (startY > 230) { doc.addPage(); startY = 20; }
+      doc.setFontSize(13)
+      doc.setTextColor(26, 43, 78)
+      doc.text('3. Discriminação de Receitas & Taxas Condominiais', 14, startY)
+
+      const receitasBody = [
+        ...boletosPagos.slice(0, 100).map(b => [
+          b.vencimento ? format(parseISO(b.vencimento), 'dd/MM/yyyy') : '-',
+          'Taxa Condominial',
+          `Unidade ${b.unidade || b.apt || '-'} - ${b.moradorNome || 'Morador'}`,
+          'Recebido',
+          `R$ ${(parseFloat(b.valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+        ]),
+        ...receitasLancadas.map(r => [
+          r.data ? format(parseISO(r.data), 'dd/MM/yyyy') : '-',
+          r.categoria || 'Outras Receitas',
+          r.descricao || '-',
+          r.status || 'Recebido',
+          `R$ ${(parseFloat(r.valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+        ])
+      ]
+
+      if (receitasBody.length === 0) {
+        doc.setFontSize(10)
+        doc.setTextColor(120)
+        doc.text('Nenhuma receita registrada para este período.', 14, startY + 8)
+      } else {
+        autoTable(doc, {
+          startY: startY + 4,
+          head: [['Data', 'Categoria', 'Descrição / Origem', 'Status', 'Valor (R$)']],
+          body: receitasBody,
+          theme: 'striped',
+          headStyles: { fillColor: [16, 110, 80] },
+          styles: { fontSize: 8 },
+          columnStyles: { 4: { halign: 'right', fontStyle: 'bold' } }
+        })
+      }
+
+      // Rodapé
+      const totalPages = doc.internal.getNumberOfPages()
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i)
+        doc.setFontSize(8)
+        doc.setTextColor(140)
+        doc.text(
+          `Documento gerado automaticamente pelo Sistema Alpha Soluções Condominiais em ${format(new Date(), 'dd/MM/yyyy HH:mm')} - Página ${i} de ${totalPages}`,
+          pageWidth / 2,
+          doc.internal.pageSize.height - 8,
+          { align: 'center' }
+        )
+      }
+
+      doc.save(`Relatorio_Financeiro_${filtroCondominio || 'Geral'}_${mesAlvo}.pdf`)
+    } catch (err) {
+      console.error(err)
+      alert("Erro ao gerar relatório financeiro. Tente novamente.")
+    } finally {
+      setLoading(false)
+      setDownloadingMes(null)
+    }
+  }
+
+  // Função para gerar Relatório Operacional de Atividades
+  const gerarRelatorioOperacional = async (mesAlvo = mes, condoAlvo = selectedCondominio) => {
     setLoading(true)
     try {
       const isAdm = user?.role === 'Administrador'
-      const filtroCondominio = selectedCondominio === 'Todos' ? null : selectedCondominio
+      const filtroCondominio = condoAlvo === 'Todos' ? null : condoAlvo
+      const [anoAlvo, mesAlvoStr] = mesAlvo.split('-')
 
-      // Funções auxiliares para buscar dados e filtrar
-      const fetchAndFilter = async (colName, dateField = '_createdAt') => {
+      const fetchAndFilter = async (colName) => {
         const snap = await getDocs(collection(db, colName))
         let docs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-        // Filtro de Condomínio
         if (filtroCondominio) {
           docs = docs.filter(d => d.condominio === filtroCondominio || !d.condominio)
         }
 
-        // Filtro de Mês (usamos o campo de data se existir, ou _createdAt)
-        const [anoAlvo, mesAlvo] = mes.split('-')
         docs = docs.filter(d => {
           let dateStr = ''
           if (d.data && typeof d.data === 'string' && d.data.includes('-')) {
-            dateStr = d.data // YYYY-MM-DD
+            dateStr = d.data
           } else if (d._createdAt?.seconds) {
-            const dateObj = new Date(d._createdAt.seconds * 1000)
-            dateStr = dateObj.toISOString()
+            dateStr = new Date(d._createdAt.seconds * 1000).toISOString()
           } else {
-            return true // Se não tiver data, inclui
+            return true
           }
-          const [ano, mes] = dateStr.split('-')
-          return ano === anoAlvo && mes === mesAlvo
+          return dateStr.startsWith(`${anoAlvo}-${mesAlvoStr}`)
         })
 
         return docs
       }
 
-      // Buscar os dados
       let ocorrencias = await fetchAndFilter('ocorrencias')
       let tarefas = await fetchAndFilter('tarefas')
       let reservas = await fetchAndFilter('reservas')
       let visitantes = await fetchAndFilter('visitantes')
-      let portaria = await fetchAndFilter('portaria') // Para Manutenções/Registros
+      let portaria = await fetchAndFilter('portaria')
       let encomendas = await fetchAndFilter('encomendas')
 
-      // Filtro de Visibilidade para Síndicos/Moradores
       if (!isAdm) {
         ocorrencias = ocorrencias.filter(o => o.visibilidade !== 'Apenas Adm')
         tarefas = tarefas.filter(t => t.visibilidade !== 'Apenas Adm')
@@ -79,33 +276,30 @@ export default function Relatorios() {
         encomendas = encomendas.filter(e => e.visibilidade !== 'Apenas Adm')
       }
 
-      // --- GERAR PDF ---
       const doc = new jsPDF()
       const pageWidth = doc.internal.pageSize.width
-      
-      // Cabeçalho
-      doc.setFontSize(20)
-      doc.setTextColor(3, 22, 56) // primary color
-      doc.text('Relatório Mensal de Atividades', pageWidth / 2, 20, { align: 'center' })
-      
-      doc.setFontSize(12)
-      doc.setTextColor(100)
-      doc.text(`Mês Referência: ${mes.split('-').reverse().join('/')}`, pageWidth / 2, 28, { align: 'center' })
-      doc.text(`Condomínio: ${selectedCondominio}`, pageWidth / 2, 34, { align: 'center' })
 
-      let startY = 45
+      doc.setFillColor(26, 43, 78)
+      doc.rect(0, 0, pageWidth, 28, 'F')
+      doc.setFontSize(18)
+      doc.setTextColor(255, 255, 255)
+      doc.text('Relatório Operacional de Atividades', pageWidth / 2, 12, { align: 'center' })
+      doc.setFontSize(11)
+      doc.setTextColor(200, 220, 255)
+      doc.text(`Condomínio: ${filtroCondominio || 'Todos os Condomínios'}  |  Mês de Referência: ${mesAlvoStr}/${anoAlvo}`, pageWidth / 2, 20, { align: 'center' })
 
-      // NOVO: Quadro Resumo
+      let startY = 36
+
       const totalOcorrencias = ocorrencias.length
       const solucionadas = ocorrencias.filter(o => o.status === 'Resolvida' || o.status === 'Solucionada' || o.status === 'Fechada').length
       const abertas = totalOcorrencias - solucionadas
 
-      doc.setFontSize(14)
-      doc.setTextColor(3, 22, 56)
-      doc.text('Resumo Geral (Dashboard)', 14, startY)
+      doc.setFontSize(13)
+      doc.setTextColor(26, 43, 78)
+      doc.text('Resumo Operacional', 14, startY)
       autoTable(doc, {
-        startY: startY + 5,
-        head: [['Total de Ocorrências', 'Solucionadas', 'Em Andamento / Abertas', 'Total Reservas', 'Total Tarefas']],
+        startY: startY + 4,
+        head: [['Total Ocorrências', 'Solucionadas', 'Em Andamento', 'Reservas de Áreas', 'Tarefas & Manutenções']],
         body: [[
           totalOcorrencias.toString(),
           solucionadas.toString(),
@@ -117,16 +311,15 @@ export default function Relatorios() {
         headStyles: { fillColor: [26, 43, 78], halign: 'center' },
         bodyStyles: { halign: 'center', fontStyle: 'bold' }
       })
-      startY = doc.lastAutoTable.finalY + 15
+      startY = doc.lastAutoTable.finalY + 12
 
-      // 1. Ocorrências
       if (ocorrencias.length > 0) {
-        doc.setFontSize(14)
-        doc.setTextColor(3, 22, 56)
-        doc.text('Ocorrências', 14, startY)
+        doc.setFontSize(13)
+        doc.setTextColor(26, 43, 78)
+        doc.text('Ocorrências do Período', 14, startY)
         autoTable(doc, {
-          startY: startY + 5,
-          head: [['Data', 'Apt', 'Categoria', 'Título', 'Status', 'Prioridade']],
+          startY: startY + 4,
+          head: [['Data', 'Unidade', 'Categoria', 'Título', 'Status', 'Prioridade']],
           body: ocorrencias.map(o => [
             o.data || format(new Date(o._createdAt?.seconds * 1000 || Date.now()), 'dd/MM/yyyy'),
             o.apt || '-',
@@ -137,49 +330,19 @@ export default function Relatorios() {
           ]),
           theme: 'striped',
           headStyles: { fillColor: [26, 43, 78] },
-          styles: { fontSize: 9 }
+          styles: { fontSize: 8 }
         })
-        startY = doc.lastAutoTable.finalY + 15
+        startY = doc.lastAutoTable.finalY + 12
       }
 
-      // 2. Tarefas e Manutenções
-      if (tarefas.length > 0 || portaria.length > 0) {
-        if (startY > 250) { doc.addPage(); startY = 20; }
-        doc.setFontSize(14)
-        doc.setTextColor(3, 22, 56)
-        doc.text('Tarefas e Manutenções', 14, startY)
-        
-        const combinedTasks = [
-          ...tarefas.map(t => ({ source: 'Tarefa', title: t.titulo, status: t.status || t.etapa, responsible: t.responsavel, date: t.prazo })),
-          ...portaria.map(p => ({ source: 'Portaria/Manutenção', title: p.descricao || p.titulo, status: p.status, responsible: p.porteiro || p.responsavel, date: p.data }))
-        ].filter(i => i.title)
-
-        autoTable(doc, {
-          startY: startY + 5,
-          head: [['Tipo', 'Data', 'Descrição', 'Responsável', 'Status']],
-          body: combinedTasks.map(t => [
-            t.source,
-            t.date || '-',
-            t.title || '-',
-            t.responsible || '-',
-            t.status || '-'
-          ]),
-          theme: 'striped',
-          headStyles: { fillColor: [0, 106, 102] },
-          styles: { fontSize: 9 }
-        })
-        startY = doc.lastAutoTable.finalY + 15
-      }
-
-      // 3. Agendamentos nas Áreas (Reservas)
       if (reservas.length > 0) {
-        if (startY > 250) { doc.addPage(); startY = 20; }
-        doc.setFontSize(14)
-        doc.setTextColor(3, 22, 56)
-        doc.text('Agendamentos nas Áreas', 14, startY)
+        if (startY > 240) { doc.addPage(); startY = 20; }
+        doc.setFontSize(13)
+        doc.setTextColor(26, 43, 78)
+        doc.text('Reservas de Áreas Comuns', 14, startY)
         autoTable(doc, {
-          startY: startY + 5,
-          head: [['Data', 'Área', 'Morador', 'Apt', 'Status']],
+          startY: startY + 4,
+          head: [['Data', 'Espaço', 'Morador Responsável', 'Unidade', 'Status']],
           body: reservas.map(r => [
             r.data || '-',
             r.area || r.espaco || '-',
@@ -188,97 +351,107 @@ export default function Relatorios() {
             r.status || '-'
           ]),
           theme: 'striped',
-          headStyles: { fillColor: [26, 43, 78] },
-          styles: { fontSize: 9 }
-        })
-        startY = doc.lastAutoTable.finalY + 15
-      }
-
-      // 4. Visitantes
-      if (visitantes.length > 0) {
-        if (startY > 250) { doc.addPage(); startY = 20; }
-        doc.setFontSize(14)
-        doc.setTextColor(3, 22, 56)
-        doc.text('Visitantes Cadastrados', 14, startY)
-        autoTable(doc, {
-          startY: startY + 5,
-          head: [['Data', 'Nome', 'Apt Destino', 'Autorizado Por']],
-          body: visitantes.map(v => [
-            v.data || format(new Date(v._createdAt?.seconds * 1000 || Date.now()), 'dd/MM/yyyy'),
-            v.nome || '-',
-            v.apt || v.unidade || '-',
-            v.moradorNome || v.autorizadoPor || v.morador || '-'
-          ]),
-          theme: 'striped',
           headStyles: { fillColor: [0, 106, 102] },
-          styles: { fontSize: 9 }
+          styles: { fontSize: 8 }
         })
-        startY = doc.lastAutoTable.finalY + 15
+        startY = doc.lastAutoTable.finalY + 12
       }
 
-      // 5. Encomendas
-      if (encomendas.length > 0) {
-        if (startY > 250) { doc.addPage(); startY = 20; }
-        doc.setFontSize(14)
-        doc.setTextColor(3, 22, 56)
-        doc.text('Encomendas Recebidas', 14, startY)
-        autoTable(doc, {
-          startY: startY + 5,
-          head: [['Data', 'Morador / Destino', 'Descrição', 'Status']],
-          body: encomendas.map(e => [
-            e.dataRecebimento ? format(parseISO(e.dataRecebimento), 'dd/MM/yyyy') : format(new Date(e._createdAt?.seconds * 1000 || Date.now()), 'dd/MM/yyyy'),
-            `${e.morador || '-'} (Apt ${e.apt || '-'})`,
-            e.descricao || '-',
-            e.status || '-'
-          ]),
-          theme: 'striped',
-          headStyles: { fillColor: [26, 43, 78] },
-          styles: { fontSize: 9 }
-        })
-        startY = doc.lastAutoTable.finalY + 15
+      const totalPages = doc.internal.getNumberOfPages()
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i)
+        doc.setFontSize(8)
+        doc.setTextColor(140)
+        doc.text(
+          `Documento gerado automaticamente pelo Sistema Alpha Soluções Condominiais em ${format(new Date(), 'dd/MM/yyyy HH:mm')} - Página ${i} de ${totalPages}`,
+          pageWidth / 2,
+          doc.internal.pageSize.height - 8,
+          { align: 'center' }
+        )
       }
 
-      doc.save(`Relatorio_Mensal_${selectedCondominio}_${mes}.pdf`)
-
+      doc.save(`Relatorio_Operacional_${filtroCondominio || 'Geral'}_${mesAlvo}.pdf`)
     } catch (err) {
       console.error(err)
-      alert("Erro ao gerar relatório. Tente novamente.")
+      alert("Erro ao gerar relatório operacional. Tente novamente.")
     } finally {
       setLoading(false)
+      setDownloadingMes(null)
+    }
+  }
+
+  const handleDownloadPersonalizado = () => {
+    if (tipoRelatorio === 'financeiro') {
+      gerarRelatorioFinanceiro(mes, selectedCondominio)
+    } else {
+      gerarRelatorioOperacional(mes, selectedCondominio)
+    }
+  }
+
+  const handleDownloadMesHistorico = (mesValor, tipo) => {
+    setDownloadingMes(`${mesValor}_${tipo}`)
+    if (tipo === 'financeiro') {
+      gerarRelatorioFinanceiro(mesValor, selectedCondominio)
+    } else {
+      gerarRelatorioOperacional(mesValor, selectedCondominio)
     }
   }
 
   return (
-    <div className="flex flex-col gap-6 animate-fade-in max-w-4xl mx-auto">
+    <div className="flex flex-col gap-6 animate-fade-in max-w-5xl mx-auto pb-10">
       <div className="page-header">
         <div>
-          <h2 className="section-title text-xl">Relatórios</h2>
-          <p className="section-sub">Gere um relatório mensal unificado das atividades do condomínio.</p>
+          <h2 className="section-title text-2xl font-black bg-gradient-to-r from-brand-700 to-brand-500 bg-clip-text text-transparent">
+            Central de Relatórios & Prestação de Contas
+          </h2>
+          <p className="text-gray-600 font-medium text-sm">
+            Consulte e baixe relatórios mensais completos de receitas, despesas, balanços e atividades operacionais.
+          </p>
         </div>
       </div>
 
-      <div className="card flex flex-col gap-6">
-        <div className="flex items-center gap-3 text-brand-700">
-          <FileText size={24} />
-          <h3 className="font-bold text-lg">Configurar Relatório</h3>
+      {/* Card 1: Gerador Personalizado */}
+      <div className="card flex flex-col gap-6 border border-pale-300 shadow-md">
+        <div className="flex items-center justify-between border-b border-pale-200 pb-4">
+          <div className="flex items-center gap-3 text-brand-700">
+            <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center border border-brand-200">
+              <FileText size={22} className="text-brand-700" />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-gray-900">Exportar Relatório sob Demanda</h3>
+              <p className="text-xs text-gray-500">Escolha o condomínio, o mês e o tipo de demonstrativo</p>
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="label">Mês de Referência</label>
+            <label className="label font-bold text-gray-700">Tipo de Relatório</label>
+            <select
+              className="input font-medium"
+              value={tipoRelatorio}
+              onChange={e => setTipoRelatorio(e.target.value)}
+            >
+              <option value="financeiro">💰 Financeiro (Receitas & Despesas)</option>
+              <option value="operacional">📋 Operacional (Atividades & Ocorrências)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="label font-bold text-gray-700">Mês de Referência</label>
             <input 
               type="month" 
-              className="input" 
+              className="input font-medium" 
               value={mes} 
               onChange={e => setMes(e.target.value)} 
             />
           </div>
 
           <div>
-            <label className="label">Condomínio</label>
+            <label className="label font-bold text-gray-700">Condomínio</label>
             {user?.role === 'Administrador' ? (
               <select 
-                className="input" 
+                className="input font-medium" 
                 value={selectedCondominio} 
                 onChange={e => setSelectedCondominio(e.target.value)}
               >
@@ -288,34 +461,94 @@ export default function Relatorios() {
                 ))}
               </select>
             ) : (
-              <div className="input bg-gray-50 text-gray-500 cursor-not-allowed">
-                {user.condominio || 'Não vinculado'}
+              <div className="input bg-gray-100 text-gray-700 font-semibold cursor-not-allowed flex items-center gap-2">
+                <Building size={16} className="text-gray-500" />
+                {user?.condominio || 'Condomínio Principal'}
               </div>
             )}
           </div>
         </div>
 
-        <div className="border-t border-cream-300 pt-6">
-          <p className="text-sm text-gray-500 mb-4">
-            O relatório será exportado em PDF contendo as seguintes informações filtradas para o mês selecionado:
-            <br/><br/>
-            • <b>Ocorrências:</b> Status e prioridade<br/>
-            • <b>Tarefas e Manutenções:</b> Andamentos e responsáveis<br/>
-            • <b>Agendamentos:</b> Reservas de áreas comuns<br/>
-            • <b>Visitantes:</b> Cadastros realizados no mês e por quem foi autorizado<br/>
-            • <b>Encomendas:</b> Pacotes recebidos para cada morador/unidade
-            <br/><br/>
-            <i>{user?.role !== 'Administrador' && "⚠️ Notas e ocorrências internas da administradora não serão incluídas neste documento."}</i>
-          </p>
-
+        <div className="flex items-center justify-between border-t border-pale-200 pt-4 mt-2">
+          <span className="text-xs text-gray-500 flex items-center gap-1.5">
+            <CheckCircle2 size={16} className="text-emerald-600" />
+            Arquivo gerado em formato PDF oficial com assinatura Alpha
+          </span>
           <button 
-            onClick={gerarRelatorio} 
-            disabled={loading || !mes || (!selectedCondominio && user?.role !== 'Administrador')}
-            className="btn-primary w-full md:w-auto"
+            onClick={handleDownloadPersonalizado} 
+            disabled={loading || !mes}
+            className="btn-primary flex items-center gap-2 px-6 py-2.5 shadow-md"
           >
             {loading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
-            {loading ? 'Processando Dados...' : 'Baixar Relatório PDF'}
+            {loading ? 'Gerando Relatório...' : 'Baixar Relatório PDF'}
           </button>
+        </div>
+      </div>
+
+      {/* Card 2: Histórico Rápido dos Últimos 12 Meses */}
+      <div className="card flex flex-col gap-4 border border-pale-300 shadow-md">
+        <div className="flex items-center justify-between border-b border-pale-200 pb-3">
+          <div className="flex items-center gap-3 text-brand-700">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center border border-emerald-200">
+              <History size={20} className="text-emerald-700" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-gray-900">Histórico de Prestação de Contas (Últimos 12 Meses)</h3>
+              <p className="text-xs text-gray-500">
+                Acesse e baixe com 1 clique o histórico financeiro e operacional do condomínio: {selectedCondominio || 'Geral'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+          {ultimos12Meses.map((m, idx) => {
+            const isDownloadingFin = downloadingMes === `${m.valor}_financeiro`
+            const isDownloadingOp = downloadingMes === `${m.valor}_operacional`
+
+            return (
+              <div 
+                key={m.valor} 
+                className="flex flex-col justify-between p-3.5 rounded-xl border border-gray-200 bg-white hover:border-brand-400 hover:shadow-sm transition-all"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Calendar size={16} className="text-brand-600" />
+                    <span className="font-bold text-sm text-gray-800 capitalize">
+                      {m.label}
+                    </span>
+                  </div>
+                  {idx === 0 && (
+                    <span className="text-[10px] bg-brand-100 text-brand-800 font-bold px-2 py-0.5 rounded-full">
+                      Mês Atual
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleDownloadMesHistorico(m.valor, 'financeiro')}
+                    disabled={loading}
+                    title="Baixar Receitas & Despesas deste mês"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 transition-colors"
+                  >
+                    {isDownloadingFin ? <Loader2 size={13} className="animate-spin" /> : <TrendingUp size={13} />}
+                    <span>💰 Receitas/Despesas</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleDownloadMesHistorico(m.valor, 'operacional')}
+                    disabled={loading}
+                    title="Baixar Atividades e Ocorrências deste mês"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200 transition-colors"
+                  >
+                    {isDownloadingOp ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+                    <span>📋 Atividades</span>
+                  </button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
