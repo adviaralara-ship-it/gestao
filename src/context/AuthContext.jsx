@@ -11,10 +11,22 @@ import { auth, db } from '../firebase'
 const AuthContext = createContext(null)
 
 // ─── Permissões por role ───────────────────────────────────────────────────
-export const allModulesPerms = ['dashboard','whatsapp','email','condominios','moradores','rh','prestadores','usuarios','financeiro','boletos','notas-fiscais','assembleias','ocorrencias','reservas','eventos','portaria','veiculos','cameras','calculadora','encomendas','visitantes','enquetes','classificados','seguro','regime','documentos','comunicacao','tarefas','relatorios','propostas']
-export const sindicoPerms    = ['dashboard','moradores','notas-fiscais','ocorrencias','portaria','regime','comunicacao','boletos','assembleias','reservas','eventos','seguro','documentos','relatorios','visitantes','encomendas']
-export const financeiroPerms = ['dashboard','financeiro','boletos','notas-fiscais','prestadores','documentos']
-export const porteiroPerms   = ['dashboard','moradores','portaria','veiculos','comunicacao','reservas','eventos','visitantes','encomendas']
+export const allModulesPerms = ['dashboard','whatsapp','email','condominios','moradores','rh','prestadores','usuarios','financeiro','boletos','notas-fiscais','assembleias','ocorrencias','reservas','eventos','portaria','veiculos','cameras','calculadora','encomendas','visitantes','enquetes','classificados','seguro','regime','documentos','comunicacao','tarefas','relatorios','propostas','cotacoes','recrutamento','conferencias','monitoramento-ia','radar','conviver','mediacao','locacao','manutencoes']
+export const sindicoPerms = [
+  'dashboard', 'alpha-ai', 'moradores', 'pets', 'ocorrencias', 'conviver',
+  'comunicacao', 'mural', 'enquetes', 'classificados', 'mediacao',
+  'assembleias', 'conferencias', 'eventos', 'documentos', 'regime', 'contratos',
+  'notas-fiscais', 'seguro', 'financeiro', 'plano-contas', 'boletos', 'inadimplencia',
+  'locacao', 'calculadora', 'reservas', 'manutencoes', 'portaria', 'encomendas',
+  'visitantes', 'veiculos', 'cameras', 'prestadores', 'cotacoes', 'relatorios'
+]
+export const conselhoPerms = [
+  'dashboard', 'alpha-ai', 'financeiro', 'plano-contas', 'boletos', 'inadimplencia',
+  'notas-fiscais', 'cotacoes', 'prestadores', 'contratos', 'documentos', 'regime',
+  'seguro', 'assembleias', 'relatorios'
+]
+export const financeiroPerms = ['dashboard','financeiro','boletos','notas-fiscais','prestadores','documentos','relatorios','cotacoes']
+export const porteiroPerms   = ['dashboard','moradores','portaria','veiculos','comunicacao','reservas','eventos','visitantes','encomendas','cameras']
 export const portariaRemotaPerms = ['dashboard','cameras','visitantes','ocorrencias','reservas','portaria','veiculos']
 export const moradorPerms = [
   'dashboard', 'alpha-ai', 'boletos', 'documentos', 'mural',

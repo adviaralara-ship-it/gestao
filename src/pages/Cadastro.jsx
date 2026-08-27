@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Shield, User, Lock, Mail, ArrowRight, CheckCircle, Phone, Building, DoorOpen, Layers, Check } from 'lucide-react'
 import { collection, addDoc, serverTimestamp, getDocs, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
-import { sindicoPerms, porteiroPerms, moradorPerms } from '../context/AuthContext'
+import { sindicoPerms, porteiroPerms, moradorPerms, conselhoPerms } from '../context/AuthContext'
 
 const rolesOptions = [
   { value: 'Morador',     label: 'Morador' },
@@ -60,6 +60,7 @@ export default function Cadastro() {
         : { condominio:'', bloco:'', unidade:'' }
 
       const rolePerms = form.role === 'Síndico' || form.role === 'Subsíndico' ? sindicoPerms : 
+                        form.role === 'Conselheiro' || form.role === 'Conselho' ? conselhoPerms :
                         form.role === 'Porteiro' ? porteiroPerms : moradorPerms
 
       await addDoc(collection(db,'usuarios'),{

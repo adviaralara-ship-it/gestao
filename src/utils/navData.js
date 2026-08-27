@@ -124,9 +124,13 @@ export const navGroups = [
 ]
 
 export function getFilteredNavGroups(user) {
-  const isMorador = user?.role === 'Morador'
+  const role = user?.role || ''
+  const isMorador = role === 'Morador'
+  const isConselho = role === 'Conselheiro' || role === 'Conselho' || role === 'Conselho Fiscal'
+  const isSindico = role === 'Síndico' || role === 'Subsíndico'
+  const isAdmin = role === 'Administrador'
 
-  // SE FOR MORADOR: Portal do Morador exclusivo e simplificado
+  // 1. SE FOR MORADOR: Portal do Morador exclusivo
   if (isMorador) {
     return [
       {
@@ -150,33 +154,105 @@ export function getFilteredNavGroups(user) {
     ]
   }
 
+  // 2. SE FOR CONSELHO FISCAL: Portal de Fiscalização e Auditoria
+  if (isConselho) {
+    return [
+      {
+        label: '🏛️ Conselho Fiscal',
+        emoji: '🏛️',
+        items: [
+          { to: '/dashboard',     label: 'Dashboard Executivo',       icon: LayoutDashboard },
+          { to: '/alpha-ai',      label: 'Alpha IA',                  icon: Bot },
+          { to: '/financeiro',    label: 'Receitas & Despesas',       icon: CreditCard },
+          { to: '/plano-contas',  label: 'Orçamento & Plano de Contas', icon: Target },
+          { to: '/boletos',       label: 'Boletos & Inadimplência',   icon: FileText },
+          { to: '/notas-fiscais', label: 'Notas Fiscais & Comprovantes', icon: Receipt },
+          { to: '/cotacoes',      label: 'Cotações & Comparativos',   icon: FileSpreadsheet },
+          { to: '/prestadores',   label: 'Fornecedores Cadastrados',  icon: Briefcase },
+          { to: '/contratos',     label: 'Contratos & Seguros',       icon: FileSignature },
+          { to: '/documentos',    label: 'Documentos & Regimentos',   icon: FolderOpen },
+          { to: '/assembleias',   label: 'Assembleias & Atas',        icon: Gavel },
+          { to: '/relatorios',    label: 'Prestação de Contas',       icon: FileText }
+        ]
+      }
+    ]
+  }
+
+  // 3. SE FOR SÍNDICO / SUBSÍNDICO: Gestão do Condomínio (sem RH interno da Alpha)
+  if (isSindico) {
+    return [
+      {
+        label: '🏠 Visão Geral',
+        emoji: '🏠',
+        items: [
+          { to: '/dashboard',    label: 'Dashboard',            icon: LayoutDashboard },
+          { to: '/alpha-ai',     label: 'Alpha IA',             icon: Bot },
+          { to: '/radar',        label: 'Radar de Convivência', icon: Radar },
+          { to: '/tarefas',      label: 'Agenda & Tarefas',     icon: CheckSquare },
+        ]
+      },
+      {
+        label: '👥 Pessoas & Comunicação',
+        emoji: '👥',
+        items: [
+          { to: '/moradores',    label: 'Moradores',             icon: Users },
+          { to: '/pets',         label: 'Pets',                  icon: PawPrint },
+          { to: '/ocorrencias',  label: 'Solicitações & Ocorrências', icon: AlertTriangle },
+          { to: '/conviver',     label: 'Conviver+',             icon: HeartHandshake },
+          { to: '/mural',        label: 'Mural de Recados',      icon: Megaphone },
+          { to: '/enquetes',     label: 'Enquetes',              icon: PieChart },
+          { to: '/mediacao',     label: 'Mediação & ODR',        icon: Handshake },
+        ]
+      },
+      {
+        label: '💰 Financeiro & Cotações',
+        emoji: '💰',
+        items: [
+          { to: '/financeiro',    label: 'Receitas & Despesas',        icon: CreditCard },
+          { to: '/plano-contas',  label: 'Orçamento & Plano de Contas', icon: Target },
+          { to: '/boletos',       label: 'Boletos & Cobrança',         icon: FileText },
+          { to: '/inadimplencia', label: 'Inadimplência & Jurídico',   icon: Scale },
+          { to: '/cotacoes',      label: 'Cotações & Comparativos',    icon: FileSpreadsheet },
+          { to: '/notas-fiscais', label: 'Notas Fiscais',              icon: Receipt },
+        ]
+      },
+      {
+        label: '🔧 Operação & Contratos',
+        emoji: '🔧',
+        items: [
+          { to: '/manutencoes',   label: 'Manutenção & Suprimentos',  icon: Wrench },
+          { to: '/contratos',     label: 'Contratos & Prestadores',   icon: FileSignature },
+          { to: '/seguro',        label: 'Seguros',                   icon: Shield },
+          { to: '/reservas',      label: 'Reservas de Áreas',         icon: Reservas },
+          { to: '/portaria',      label: 'Portaria & Visitantes',     icon: DoorOpen },
+          { to: '/encomendas',    label: 'Encomendas',                icon: Package },
+          { to: '/veiculos',      label: 'Garagem & Veículos',        icon: Car },
+          { to: '/cameras',       label: 'Câmeras CFTV',              icon: Camera },
+        ]
+      },
+      {
+        label: '📅 Eventos & Atas',
+        emoji: '📅',
+        items: [
+          { to: '/assembleias',  label: 'Assembleias & Atas',    icon: Gavel },
+          { to: '/conferencias', label: 'Reuniões Online',       icon: Video },
+          { to: '/eventos',      label: 'Eventos & Check-in',    icon: CalendarCheck },
+          { to: '/documentos',   label: 'Documentos do Condomínio', icon: FolderOpen },
+          { to: '/regime',       label: 'Regimentos Internos',   icon: BookOpen },
+          { to: '/relatorios',   label: 'Relatórios & Prestação', icon: FileText },
+        ]
+      }
+    ]
+  }
+
+  // 4. SE FOR ADMIN MASTER (Alpha): Visão Completa Global
   const userPerms = user?.permissoes || []
-  const isAdmin = user?.role === 'Administrador'
-
-  const ALWAYS_ALLOWED = new Set([
-    'alpha-ai', 'pets', 'mediacao', 'conviver', 'radar',
-    'mural', 'enquetes', 'classificados', 'comunicacao',
-    'seguro', 'regime', 'documentos', 'monitoramento-ia',
-    'whatsapp', 'email', 'condominios', 'relatorios', 'tarefas',
-    'cotacoes'
-  ])
-
   return navGroups.map(group => ({
     ...group,
     items: group.items.filter(item => {
       let reqPerm = item.to.replace('/', '')
-
-      // Permissões especiais
-      if (ALWAYS_ALLOWED.has(reqPerm)) return true
-
-      // Notas fiscais só para admin e financeiro
-      if (reqPerm === 'notas-fiscais' && !isAdmin && user?.role !== 'Financeiro') return false
-
-      // Mapeamentos especiais
-      if (reqPerm === 'plano-contas') reqPerm = 'financeiro'
-      if (reqPerm === 'conferencias' || reqPerm === 'recrutamento') reqPerm = 'rh'
-
-      return isAdmin || userPerms.includes(reqPerm)
+      if (isAdmin) return true
+      return userPerms.includes(reqPerm)
     })
   })).filter(group => group.items.length > 0)
 }
