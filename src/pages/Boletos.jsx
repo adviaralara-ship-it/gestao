@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { FileText, Plus, Download, DollarSign, Printer, CheckCircle2, Clock, AlertCircle, Trash2, Edit2, X, MessageSquare, Sparkles, Check, TrendingUp, Bell, Building, Upload, Copy, Share2, QrCode, Package } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
+import html2canvas from 'html2canvas'
+import { jsPDF } from 'jspdf'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
@@ -60,6 +62,32 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
     }
   }
 
+  const [downloading, setDownloading] = useState(false)
+
+  const handleDownloadPDF = async () => {
+    try {
+      setDownloading(true)
+      const element = document.getElementById('boleto-print-area')
+      if (!element) {
+        window.print()
+        setDownloading(false)
+        return
+      }
+      const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(pdfHeight, 295))
+      pdf.save(`Boleto-PIX-${(boleto.morador || 'Morador').replace(/\s+/g, '_')}-${(boleto.competencia || 'Mes').replace(/\//g, '-')}.pdf`)
+      setDownloading(false)
+    } catch(err) {
+      console.error(err)
+      window.print()
+      setDownloading(false)
+    }
+  }
+
   const shareWhatsApp = () => {
     const msg = `*Alpha Soluções Condominiais*\nOlá *${boleto.morador}* (Apt ${boleto.apt}), segue sua fatura condominial referente a *${boleto.competencia || 'Mês Atual'}*:\n\n💰 *Valor:* R$ ${valorFormatado}\n📅 *Vencimento:* ${dataVencFormatada}\n\n💠 *PIX Copia e Cola:*\n\`\`\`${pixFinal}\`\`\`\n\nAbra o aplicativo do seu banco, escolha *PIX Copia e Cola* e cole o código acima para efetuar o pagamento instantâneo.`
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
@@ -75,19 +103,22 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
             <span className="text-emerald-400 font-mono text-sm font-bold">💠 Boleto PIX Condominial</span>
             <span className="text-xs text-gray-400">• {condominio?.nome || 'Condomínio'}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button onClick={shareWhatsApp} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm">
               <Share2 size={14} /> WhatsApp
             </button>
+            <button onClick={handleDownloadPDF} disabled={downloading} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm">
+              <Download size={14} /> {downloading ? 'Gerando PDF...' : 'Baixar PDF'}
+            </button>
             <button onClick={() => window.print()} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm">
-              <Printer size={14} /> Imprimir / Salvar PDF
+              <Printer size={14} /> Imprimir
             </button>
             <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-white rounded-lg"><X size={18} /></button>
           </div>
         </div>
 
         {/* Corpo do Boleto / Fatura (Formatado para tela e folha A4) */}
-        <div className="p-6 md:p-8 bg-white font-sans text-gray-900 overflow-y-auto max-h-[85vh]">
+        <div id="boleto-print-area" className="p-6 md:p-8 bg-white font-sans text-gray-900 overflow-y-auto max-h-[85vh]">
           
           {/* Cabeçalho Bancário Oficial */}
           <div className="border-b-2 border-slate-900 pb-3 mb-4 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
