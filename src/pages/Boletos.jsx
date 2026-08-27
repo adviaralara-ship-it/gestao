@@ -584,7 +584,21 @@ export default function Boletos() {
   }
 
   const boletos = allBoletos.filter(b => {
-    if (user?.role === 'Morador') return b.apt === user?.apt && b.morador === user?.nome;
+    if (user?.role === 'Morador') {
+      const uNome = (user?.nome || '').toLowerCase().trim()
+      const uApt = String(user?.apt || user?.unidade || '').trim().toLowerCase()
+      const bMorador = (b.morador || '').toLowerCase().trim()
+      const bApt = String(b.apt || b.unidade || '').trim().toLowerCase()
+      const uCondo = (user?.condominio || '').toLowerCase().trim()
+      const bCondo = (b.condominio || '').toLowerCase().trim()
+
+      const mesmoCondo = !uCondo || !bCondo || uCondo === bCondo
+      const mesmoApt = uApt && bApt && uApt === bApt
+      const mesmoNome = uNome && bMorador && (uNome === bMorador || uNome.includes(bMorador) || bMorador.includes(uNome))
+
+      return mesmoCondo && (mesmoApt || mesmoNome)
+    }
+
     if (['Síndico', 'Subsíndico', 'Conselheiro'].includes(user?.role)) {
        const moradorDoc = moradores.find(m => m.nome === b.morador);
        const bCondo = b.condominio || moradorDoc?.condominio;
@@ -1029,6 +1043,10 @@ export default function Boletos() {
                           <div className="flex gap-1.5 flex-wrap">
                             <button onClick={()=>setViewing(b)} className="btn-secondary py-1 px-2.5 text-xs text-brand-700 bg-brand-50 border-brand-200 hover:bg-brand-100 flex items-center gap-1 font-bold">
                               <QrCode size={12}/> Ver Boleto PIX
+                            </button>
+
+                            <button onClick={()=>setViewing(b)} className="btn-secondary py-1 px-2.5 text-xs text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 flex items-center gap-1 font-bold">
+                              <Download size={12}/> Baixar PDF
                             </button>
 
                             {(user?.role === 'Administrador' || user?.role === 'Financeiro') && !b.emitido && (

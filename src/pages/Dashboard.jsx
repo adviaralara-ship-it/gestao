@@ -41,9 +41,18 @@ export default function Dashboard() {
   // =========================================================================
   if (user?.role === 'Morador') {
     const meusBoletos = boletos.filter(b => {
-      const matchApt = b.apt === user?.apt || b.apt === user?.unidade
-      const matchNome = (b.morador || '').toLowerCase() === (user?.nome || '').toLowerCase()
-      return matchApt || matchNome
+      const uNome = (user?.nome || '').toLowerCase().trim()
+      const uApt = String(user?.apt || user?.unidade || '').trim().toLowerCase()
+      const bMorador = (b.morador || '').toLowerCase().trim()
+      const bApt = String(b.apt || b.unidade || '').trim().toLowerCase()
+      const uCondo = (user?.condominio || '').toLowerCase().trim()
+      const bCondo = (b.condominio || '').toLowerCase().trim()
+
+      const mesmoCondo = !uCondo || !bCondo || uCondo === bCondo
+      const mesmoApt = uApt && bApt && uApt === bApt
+      const mesmoNome = uNome && bMorador && (uNome === bMorador || uNome.includes(bMorador) || bMorador.includes(uNome))
+
+      return mesmoCondo && (mesmoApt || mesmoNome)
     }).sort((a, b) => new Date(b.vencimento || 0) - new Date(a.vencimento || 0))
 
     const proximoBoleto = meusBoletos.find(b => b.status === 'Pendente' || b.status === 'Vencido') || meusBoletos[0]
