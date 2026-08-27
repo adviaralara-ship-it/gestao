@@ -105,10 +105,11 @@ export const navGroups = [
   },
   // 👨‍💼 RH
   {
-    label: '👨‍💼 RH',
+    label: '👨‍💼 RH & Equipe',
     emoji: '👨‍💼',
     items: [
       { to: '/rh',            label: 'Funcionários',             icon: UserCog },
+      { to: '/ponto',         label: 'Ponto Eletrônico',         icon: Clock },
       { to: '/recrutamento',  label: 'Recrutamento',             icon: Users },
       { to: '/financeiro',    label: 'Receitas & Despesas',      icon: CreditCard },
     ]
@@ -255,6 +256,7 @@ export function getFilteredNavGroups(user) {
         items: [
           { to: '/dashboard',   label: 'Dashboard da Portaria',     icon: LayoutDashboard },
           { to: '/portaria',    label: 'Portaria & Entradas',       icon: DoorOpen },
+          { to: '/ponto',       label: '⏱️ Bater Ponto',            icon: Clock },
           { to: '/visitantes',  label: 'Visitantes & Convites',     icon: QrCode },
           { to: '/moradores',   label: 'Consultar Moradores',       icon: Users },
           { to: '/encomendas',  label: 'Controle de Encomendas',    icon: Package },
