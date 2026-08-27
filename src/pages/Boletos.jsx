@@ -296,6 +296,179 @@ function ModalBoleto({ data, onClose, onSave, moradores = [] }) {
   )
 }
 
+function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
+  const [condoNome, setCondoNome] = useState(condominios[0]?.nome || '')
+  const [valorStr, setValorStr] = useState('450,00')
+  const [competencia, setCompetencia] = useState(() => {
+    const d = new Date()
+    return d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '/')
+  })
+  const [vencimento, setVencimento] = useState(() => {
+    const d = new Date()
+    d.setDate(10)
+    return d.toISOString().split('T')[0]
+  })
+  
+  const condoSelecionado = condominios.find(c => c.nome === condoNome)
+  const [chavePix, setChavePix] = useState(condoSelecionado?.chave_pix || '')
+
+  useEffect(() => {
+    const c = condominios.find(c => c.nome === condoNome)
+    if (c) setChavePix(c.chave_pix || '')
+  }, [condoNome, condominios])
+
+  // Moradores filtrados por condomínio
+  const moradoresDoCondo = moradores.filter(m => !condoNome || m.condominio === condoNome || m.condominioNome === condoNome)
+  const [selecionados, setSelecionados] = useState(() => moradoresDoCondo.map(m => m.id))
+
+  useEffect(() => {
+    setSelecionados(moradoresDoCondo.map(m => m.id))
+  }, [condoNome, moradores.length])
+
+  const toggleMorador = (id) => {
+    setSelecionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  const toggleTodos = () => {
+    if (selecionados.length === moradoresDoCondo.length) {
+      setSelecionados([])
+    } else {
+      setSelecionados(moradoresDoCondo.map(m => m.id))
+    }
+  }
+
+  const handleGerar = () => {
+    const valorNum = parseFloat(valorStr.replace(/\./g, '').replace(',', '.')) || 0
+    if (valorNum <= 0) {
+      alert("Por favor, informe um valor válido para a taxa condominial.")
+      return
+    }
+    if (!vencimento) {
+      alert("Informe a data de vencimento.")
+      return
+    }
+    if (selecionados.length === 0) {
+      alert("Selecione pelo menos um morador.")
+      return
+    }
+
+    const listaParaCriar = moradoresDoCondo
+      .filter(m => selecionados.includes(m.id))
+      .map(m => ({
+        morador: m.nome,
+        apt: m.apt || m.unidade || '',
+        condominio: condoNome,
+        competencia,
+        vencimento,
+        valor: valorNum,
+        chave_pix: chavePix,
+        status: 'Pendente',
+        emitido: true,
+        linha: gerarLinhaDigitavel(m.apt || '101', valorNum, vencimento),
+        pix_emv: generateStaticPix(chavePix, valorNum, condoNome, "BR"),
+        _createdAt: new Date().toISOString()
+      }))
+
+    onSave(listaParaCriar)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content max-w-2xl p-0 overflow-hidden bg-white rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+          <div>
+            <h3 className="font-black text-lg flex items-center gap-2">
+              📦 Gerar Boletos do Mês em Lote
+            </h3>
+            <p className="text-xs text-gray-400">Emissão em massa com QR Code PIX individual para cada morador</p>
+          </div>
+          <button onClick={onClose}><X size={20} className="text-gray-400 hover:text-white" /></button>
+        </div>
+
+        <div className="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto">
+          {/* Seleção do Condomínio */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-gray-200">
+            <div>
+              <label className="label text-xs font-black">Condomínio *</label>
+              <select className="input text-xs font-bold w-full bg-white" value={condoNome} onChange={e => setCondoNome(e.target.value)}>
+                {condominios.map(c => <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label text-xs font-black">Chave PIX de Recebimento</label>
+              <input className="input text-xs w-full bg-white" value={chavePix} onChange={e => setChavePix(e.target.value)} placeholder="CNPJ, E-mail ou Celular" />
+            </div>
+          </div>
+
+          {/* Dados da Cobrança */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="label text-xs font-black">Valor da Cota (R$) *</label>
+              <input className="input text-sm font-bold text-emerald-700 w-full" value={valorStr} onChange={e => setValorStr(e.target.value)} placeholder="Ex: 450,00" />
+            </div>
+            <div>
+              <label className="label text-xs font-black">Competência *</label>
+              <input className="input text-xs font-bold w-full" value={competencia} onChange={e => setCompetencia(e.target.value)} placeholder="Ex: Set/2026" />
+            </div>
+            <div>
+              <label className="label text-xs font-black">Data de Vencimento *</label>
+              <input type="date" className="input text-xs font-bold w-full" value={vencimento} onChange={e => setVencimento(e.target.value)} />
+            </div>
+          </div>
+
+          {/* Lista de Moradores com Checkboxes */}
+          <div className="border border-gray-200 rounded-2xl overflow-hidden mt-2">
+            <div className="p-3 bg-slate-100 border-b border-gray-200 flex items-center justify-between">
+              <span className="text-xs font-black text-gray-800">
+                👥 Moradores da {condoNome} ({selecionados.length} de {moradoresDoCondo.length} selecionados)
+              </span>
+              <button onClick={toggleTodos} className="text-xs font-bold text-brand-600 hover:text-brand-800">
+                {selecionados.length === moradoresDoCondo.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+              </button>
+            </div>
+
+            <div className="max-h-56 overflow-y-auto divide-y divide-gray-100 p-2">
+              {moradoresDoCondo.length === 0 ? (
+                <p className="text-xs text-gray-400 p-4 text-center">Nenhum morador cadastrado neste condomínio.</p>
+              ) : (
+                moradoresDoCondo.map(m => {
+                  const isChecked = selecionados.includes(m.id)
+                  return (
+                    <label key={m.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl cursor-pointer">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleMorador(m.id)}
+                          className="w-4 h-4 rounded text-brand-600 border-gray-300 focus:ring-brand-500"
+                        />
+                        <div>
+                          <p className="font-bold text-gray-900 text-xs">{m.nome}</p>
+                          <p className="text-[10px] text-gray-500">Unidade / Apt: <b>{m.apt || m.unidade || '—'}</b> {m.bloco ? `• Bloco ${m.bloco}` : ''}</p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-emerald-700 font-mono">
+                        R$ {valorStr || '0,00'}
+                      </span>
+                    </label>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 bg-slate-50 border-t border-gray-200 flex items-center justify-between">
+          <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
+          <button onClick={handleGerar} className="btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 flex items-center gap-2 shadow-md">
+            <CheckCircle2 size={16} /> Gerar {selecionados.length} Boletos PIX Agora
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ModalFundo({ condo, onClose, onSave }) {
   const [saldoStr, setSaldoStr] = useState(condo?.fundoReserva ? Number(condo.fundoReserva).toLocaleString('pt-BR',{minimumFractionDigits:2}) : '')
   const [metaStr, setMetaStr]   = useState(condo?.fundoMeta  ? Number(condo.fundoMeta).toLocaleString('pt-BR',{minimumFractionDigits:2}) : '')
@@ -345,7 +518,18 @@ export default function Boletos() {
   const [condoFilter, setCondoFilter] = useState('Todos')
   const [viewing, setViewing] = useState(null)
   const [modal, setModal] = useState(null)
+  const [modalLote, setModalLote] = useState(false)
   const [condoFundoEdit, setCondoFundoEdit] = useState(null)
+
+  const handleSaveLote = async (lista) => {
+    let criados = 0
+    for (const b of lista) {
+      await addItem(b)
+      criados++
+    }
+    setModalLote(false)
+    alert(`🎉 Sucesso! ${criados} boletos PIX foram gerados com sucesso para os moradores selecionados!`)
+  }
 
   const boletos = allBoletos.filter(b => {
     if (user?.role === 'Morador') return b.apt === user?.apt && b.morador === user?.nome;
@@ -654,19 +838,21 @@ export default function Boletos() {
           <p className="section-sub">Emissão e acompanhamento de cobranças</p>
         </div>
         {tab==='boletos' && (user?.role === 'Administrador' || user?.role === 'Financeiro') && (
-          <div className="flex gap-2">
-            <button onClick={emitirLote} className="btn-secondary text-sm"><FileText size={14}/>Emitir Lote</button>
+          <div className="flex gap-2 flex-wrap items-center">
+            <button onClick={()=>setModalLote(true)} className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-sm font-black flex items-center gap-1.5 shadow-md">
+              <Package size={15}/> Gerar Boletos do Mês (Lote)
+            </button>
             <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1">
               <CheckCircle2 size={14}/>
-              Conciliar Pagamentos (CSV)
+              Conciliar Extrato (CSV)
               <input type="file" accept=".csv" className="hidden" onChange={handleReconciliationCSV} />
             </label>
             <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1">
               <Upload size={14}/>
-              Importar Boletos (CSV)
+              Importar (CSV)
               <input type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
             </label>
-            <button onClick={()=>setModal('new')} className="btn-primary"><Plus size={16}/>Novo Boleto</button>
+            <button onClick={()=>setModal('new')} className="btn-secondary text-sm"><Plus size={15}/>Novo Individual</button>
           </div>
         )}
       </div>
@@ -904,6 +1090,7 @@ export default function Boletos() {
 
       {viewing && <BoletoPrintModal boleto={viewing} condominio={allCondominios.find(c=>c.nome===(viewing.condominio || moradores.find(m=>m.nome===viewing.morador)?.condominio))} onClose={()=>setViewing(null)}/>}
       {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores}/>}
+      {modalLote&&<ModalGerarLote condominios={allCondominios} moradores={moradores} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
       {condoFundoEdit&&<ModalFundo condo={condoFundoEdit} onClose={()=>setCondoFundoEdit(null)} onSave={handleSaveFundo}/>}
     </div>
   )
