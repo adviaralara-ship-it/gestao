@@ -123,9 +123,7 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
           {/* Cabeçalho Bancário Oficial */}
           <div className="border-b-2 border-slate-900 pb-3 mb-4 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-brand-700 text-white flex items-center justify-center font-black text-xl shadow-sm">
-                🏢
-              </div>
+              <img src="/logo-alpha.png" alt="Alpha Soluções Condominiais" className="w-14 h-14 object-contain rounded-xl shadow-sm" />
               <div>
                 <h2 className="text-lg font-black text-slate-900 leading-tight">ALPHA SOLUÇÕES CONDOMINIAIS</h2>
                 <p className="text-[11px] text-gray-500 font-bold">Gestão & Administração de Condomínios</p>
@@ -567,20 +565,156 @@ export default function Boletos() {
   const { items: moradores } = useFirestore('moradores')
 
   const [tab, setTab] = useState('boletos')
-  const [condoFilter, setCondoFilter] = useState('Todos')
-  const [viewing, setViewing] = useState(null)
-  const [modal, setModal] = useState(null)
-  const [modalLote, setModalLote] = useState(false)
-  const [condoFundoEdit, setCondoFundoEdit] = useState(null)
+  const [selectedIds, setSelectedIds] = useState([])
+  const [downloadingLote, setDownloadingLote] = useState(false)
 
-  const handleSaveLote = async (lista) => {
-    let criados = 0
-    for (const b of lista) {
-      await addItem(b)
-      criados++
+  const handleDownloadPDFLote = async (boletosParaBaixar) => {
+    if (!boletosParaBaixar || boletosParaBaixar.length === 0) {
+      alert("Selecione pelo menos um boleto para baixar.")
+      return
     }
-    setModalLote(false)
-    alert(`🎉 Sucesso! ${criados} boletos PIX foram gerados com sucesso para os moradores selecionados!`)
+
+    try {
+      setDownloadingLote(true)
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+
+      const container = document.createElement('div')
+      container.style.position = 'fixed'
+      container.style.top = '-9999px'
+      container.style.left = '-9999px'
+      container.style.width = '780px'
+      container.style.backgroundColor = '#ffffff'
+      container.style.padding = '20px'
+      document.body.appendChild(container)
+
+      for (let i = 0; i < boletosParaBaixar.length; i++) {
+        const b = boletosParaBaixar[i]
+        const condoDoc = allCondominios.find(c => c.nome === b.condominio) || allCondominios[0]
+        const chavePix = b.chave_pix || condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
+        const pixPayload = generateStaticPix(chavePix, Number(b.valor || 0), condoDoc?.nome || b.condominio || "Alpha Solucoes", "BR")
+        const linha = b.linha || gerarLinhaDigitavel(b.apt, b.valor, b.vencimento)
+        const valorFmt = Number(b.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+        const vencFmt = b.vencimento ? (b.vencimento.includes('-') ? b.vencimento.split('-').reverse().join('/') : b.vencimento) : '—'
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(pixPayload)}`
+
+        container.innerHTML = `
+          <div style="font-family: Arial, sans-serif; color: #0f172a; padding: 24px; background: #fff; border: 1px solid #cbd5e1; border-radius: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <img src="/logo-alpha.png" width="48" height="48" style="object-fit: contain; border-radius: 10px;" />
+                <div>
+                  <h2 style="margin: 0; font-size: 18px; font-weight: 900; color: #0f172a;">ALPHA SOLUÇÕES CONDOMINIAIS</h2>
+                  <p style="margin: 2px 0 0; font-size: 11px; color: #64748b; font-weight: bold;">Gestão & Administração de Condomínios</p>
+                  <p style="margin: 2px 0 0; font-size: 10px; color: #94a3b8; font-family: monospace;">CNPJ: 00.000.000/0001-00</p>
+                </div>
+              </div>
+              <div style="text-align: right;">
+                <span style="display: inline-block; background: #dcfce7; color: #166534; border: 1px solid #86efac; padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 900; text-transform: uppercase;">Fatura / Boleto PIX</span>
+                <p style="margin: 4px 0 0; font-size: 11px; color: #94a3b8; font-family: monospace;">Recibo do Sacado</p>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; background: #f8fafc; padding: 14px; border-radius: 12px; border: 1px solid #e2e8f0; font-size: 12px; margin-bottom: 16px;">
+              <div>
+                <span style="font-size: 10px; font-weight: bold; color: #94a3b8; text-transform: uppercase;">Condomínio Beneficiário</span>
+                <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${b.condominio || condoDoc?.nome || 'Condomínio Residencial'}</p>
+                <p style="margin: 2px 0 0; color: #64748b;">${condoDoc?.endereco || 'Endereço Cadastrado'}</p>
+                <p style="margin: 4px 0 0; color: #047857; font-weight: bold; font-family: monospace;">Chave Pix: ${chavePix}</p>
+              </div>
+              <div>
+                <span style="font-size: 10px; font-weight: bold; color: #94a3b8; text-transform: uppercase;">Pagador / Morador</span>
+                <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${b.morador}</p>
+                <p style="margin: 2px 0 0; color: #334155; font-weight: bold;">Unidade: ${b.apt ? 'Apt ' + b.apt : '—'}</p>
+                <p style="margin: 4px 0 0; color: #64748b; font-family: monospace;">Competência: ${b.competencia || 'Mês Vigente'}</p>
+              </div>
+              <div style="background: #ecfdf5; padding: 10px; border-radius: 10px; border: 1px solid #a7f3d0;">
+                <div>
+                  <span style="font-size: 10px; font-weight: bold; color: #065f46; text-transform: uppercase;">Vencimento</span>
+                  <p style="margin: 2px 0 0; font-weight: 900; font-size: 14px; color: #0f172a;">${vencFmt}</p>
+                </div>
+                <div style="margin-top: 8px;">
+                  <span style="font-size: 10px; font-weight: bold; color: #065f46; text-transform: uppercase;">Valor Total a Pagar</span>
+                  <p style="margin: 2px 0 0; font-weight: 900; font-size: 18px; color: #047857;">R$ ${valorFmt}</p>
+                </div>
+              </div>
+            </div>
+
+            <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 16px;">
+              <div style="background: #f1f5f9; padding: 8px 12px; font-weight: bold; font-size: 11px; color: #475569; text-transform: uppercase;">Composição da Taxa Condominial</div>
+              <div style="padding: 10px 14px; font-size: 12px;">
+                <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
+                  <span>Taxa Ordinária de Condomínio (${b.competencia || 'Mês Atual'})</span>
+                  <span style="font-family: monospace; font-weight: bold;">R$ ${valorFmt}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 6px 0 0; font-weight: 900; font-size: 13px;">
+                  <span>TOTAL LIQUIDO</span>
+                  <span style="font-family: monospace; color: #047857;">R$ ${valorFmt}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 16px; background: #f8fafc; padding: 14px; border-radius: 12px; border: 2px dashed #94a3b8; margin-bottom: 16px; align-items: center;">
+              <div style="background: #fff; padding: 8px; border-radius: 10px; border: 1px solid #cbd5e1; text-align: center;">
+                <img src="${qrUrl}" width="125" height="125" style="display: block;" />
+                <span style="font-size: 9px; font-weight: bold; color: #047857; display: block; margin-top: 4px;">PAGAMENTO INSTANTÂNEO</span>
+              </div>
+              <div style="flex: 1; font-size: 11px;">
+                <h4 style="margin: 0 0 6px; font-size: 13px; font-weight: 900; color: #0f172a;">💠 Instruções de Pagamento via PIX</h4>
+                <p style="margin: 0 0 8px; color: #475569; line-height: 1.4;">1. Abra o aplicativo do seu banco no celular.<br/>2. Escolha a opção <b>PIX</b> e aponte a câmera para o <b>QR Code</b> ou utilize a chave copia e cola.<br/>3. A compensação é <b>imediata</b> (24h por dia, 7 dias por semana).</p>
+                <div style="background: #e2e8f0; padding: 8px; border-radius: 8px; font-family: monospace; font-size: 9px; word-break: break-all; color: #1e293b;">
+                  ${pixPayload}
+                </div>
+              </div>
+            </div>
+
+            <div style="border-top: 2px solid #0f172a; padding-top: 10px; font-size: 11px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-weight: 900; color: #1e3a8a; font-size: 13px;">ALPHA 001-9</span>
+                <span style="font-family: monospace; font-weight: bold; font-size: 12px; letter-spacing: 1px;">${linha}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 10px;">
+                <span>Autenticação Mecânica / Ficha de Compensação</span>
+                <span>Alpha Soluções Condominiais • Suporte: contato@alphasolucoes.com.br</span>
+              </div>
+            </div>
+          </div>
+        `
+
+        await new Promise(r => setTimeout(r, 200))
+        const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+        const imgData = canvas.toDataURL('image/png')
+        if (i > 0) pdf.addPage()
+        const imgHeight = (canvas.height * pdfWidth) / canvas.width
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(imgHeight, 295))
+      }
+
+      document.body.removeChild(container)
+      const condoNome = condoFilter && condoFilter !== 'Todos' ? condoFilter.replace(/\s+/g, '_') : 'Condominio'
+      pdf.save(`Boletos_${condoNome}_Lote_${boletosParaBaixar.length}_faturas.pdf`)
+      setDownloadingLote(false)
+      alert(`🎉 Download concluído! Arquivo PDF consolidado com ${boletosParaBaixar.length} boletos gerado com sucesso!`)
+    } catch(err) {
+      console.error(err)
+      setDownloadingLote(false)
+      alert('Erro ao gerar o arquivo PDF consolidado.')
+    }
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === boletos.length) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(boletos.map(b => b.id))
+    }
+  }
+
+  const toggleSelectBoleto = (id) => {
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter(x => x !== id))
+    } else {
+      setSelectedIds([...selectedIds, id])
+    }
   }
 
   const boletos = allBoletos.filter(b => {
@@ -1027,20 +1161,76 @@ export default function Boletos() {
           )}
 
           <div className="card p-0 overflow-hidden">
-            <div className="p-4 border-b border-cream-300 flex items-center justify-between">
-              <p className="font-bold text-gray-800 text-sm">Boletos cadastrados</p>
-              <span className="text-xs text-gray-400">{boletos.filter(b=>b.emitido).length} emitidos de {boletos.length}</span>
+            <div className="p-4 border-b border-cream-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <p className="font-bold text-gray-800 text-sm">Boletos cadastrados</p>
+                <span className="text-xs text-gray-400 font-medium">({boletos.length} no total • {selectedIds.length} selecionados)</span>
+              </div>
+
+              {/* Ações em Lote */}
+              {(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && boletos.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => {
+                      const lista = selectedIds.length > 0 ? boletos.filter(b => selectedIds.includes(b.id)) : boletos
+                      handleDownloadPDFLote(lista)
+                    }}
+                    disabled={downloadingLote}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all"
+                  >
+                    <Download size={14} />
+                    {downloadingLote
+                      ? 'Compilando PDF...'
+                      : selectedIds.length > 0
+                        ? `Baixar Selecionados (${selectedIds.length}) em PDF`
+                        : `Baixar Todos (${boletos.length}) em PDF`
+                    }
+                  </button>
+
+                  {selectedIds.length > 0 && (
+                    <button
+                      onClick={() => setSelectedIds([])}
+                      className="px-2.5 py-1.5 text-gray-500 hover:text-gray-800 text-xs font-bold bg-white border border-gray-300 rounded-xl"
+                    >
+                      Desmarcar
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
+
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-cream-100 border-b border-cream-400">
-                  <tr>{['Morador','Unidade','Vencimento','Valor','Status','Emitido','Ações'].map(h=><th key={h} className="table-head">{h}</th>)}</tr>
+                  <tr>
+                    {(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
+                      <th className="table-head w-10 text-center">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                          checked={boletos.length > 0 && selectedIds.length === boletos.length}
+                          onChange={toggleSelectAll}
+                        />
+                      </th>
+                    )}
+                    {['Morador','Unidade','Vencimento','Valor','Status','Emitido','Ações'].map(h=><th key={h} className="table-head">{h}</th>)}
+                  </tr>
                 </thead>
                 <tbody>
                   {boletos.length===0
-                    ? <tr><td colSpan={7} className="text-center py-10 text-gray-400 text-sm">Nenhum boleto cadastrado.</td></tr>
+                    ? <tr><td colSpan={8} className="text-center py-10 text-gray-400 text-sm">Nenhum boleto cadastrado.</td></tr>
                     : boletos.map(b=>(
-                      <tr key={b.id} className="table-row">
+                      <tr key={b.id} className={`table-row ${selectedIds.includes(b.id) ? 'bg-indigo-50/50' : ''}`}>
+                        {(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
+                          <td className="table-cell text-center">
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                              checked={selectedIds.includes(b.id)}
+                              onChange={() => toggleSelectBoleto(b.id)}
+                            />
+                          </td>
+                        )}
                         <td className="table-cell font-medium text-gray-800">{b.morador}</td>
                         <td className="table-cell text-gray-500">{b.apt}</td>
                         <td className="table-cell text-gray-500">{b.vencimento}</td>
