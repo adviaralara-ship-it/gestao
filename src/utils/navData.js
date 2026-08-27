@@ -7,7 +7,7 @@ import {
   CreditCard, Target, Scale, Building, Calculator,
   CalendarCheck as Reservas, Wrench, DoorOpen, Package, QrCode, Car, Camera,
   Briefcase, UserCog, Settings, MessageCircleCode, Mail, UserCog as Usuarios2,
-  FileSpreadsheet
+  FileSpreadsheet, Clock
 } from 'lucide-react'
 
 export const navGroups = [
