@@ -586,17 +586,17 @@ export default function Boletos() {
   const boletos = allBoletos.filter(b => {
     if (user?.role === 'Morador') {
       const uNome = (user?.nome || '').toLowerCase().trim()
-      const uApt = String(user?.apt || user?.unidade || '').trim().toLowerCase()
+      const uAptDigits = String(user?.apt || user?.unidade || '').replace(/\D/g, '')
+      const uEmail = (user?.email || '').toLowerCase().trim()
       const bMorador = (b.morador || '').toLowerCase().trim()
-      const bApt = String(b.apt || b.unidade || '').trim().toLowerCase()
-      const uCondo = (user?.condominio || '').toLowerCase().trim()
-      const bCondo = (b.condominio || '').toLowerCase().trim()
+      const bAptDigits = String(b.apt || b.unidade || '').replace(/\D/g, '')
+      const bEmail = (b.email || '').toLowerCase().trim()
 
-      const mesmoCondo = !uCondo || !bCondo || uCondo === bCondo
-      const mesmoApt = uApt && bApt && uApt === bApt
-      const mesmoNome = uNome && bMorador && (uNome === bMorador || uNome.includes(bMorador) || bMorador.includes(uNome))
+      const matchEmail = uEmail && bEmail && uEmail === bEmail
+      const matchApt = uAptDigits && bAptDigits && uAptDigits === bAptDigits
+      const matchNome = uNome && bMorador && (uNome === bMorador || uNome.includes(bMorador) || bMorador.includes(uNome))
 
-      return mesmoCondo && (mesmoApt || mesmoNome)
+      return matchEmail || matchApt || matchNome
     }
 
     if (['Síndico', 'Subsíndico', 'Conselheiro'].includes(user?.role)) {
@@ -613,8 +613,16 @@ export default function Boletos() {
   })
 
   const condominios = allCondominios.filter(c => {
-    if (user?.role === 'Morador') return c.nome === user?.condominio;
-    if (['Síndico', 'Subsíndico', 'Conselheiro'].includes(user?.role)) return c.nome === user?.condominio;
+    if (user?.role === 'Morador') {
+      const uCondo = (user?.condominio || '').toLowerCase().trim()
+      const cNome = (c.nome || '').toLowerCase().trim()
+      return !uCondo || cNome === uCondo || cNome.includes(uCondo) || uCondo.includes(cNome)
+    }
+    if (['Síndico', 'Subsíndico', 'Conselheiro'].includes(user?.role)) {
+      const uCondo = (user?.condominio || '').toLowerCase().trim()
+      const cNome = (c.nome || '').toLowerCase().trim()
+      return !uCondo || cNome === uCondo || cNome.includes(uCondo) || uCondo.includes(cNome)
+    }
     if (condoFilter && condoFilter !== 'Todos') return c.nome === condoFilter;
     return true;
   })
