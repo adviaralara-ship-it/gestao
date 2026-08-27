@@ -565,8 +565,23 @@ export default function Boletos() {
   const { items: moradores } = useFirestore('moradores')
 
   const [tab, setTab] = useState('boletos')
+  const [condoFilter, setCondoFilter] = useState('Todos')
+  const [viewing, setViewing] = useState(null)
+  const [modal, setModal] = useState(null)
+  const [modalLote, setModalLote] = useState(false)
+  const [condoFundoEdit, setCondoFundoEdit] = useState(null)
   const [selectedIds, setSelectedIds] = useState([])
   const [downloadingLote, setDownloadingLote] = useState(false)
+
+  const handleSaveLote = async (lista) => {
+    let criados = 0
+    for (const b of lista) {
+      await addItem(b)
+      criados++
+    }
+    setModalLote(false)
+    alert(`🎉 Sucesso! ${criados} boletos PIX foram gerados com sucesso para os moradores selecionados!`)
+  }
 
   const handleDownloadPDFLote = async (boletosParaBaixar) => {
     if (!boletosParaBaixar || boletosParaBaixar.length === 0) {
