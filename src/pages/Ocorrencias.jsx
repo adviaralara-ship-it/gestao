@@ -1,19 +1,56 @@
 import React, { useState } from 'react'
-import { AlertTriangle, Plus, Search, Edit2, Trash2, DollarSign, X } from 'lucide-react'
+import { AlertTriangle, Plus, Search, Edit2, Trash2, DollarSign, X, CheckCircle2, Clock, Wrench, Sparkles, Bot, Loader2, MapPin, Calendar, UserCheck } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { notificarAdm } from '../emailjs.config'
 import { useAuth } from '../context/AuthContext'
-import { Sparkles, Bot, Loader2 } from 'lucide-react'
+import { format } from 'date-fns'
+
+const CATEGORIAS_SOLICITACAO = [
+  'Manutenção',
+  'Vazamento',
+  'Elétrica',
+  'Hidráulica',
+  'Elevador',
+  'Segurança',
+  'Limpeza',
+  'Área comum',
+  'Barulho',
+  'Obra',
+  'Sugestão',
+  'Reclamação',
+  'Outros'
+]
+
+const STATUS_FLUXO = [
+  'Aberta',
+  'Em análise',
+  'Em andamento',
+  'Resolvida'
+]
 
 function Modal({ data, user, onClose, onSave }) {
-  const [form, setForm] = useState(data||{titulo:'',descricao:'',apt:user?.apt||'',condominio:user?.condominio||'',hora:'',categoria:'Perturbação',status:'Aberta',prioridade:'Média',visibilidade:'Público',infracao:false, foto:''})
-  const set = (k,v) => setForm(f=>({...f,[k]:v}))
+  const [form, setForm] = useState(data || {
+    titulo: '',
+    descricao: '',
+    local: '',
+    apt: user?.apt || user?.unidade || '',
+    condominio: user?.condominio || '',
+    categoria: 'Manutenção',
+    prioridade: 'Média',
+    status: 'Aberta',
+    responsavel: 'Administração',
+    previsao: '',
+    visibilidade: 'Público',
+    infracao: false,
+    foto: ''
+  })
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   
   const handleImage = (e) => {
     const file = e.target.files[0]
-    if(!file) return
+    if (!file) return
     const reader = new FileReader()
     reader.onload = (event) => {
       const img = new Image()
@@ -32,307 +69,342 @@ function Modal({ data, user, onClose, onSave }) {
     }
     reader.readAsDataURL(file)
   }
+
+  const isMorador = user?.role === 'Morador'
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e=>e.stopPropagation()}>
+      <div className="modal-content max-w-xl" onClick={e => e.stopPropagation()}>
         <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">{data?'Editar Ocorrência':'🤝 Solicitação'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+          <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+            <Wrench className="text-brand-600" size={20} />
+            {data ? 'Editar Solicitação' : 'Nova Solicitação do Morador'}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg">✕</button>
         </div>
-        <div className="p-6 flex flex-col gap-4">
-          <div><label className="label">Título</label><input className="input" value={form.titulo} onChange={e=>set('titulo',e.target.value)}/></div>
-          <div><label className="label">Descrição</label><textarea className="input resize-none min-h-[80px]" value={form.descricao} onChange={e=>set('descricao',e.target.value)}/></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="label">Apartamento</label><input className="input" value={form.apt} onChange={e=>set('apt',e.target.value)}/></div>
-            <div><label className="label">Condomínio</label><input className="input" value={form.condominio} onChange={e=>set('condominio',e.target.value)} disabled={user?.role==='Morador'}/></div>
-            <div><label className="label">Categoria</label>
-              <select className="input" value={form.categoria} onChange={e=>set('categoria',e.target.value)}>
-                {['Perturbação','Manutenção','Conduta','Estacionamento','Segurança','Outros'].map(c=><option key={c}>{c}</option>)}
+        <div className="p-6 flex flex-col gap-4 text-xs">
+          <div>
+            <label className="label font-bold text-gray-700">Assunto / Título da Solicitação *</label>
+            <input
+              className="input font-medium"
+              value={form.titulo}
+              onChange={e => set('titulo', e.target.value)}
+              placeholder="Ex: Vazamento no corredor do 3º andar, Lâmpada queimada na garagem..."
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label font-bold text-gray-700">Categoria *</label>
+              <select className="input font-bold" value={form.categoria} onChange={e => set('categoria', e.target.value)}>
+                {CATEGORIAS_SOLICITACAO.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <div><label className="label">Prioridade</label>
-              <select className="input" value={form.prioridade} onChange={e=>set('prioridade',e.target.value)}>
-                <option>Alta</option><option>Média</option><option>Baixa</option>
-              </select>
-            </div>
-            <div><label className="label">Status</label>
-              <select className="input" value={form.status} onChange={e=>set('status',e.target.value)}>
-                <option>Aberta</option><option>Em Andamento</option><option>Resolvida</option>
-              </select>
-            </div>
-            <div><label className="label">Visibilidade</label>
-              <select className="input" value={form.visibilidade || 'Público'} onChange={e=>set('visibilidade',e.target.value)}>
-                <option>Público</option><option>Apenas Adm</option>
-              </select>
-            </div>
-            <div className="col-span-2 mt-2">
-              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={form.infracao || false} onChange={e=>set('infracao',e.target.checked)} className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500" />
-                Classificar como Infração (Regras do Condomínio)
-              </label>
-            </div>
-            <div className="col-span-2">
-              <label className="label">Anexar Foto / Evidência</label>
-              {form.foto ? (
-                <div className="relative w-32 h-32 rounded-lg border border-cream-300 overflow-hidden group">
-                  <img src={form.foto} alt="Evidência" className="w-full h-full object-cover" />
-                  <button onClick={()=>set('foto','')} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-all"><X size={12}/></button>
-                </div>
-              ) : (
-                <input type="file" accept="image/*" capture="environment" onChange={handleImage} className="input text-sm file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100" />
-              )}
+
+            <div>
+              <label className="label font-bold text-gray-700">Local / Onde ocorreu *</label>
+              <input
+                className="input font-medium"
+                value={form.local}
+                onChange={e => set('local', e.target.value)}
+                placeholder="Ex: Corredor do Bloco B, Garagem vaga 42..."
+              />
             </div>
           </div>
-        </div>
-        <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
-          <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={()=>onSave(form)} className="btn-primary">Salvar</button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
-const statusBadge = s=>({Aberta:'badge-red','Em Andamento':'badge-yellow',Resolvida:'badge-green'}[s]||'badge-blue')
-const prioBadge   = p=>({Alta:'badge-red',Média:'badge-yellow',Baixa:'badge-green'}[p]||'badge-blue')
-
-function ModalMulta({ ocorrencia, onClose, onSave }) {
-  const [valor, setValor] = useState('')
-  const [dataVenc, setDataVenc] = useState('')
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-sm" onClick={e=>e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">Gerar Multa - Apt {ocorrencia.apt}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
-        </div>
-        <div className="p-6 flex flex-col gap-4">
-          <p className="text-sm text-gray-600">Ao salvar, uma Conta a Receber será lançada no Módulo Financeiro.</p>
-          <div><label className="label">Valor da Multa (R$)</label><input type="number" step="0.01" className="input" value={valor} onChange={e=>setValor(e.target.value)} placeholder="0,00" autoFocus/></div>
-          <div><label className="label">Vencimento</label><input type="date" className="input" value={dataVenc} onChange={e=>setDataVenc(e.target.value)}/></div>
-        </div>
-        <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
-          <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={()=>{if(!valor||!dataVenc)return; onSave(valor, dataVenc)}} className="btn-primary">Gerar Boleto/Multa</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ModalAlphaAI({ ocorrencia, onClose }) {
-  const [analyzing, setAnalyzing] = useState(true)
-  const [result, setResult] = useState(null)
-
-  React.useEffect(() => {
-    // Simula tempo de processamento da IA
-    const timer = setTimeout(() => {
-      setAnalyzing(false)
-      // Resposta mockada simulando análise do regimento
-      let mockResp = ""
-      if (ocorrencia.categoria === 'Perturbação') {
-        mockResp = "Segundo o Artigo 14 do Regimento Interno (Perturbação do Sossego), barulhos excessivos após as 22h são passíveis de Advertência Escrita na primeira infração, e multa de 50% da taxa condominial em caso de reincidência."
-      } else if (ocorrencia.categoria === 'Conduta') {
-        mockResp = "Segundo o Capítulo III das Regras de Convivência, condutas antissociais nas áreas comuns são passíveis de notificação imediata pela administração."
-      } else if (ocorrencia.categoria === 'Estacionamento') {
-        mockResp = "Conforme o Artigo 22 (Uso das Garagens), estacionar fora da faixa demarcada ou usar a vaga como depósito acarreta multa direta de 20% da taxa condominial."
-      } else {
-        mockResp = "Baseado no Regimento Interno, esta ocorrência requer análise do Síndico para aplicação de sanções previstas no Capítulo Geral de Infrações."
-      }
-      setResult(mockResp)
-    }, 2000)
-    return () => clearTimeout(timer)
-  }, [ocorrencia])
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-lg" onClick={e=>e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between bg-gradient-to-r from-blue-900 to-indigo-900 rounded-t-xl">
-          <h3 className="font-bold text-white flex items-center gap-2"><Sparkles size={18} className="text-blue-300"/> Alpha AI: Análise de Regimento</h3>
-          <button onClick={onClose} className="text-white/70 hover:text-white">✕</button>
-        </div>
-        <div className="p-6 flex flex-col gap-4">
-          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-            <p className="text-xs text-gray-500 font-bold uppercase mb-1">Ocorrência Analisada</p>
-            <p className="text-sm font-semibold text-gray-800">{ocorrencia.titulo}</p>
-            <p className="text-xs text-gray-600 mt-1">{ocorrencia.descricao}</p>
+          <div>
+            <label className="label font-bold text-gray-700">Descrição Detalhada *</label>
+            <textarea
+              className="input resize-none min-h-[90px] font-medium"
+              value={form.descricao}
+              onChange={e => set('descricao', e.target.value)}
+              placeholder="Descreva com detalhes a situação observada..."
+            />
           </div>
-          
-          <div className="min-h-[120px] flex items-center justify-center">
-            {analyzing ? (
-              <div className="flex flex-col items-center gap-3 text-brand-600">
-                <Loader2 className="animate-spin" size={32} />
-                <p className="text-sm font-medium animate-pulse">Lendo Regimento Interno...</p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label font-bold text-gray-700">Unidade / Apto</label>
+              <input className="input font-medium" value={form.apt} onChange={e => set('apt', e.target.value)} disabled={isMorador} />
+            </div>
+
+            <div>
+              <label className="label font-bold text-gray-700">Prioridade</label>
+              <select className="input font-bold" value={form.prioridade} onChange={e => set('prioridade', e.target.value)}>
+                <option value="Baixa">🟢 Baixa</option>
+                <option value="Média">🟡 Média</option>
+                <option value="Alta">🔴 Alta / Urgente</option>
+              </select>
+            </div>
+          </div>
+
+          {!isMorador && (
+            <div className="grid grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-gray-200">
+              <div>
+                <label className="label font-bold text-gray-700">Status</label>
+                <select className="input font-bold" value={form.status} onChange={e => set('status', e.target.value)}>
+                  {STATUS_FLUXO.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="label font-bold text-gray-700">Responsável</label>
+                <input className="input font-medium" value={form.responsavel} onChange={e => set('responsavel', e.target.value)} placeholder="Ex: Síndico, Zelador, Manutenção..." />
+              </div>
+
+              <div>
+                <label className="label font-bold text-gray-700">Previsão</label>
+                <input type="date" className="input font-medium" value={form.previsao} onChange={e => set('previsao', e.target.value)} />
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="label font-bold text-gray-700">Foto / Evidência (Opcional)</label>
+            {form.foto ? (
+              <div className="relative w-32 h-32 rounded-xl border border-cream-300 overflow-hidden group">
+                <img src={form.foto} alt="Evidência" className="w-full h-full object-cover" />
+                <button type="button" onClick={() => set('foto', '')} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-90 hover:opacity-100 transition-all">
+                  <X size={12} />
+                </button>
               </div>
             ) : (
-              <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex items-start gap-3 w-full animate-fade-in">
-                <Bot className="text-blue-600 shrink-0 mt-0.5" size={24} />
-                <div>
-                  <p className="text-sm text-blue-900 leading-relaxed font-medium">
-                    {result}
-                  </p>
-                  {ocorrencia.infracao && !ocorrencia.multaGerada && (
-                    <p className="text-xs text-blue-700 mt-3 flex items-center gap-1 font-bold">
-                      💡 Dica: Você pode usar o botão "Gerar Multa" no card para aplicar a sanção.
-                    </p>
-                  )}
-                </div>
-              </div>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleImage}
+                className="input text-xs file:mr-4 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
+              />
             )}
           </div>
         </div>
+        <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
+          <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
+          <button onClick={() => {
+            if (!form.titulo.trim() || !form.descricao.trim()) {
+              alert('Por favor, preencha o assunto e a descrição.')
+              return
+            }
+            onSave(form)
+          }} className="btn-primary text-xs flex items-center gap-1.5 px-5">
+            Salvar Solicitação
+          </button>
+        </div>
       </div>
     </div>
   )
+}
+
+const statusBadge = s => {
+  switch (s) {
+    case 'Aberta': return 'bg-amber-100 text-amber-800 border-amber-200'
+    case 'Em análise': return 'bg-blue-100 text-blue-800 border-blue-200'
+    case 'Em andamento': return 'bg-purple-100 text-purple-800 border-purple-200'
+    case 'Resolvida': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
+    default: return 'bg-gray-100 text-gray-800 border-gray-200'
+  }
+}
+
+const prioBadge = p => {
+  switch (p) {
+    case 'Alta': return 'bg-rose-100 text-rose-800'
+    case 'Média': return 'bg-amber-100 text-amber-800'
+    default: return 'bg-emerald-100 text-emerald-800'
+  }
 }
 
 export default function Ocorrencias() {
   const { user } = useAuth()
-  const { items, addItem, updateItem, deleteItem } = useFirestore('ocorrencias')
-  const { addItem: addLancamentoFinanceiro } = useFirestore('financeiro_lancamentos')
+  const { items: allOcorrencias, addItem, updateItem, deleteItem } = useFirestore('ocorrencias')
+  const [modal, setModal] = useState(null)
   const [search, setSearch] = useState('')
-  const [modal,  setModal]  = useState(null)
-  const [modalMulta, setModalMulta] = useState(null)
-  const [modalIA, setModalIA] = useState(null)
+  const [filtroStatus, setFiltroStatus] = useState('Todos')
+  const [filtroCategoria, setFiltroCategoria] = useState('Todos')
 
-  const filtered = items.filter(i => {
-    if (i.visibilidade === 'Apenas Adm' && user?.role !== 'Administrador') {
-      return false
+  const isMorador = user?.role === 'Morador'
+
+  const ocorrencias = allOcorrencias.filter(o => {
+    // Se for morador, vê as ocorrências da unidade/apt dele ou que ele abriu
+    if (isMorador) {
+      const matchApt = o.apt === user?.apt || o.apt === user?.unidade
+      const matchAutor = o.autor === user?.nome || o.nome_morador === user?.nome || o.uid === user?.uid
+      return matchApt || matchAutor
     }
-    // Restringir morador para ver apenas as próprias ocorrências
-    if (user?.role === 'Morador') {
-      const userId = user?.uid || user?.id;
-      const isOwner = (i.uid && i.uid === userId) || (i.nome_morador === user?.nome);
-      if (!isOwner) return false;
+    if (user?.role === 'Síndico' || user?.role === 'Subsíndico') {
+      return !o.condominio || o.condominio === user?.condominio
     }
-
-    const searchLower = search.toLowerCase()
-    const matchTitulo = i.titulo ? i.titulo.toLowerCase().includes(searchLower) : false
-    const matchCat = i.categoria ? i.categoria.toLowerCase().includes(searchLower) : false
-    return matchTitulo || matchCat || (searchLower === '')
-  })
-
-  const handleSave = async form => {
-    if (modal==='new') {
-      const finalForm = {
-        ...form,
-        condominio: form.condominio || user?.condominio || '',
-        nome_morador: user?.nome || 'Morador',
-        uid: user?.uid || ''
-      }
-      await addItem(finalForm)
-      // Notificação sistema
-      const msg = `[${finalForm.condominio}] ⚠️ Nova ocorrência de ${finalForm.nome_morador} (Apt ${finalForm.apt}): "${finalForm.titulo}"`
-      await addDoc(collection(db,'notificacoes'),{
-        text:msg, time:new Date().toISOString(), tipo:'ocorrencia', lida:false, condominio: finalForm.condominio, _createdAt:serverTimestamp()
-      })
-      // Email ADM
-      notificarAdm(`⚠️ 🤝 Solicitação: ${form.titulo}`,
-        `Ocorrência registrada:\n\n📋 Título: ${form.titulo}\n🏠 Apt: ${form.apt}\n📂 Categoria: ${form.categoria}\n🚨 Prioridade: ${form.prioridade}\n\nDescrição:\n${form.descricao}`)
-      // WhatsApp ADM
-      const wppMsg = encodeURIComponent(`⚠️ *🤝 Solicitação*\n\n*${form.titulo}*\nApt ${form.apt} · ${form.categoria} · Prioridade: ${form.prioridade}\n\n${form.descricao}`)
-      window.open(`https://wa.me/?text=${wppMsg}`,'_blank')
-    } else {
-      await updateItem(modal.id,form)
-    }
-    setModal(null)
-  }
-
-  const handleGerarMulta = async (valor, dataVenc) => {
-    // 1. Gera lançamento financeiro
-    await addLancamentoFinanceiro({
-      tipo: 'Receita',
-      categoria: 'Multa',
-      descricao: `Multa Infração - Apt ${modalMulta.apt} (${modalMulta.titulo})`,
-      valor: Number(valor),
-      data: dataVenc,
-      status: 'Pendente'
-    })
-    // 2. Atualiza ocorrência
-    await updateItem(modalMulta.id, { ...modalMulta, multaGerada: true })
-    setModalMulta(null)
-  }
+    return true
+  }).filter(o => {
+    const matchBusca = (o.titulo || '').toLowerCase().includes(search.toLowerCase()) ||
+                       (o.descricao || '').toLowerCase().includes(search.toLowerCase()) ||
+                       (o.local || '').toLowerCase().includes(search.toLowerCase()) ||
+                       (o.apt || '').toLowerCase().includes(search.toLowerCase())
+    const matchStatus = filtroStatus === 'Todos' || o.status === filtroStatus
+    const matchCat = filtroCategoria === 'Todos' || o.categoria === filtroCategoria
+    return matchBusca && matchStatus && matchCat
+  }).sort((a, b) => new Date(b.data || b._createdAt || 0) - new Date(a.data || a._createdAt || 0))
 
   return (
-    <div className="flex flex-col gap-6 animate-fade-in">
-      <div className="page-header">
-        <div><h2 className="section-title text-xl">Solicitações</h2><p className="section-sub">{items.filter(i=>i.status!=='Resolvida').length} ocorrências abertas</p></div>
-        <button onClick={()=>setModal('new')} className="btn-primary"><Plus size={16}/>Registrar</button>
+    <div className="flex flex-col gap-6 animate-fade-in max-w-7xl mx-auto w-full pb-12">
+      <div className="page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="section-title text-2xl font-black text-gray-900 flex items-center gap-2">
+            <AlertTriangle className="text-brand-600" /> {isMorador ? 'Minhas Solicitações & Ocorrências' : 'Gestão de Solicitações & Ocorrências'}
+          </h2>
+          <p className="text-gray-500 font-medium text-xs md:text-sm mt-0.5">
+            {isMorador ? 'Abra chamados de manutenção, vazamentos, segurança ou sugestões e acompanhe em tempo real.' : 'Acompanhe e responda às solicitações de manutenção e regras dos moradores.'}
+          </p>
+        </div>
+        <button
+          onClick={() => setModal({})}
+          className="btn-primary flex items-center gap-1.5 shadow-md px-5 py-2.5"
+        >
+          <Plus size={18} /> Nova Solicitação
+        </button>
       </div>
-      <div className="grid grid-cols-3 gap-4">
-        {['Aberta','Em Andamento','Resolvida'].map(s=>(
-          <div key={s} className="card text-center">
-            <p className="text-2xl font-black text-brand-700">{items.filter(i=>i.status===s).length}</p>
-            <p className="text-xs text-gray-400">{s}</p>
-          </div>
-        ))}
+
+      {/* Filtros e Busca */}
+      <div className="flex flex-col md:flex-row gap-3">
+        <div className="flex-1 relative">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            className="input pl-10 text-sm bg-white"
+            placeholder="Buscar por assunto, local ou número..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+
+        <select
+          className="input text-xs py-2 w-full md:w-auto font-bold"
+          value={filtroStatus}
+          onChange={e => setFiltroStatus(e.target.value)}
+        >
+          <option value="Todos">Todos os Status</option>
+          {STATUS_FLUXO.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        <select
+          className="input text-xs py-2 w-full md:w-auto font-bold"
+          value={filtroCategoria}
+          onChange={e => setFiltroCategoria(e.target.value)}
+        >
+          <option value="Todos">Todas as Categorias</option>
+          {CATEGORIAS_SOLICITACAO.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
       </div>
-      <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"/>
-        <input className="input pl-9" placeholder="Buscar ocorrência..." value={search} onChange={e=>setSearch(e.target.value)}/>
-      </div>
-      {items.length===0&&<div className="card text-center py-10 text-gray-400 text-sm">Nenhuma ocorrência registrada ainda.</div>}
-      <div className="flex flex-col gap-3">
-        {filtered.map(item=>(
-          <div key={item.id} className="card hover:border-brand-700/50 transition-all group">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <h3 className="font-bold text-gray-800 text-sm">{item.titulo}</h3>
-                  <span className={statusBadge(item.status)}>{item.status}</span>
-                  <span className={prioBadge(item.prioridade)}>{item.prioridade}</span>
-                  {item.visibilidade === 'Apenas Adm' && (
-                    <span className="badge-red border border-red-200">🔒 Interno</span>
-                  )}
-                  {item.infracao && (
-                    <span className="badge-red bg-red-100 text-red-700 font-bold uppercase tracking-wider">Infração</span>
-                  )}
-                  {item.infracao && items.some(i => i.apt === item.apt && i.infracao && i.id !== item.id) && (
-                    <span className="badge-red bg-red-600 text-white font-black animate-pulse">⚠️ REINCIDENTE</span>
-                  )}
-                  {item.multaGerada && (
-                    <span className="badge-green bg-emerald-100 text-emerald-800">Multa Gerada</span>
-                  )}
+
+      {/* Lista de Solicitações / Ocorrências */}
+      {ocorrencias.length === 0 ? (
+        <div className="card text-center py-16 text-gray-400 text-sm border border-pale-300 shadow-sm flex flex-col items-center">
+          <Wrench size={32} className="text-gray-300 mb-2" />
+          <p className="font-bold text-gray-700">Nenhuma solicitação encontrada.</p>
+          <p className="text-xs text-gray-400 mt-0.5">Clique em "+ Nova Solicitação" para abrir um chamado.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {ocorrencias.map((oc, index) => (
+            <div key={oc.id || index} className="bg-white p-5 rounded-2xl border border-pale-300 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+              <div>
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div>
+                    <span className="text-[11px] font-mono text-gray-400 font-bold">#{oc.id?.slice(-4) || String(index + 1).padStart(3, '0')}</span>
+                    <h3 className="font-black text-gray-900 text-base leading-tight mt-0.5">{oc.titulo}</h3>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase border ${statusBadge(oc.status || 'Aberta')}`}>
+                    {oc.status || 'Aberta'}
+                  </span>
                 </div>
-                <p className="text-xs text-gray-400 mb-2">{item.descricao}</p>
-                {item.foto && (
-                  <div className="mb-3">
-                    <img src={item.foto} alt="Evidência" className="w-24 h-24 object-cover rounded-lg border border-cream-200 cursor-pointer hover:opacity-80 transition-opacity" onClick={()=>window.open(item.foto,'_blank')}/>
+
+                <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500 font-semibold mb-3">
+                  <span className="bg-slate-100 text-gray-700 px-2 py-0.5 rounded-md">{oc.categoria || 'Geral'}</span>
+                  {oc.local && (
+                    <span className="flex items-center gap-1 text-gray-600"><MapPin size={12} /> {oc.local}</span>
+                  )}
+                  <span>•</span>
+                  <span>Apto {oc.apt || '—'}</span>
+                  <span>•</span>
+                  <span>{oc.data || format(new Date(), 'dd/MM/yyyy')}</span>
+                </div>
+
+                <p className="text-gray-700 text-xs leading-relaxed mb-4 whitespace-pre-line bg-slate-50 p-3 rounded-xl border border-gray-100">
+                  {oc.descricao}
+                </p>
+
+                {/* Bloco de Acompanhamento / Timeline */}
+                <div className="grid grid-cols-2 gap-2 text-[11px] bg-brand-50/40 p-2.5 rounded-xl border border-brand-100 text-brand-900">
+                  <div>
+                    <span className="text-gray-500 font-medium">Responsável:</span>
+                    <p className="font-bold text-gray-900">{oc.responsavel || 'Administração'}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 font-medium">Previsão:</span>
+                    <p className="font-bold text-gray-900">{oc.previsao ? format(new Date(oc.previsao + 'T12:00:00'), 'dd/MM/yyyy') : 'A definir'}</p>
+                  </div>
+                </div>
+
+                {oc.foto && (
+                  <div className="mt-3">
+                    <img src={oc.foto} alt="Evidência" className="w-full h-36 object-cover rounded-xl border border-gray-200" />
                   </div>
                 )}
-                <div className="flex gap-3 text-xs text-gray-500">
-                  <span>🏢 {item.condominio}</span>
-                  <span>🏠 {item.apt}</span>
-                  <span>👤 {item.nome_morador || 'Sistema'}</span>
-                  <span>📂 {item.categoria}</span>
-                  <span>🕐 {item.data} às {item.hora}</span>
-                </div>
               </div>
-              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity ml-3 items-center">
-                {(user?.role === 'Administrador' || user?.role === 'Síndico') && (
-                  <button onClick={()=>setModalIA(item)} title="Alpha AI: Analisar Regimento" className="p-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 transition-all flex items-center gap-1 text-xs font-bold px-2">
-                    <Sparkles size={14}/> Analisar
+
+              <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
+                <button
+                  onClick={() => setModal(oc)}
+                  className="btn-secondary py-1.5 px-3 text-xs font-bold flex items-center gap-1"
+                >
+                  <Edit2 size={13} /> {isMorador ? 'Ver Detalhes' : 'Editar / Atualizar Status'}
+                </button>
+                {!isMorador && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Excluir esta solicitação?')) deleteItem(oc.id)
+                    }}
+                    className="p-1.5 rounded-lg bg-gray-100 hover:bg-red-100 text-gray-400 hover:text-red-600 transition-all"
+                  >
+                    <Trash2 size={14} />
                   </button>
-                )}
-                {item.infracao && !item.multaGerada && user?.role !== 'Morador' && (
-                  <button onClick={()=>setModalMulta(item)} title="Gerar Multa" className="p-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 transition-all flex items-center gap-1 text-xs font-bold px-2">
-                    <DollarSign size={14}/> Multa
-                  </button>
-                )}
-                {(user?.role !== 'Morador' || item.uid === user?.uid || (item.apt === user?.apt && item.condominio === user?.condominio)) && (
-                  <button onClick={()=>setModal(item)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-brand-100 text-gray-400 hover:text-brand-700 transition-all"><Edit2 size={12}/></button>
-                )}
-                {user?.role !== 'Morador' && (
-                  <button onClick={()=>deleteItem(item.id)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={12}/></button>
                 )}
               </div>
             </div>
-          </div>
-        ))}
-      </div>
-      {modal&&<Modal data={modal==='new'?null:modal} user={user} onClose={()=>setModal(null)} onSave={handleSave}/>}
-      {modalMulta && <ModalMulta ocorrencia={modalMulta} onClose={()=>setModalMulta(null)} onSave={handleGerarMulta}/>}
-      {modalIA && <ModalAlphaAI ocorrencia={modalIA} onClose={()=>setModalIA(null)} />}
+          ))}
+        </div>
+      )}
+
+      {modal && (
+        <Modal
+          data={modal.id ? modal : null}
+          user={user}
+          onClose={() => setModal(null)}
+          onSave={async (formData) => {
+            if (modal.id) {
+              await updateItem(modal.id, formData)
+            } else {
+              await addItem({
+                ...formData,
+                autor: user?.nome || 'Morador',
+                nome_morador: user?.nome || 'Morador',
+                uid: user?.uid || user?.id || '',
+                data: format(new Date(), 'yyyy-MM-dd'),
+                _createdAt: serverTimestamp()
+              })
+              
+              await addDoc(collection(db, 'notificacoes'), {
+                text: `Nova Solicitação: "${formData.titulo}" pelo Apt ${formData.apt} (${formData.condominio})`,
+                time: new Date().toISOString(),
+                tipo: 'ocorrencia',
+                lida: false,
+                condominio: formData.condominio,
+                _createdAt: serverTimestamp()
+              })
+            }
+            setModal(null)
+          }}
+        />
+      )}
     </div>
   )
 }

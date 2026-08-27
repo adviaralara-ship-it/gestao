@@ -15,17 +15,19 @@ const rolesOptions = [
 const needsLocation = ['Morador','Síndico','Subsíndico','Conselheiro','Porteiro']
 const addToMoradores = ['Morador','Síndico','Subsíndico','Conselheiro']
 
-// Módulos de acesso que o morador recebe automaticamente (fixos / visíveis no cadastro)
+// Módulos de acesso que o morador recebe automaticamente (Portal do Morador)
 const modulosMorador = [
-  { icon: '⚠️', label: 'Ocorrências' },
-  { icon: '📋', label: 'Regimento Interno e Externo' },
-  { icon: '💰', label: 'Boletos' },
-  { icon: '🏛️', label: 'Assembleia e Atas' },
-  { icon: '📅', label: 'Reservas de Espaços' },
-  { icon: '🛡️', label: 'Seguro do Condomínio' },
-  { icon: '👥', label: 'Moradores e Familiares' },
-  { icon: '🧾', label: 'Notas Fiscais' },
-  { icon: '🚪', label: 'Portaria & Manutenção' },
+  { icon: '🏠', label: 'Meu Painel & Avisos' },
+  { icon: '🤖', label: 'Alpha IA (Concierge)' },
+  { icon: '💰', label: 'Minha Situação Financeira (Boletos da Unidade)' },
+  { icon: '📄', label: 'Documentos do Condomínio (Públicos)' },
+  { icon: '📢', label: 'Mural & Comunicados' },
+  { icon: '🔧', label: 'Minhas Solicitações (Abertura e Acompanhamento)' },
+  { icon: '🏊', label: 'Reservas de Espaços' },
+  { icon: '🗳️', label: 'Assembleias & Votação' },
+  { icon: '🚗', label: 'Cadastro de Veículos' },
+  { icon: '👥', label: 'Autorização de Visitantes' },
+  { icon: '📊', label: 'Prestação de Contas' },
 ]
 
 export default function Cadastro() {

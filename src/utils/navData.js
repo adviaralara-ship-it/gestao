@@ -124,9 +124,33 @@ export const navGroups = [
 ]
 
 export function getFilteredNavGroups(user) {
+  const isMorador = user?.role === 'Morador'
+
+  // SE FOR MORADOR: Portal do Morador exclusivo e simplificado
+  if (isMorador) {
+    return [
+      {
+        label: '🏠 Portal do Morador',
+        emoji: '🏠',
+        items: [
+          { to: '/dashboard',   label: 'Meu Painel',                icon: LayoutDashboard },
+          { to: '/alpha-ai',    label: 'Alpha IA (Concierge)',       icon: Bot },
+          { to: '/boletos',     label: 'Minha Situação Financeira', icon: CreditCard },
+          { to: '/documentos',  label: 'Documentos do Condomínio',  icon: FolderOpen },
+          { to: '/mural',       label: 'Comunicados & Mural',       icon: Megaphone },
+          { to: '/ocorrencias', label: 'Minhas Solicitações',       icon: AlertTriangle },
+          { to: '/reservas',    label: 'Reservas de Espaços',       icon: Reservas },
+          { to: '/assembleias', label: 'Assembleias & Votação',     icon: Gavel },
+          { to: '/veiculos',    label: 'Cadastro de Veículos',      icon: Car },
+          { to: '/visitantes',  label: 'Autorizar Visitantes',      icon: QrCode },
+          { to: '/relatorios',  label: 'Prestação de Contas',       icon: FileSpreadsheet }
+        ]
+      }
+    ]
+  }
+
   const userPerms = user?.permissoes || []
   const isAdmin = user?.role === 'Administrador'
-  const isMorador = user?.role === 'Morador'
 
   const ALWAYS_ALLOWED = new Set([
     'alpha-ai', 'pets', 'mediacao', 'conviver', 'radar',
@@ -136,12 +160,6 @@ export function getFilteredNavGroups(user) {
     'cotacoes'
   ])
 
-  const MORADOR_ALLOWED = new Set([
-    'financeiro', 'manutencoes', 'seguro', 'regime', 'documentos',
-    'comunicacao', 'mural', 'enquetes', 'classificados',
-    'ocorrencias', 'reservas', 'visitantes', 'relatorios'
-  ])
-
   return navGroups.map(group => ({
     ...group,
     items: group.items.filter(item => {
@@ -149,7 +167,6 @@ export function getFilteredNavGroups(user) {
 
       // Permissões especiais
       if (ALWAYS_ALLOWED.has(reqPerm)) return true
-      if (isMorador && MORADOR_ALLOWED.has(reqPerm)) return true
 
       // Notas fiscais só para admin e financeiro
       if (reqPerm === 'notas-fiscais' && !isAdmin && user?.role !== 'Financeiro') return false
@@ -159,12 +176,6 @@ export function getFilteredNavGroups(user) {
       if (reqPerm === 'conferencias' || reqPerm === 'recrutamento') reqPerm = 'rh'
 
       return isAdmin || userPerms.includes(reqPerm)
-    }).map(item => ({
-      ...item,
-      // Boletos: nome simplificado para Síndico e Morador
-      label: item.to === '/boletos' && (isMorador || user?.role === 'Síndico')
-        ? 'Boletos'
-        : item.label
-    }))
+    })
   })).filter(group => group.items.length > 0)
 }

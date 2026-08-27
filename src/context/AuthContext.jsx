@@ -16,7 +16,10 @@ export const sindicoPerms    = ['dashboard','moradores','notas-fiscais','ocorren
 export const financeiroPerms = ['dashboard','financeiro','boletos','notas-fiscais','prestadores','documentos']
 export const porteiroPerms   = ['dashboard','moradores','portaria','veiculos','comunicacao','reservas','eventos','visitantes','encomendas']
 export const portariaRemotaPerms = ['dashboard','cameras','visitantes','ocorrencias','reservas','portaria','veiculos']
-export const moradorPerms    = ['dashboard','moradores','notas-fiscais','ocorrencias','regime','comunicacao','boletos','assembleias','reservas','eventos','seguro','documentos','portaria','visitantes','encomendas']
+export const moradorPerms = [
+  'dashboard', 'alpha-ai', 'boletos', 'documentos', 'mural',
+  'ocorrencias', 'reservas', 'assembleias', 'veiculos', 'visitantes', 'relatorios'
+]
 
 // ─── Perfis de usuários master (dados de perfil, SEM senha) ───────────────
 // As senhas ficam APENAS no Firebase Authentication (servidor do Google, criptografadas)
