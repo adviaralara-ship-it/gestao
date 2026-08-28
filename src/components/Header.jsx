@@ -195,15 +195,17 @@ export default function Header({ onMenuClick }) {
       </div>
 
       <div className="flex items-center gap-2">
-        {/* Botão Rápido de Bater Ponto */}
-        <button
-          onClick={() => navigate('/ponto')}
-          className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 transition-all hover:scale-105"
-          title="Registrar Ponto Eletrônico (com foto e GPS)"
-        >
-          <Clock size={15} />
-          <span className="hidden sm:inline">Bater Ponto</span>
-        </button>
+        {/* Botão Rápido de Bater Ponto (Oculto para Moradores) */}
+        {user?.role !== 'Morador' && (
+          <button
+            onClick={() => navigate('/ponto')}
+            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 transition-all hover:scale-105"
+            title="Registrar Ponto Eletrônico (com foto e GPS)"
+          >
+            <Clock size={15} />
+            <span className="hidden sm:inline">Bater Ponto</span>
+          </button>
+        )}
 
         <WhatsAppHeaderButton />
         

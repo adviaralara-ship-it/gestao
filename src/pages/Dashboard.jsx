@@ -7,7 +7,7 @@ import {
   CreditCard, DollarSign, FileText, Bell, Clock, Wrench, Shield, Plus,
   FileSpreadsheet, ArrowRight, CheckCircle2, AlertCircle, Sparkles, ChevronRight,
   ExternalLink, Layers, Eye, Bot, Megaphone, Car, QrCode, Gavel, FolderOpen, Check, User, Camera,
-  DoorOpen, Package, PhoneCall, AlertOctagon, Truck, BookOpen, RefreshCw
+  DoorOpen, Package, PhoneCall, AlertOctagon, Truck, BookOpen, RefreshCw, PawPrint, Home
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useNavigate } from 'react-router-dom'
@@ -30,6 +30,7 @@ export default function Dashboard() {
   const { items: avisos }       = useFirestore('avisos')
   const { items: reservas }     = useFirestore('reservas')
   const { items: moradores }    = useFirestore('moradores')
+  const { items: pets }         = useFirestore('pets')
   const { items: veiculos }     = useFirestore('veiculos')
   const { items: visitantes }   = useFirestore('visitantes')
   const { items: acessosPortaria } = useFirestore('portaria_visitantes')
@@ -75,6 +76,23 @@ export default function Dashboard() {
       const matchAutor = o.autor === user?.nome || o.nome_morador === user?.nome || o.uid === user?.uid
       return matchApt || matchAutor
     }).slice(0, 3)
+
+    const uAptDigits = String(user?.unidade || user?.apt || '').replace(/\D/g, '')
+
+    const meusFamiliares = moradores.filter(m => {
+      const mAptDigits = String(m.apt || '').replace(/\D/g, '')
+      const matchApt = uAptDigits && mAptDigits && uAptDigits === mAptDigits
+      const matchCondo = !user?.condominio || m.condominio?.toLowerCase() === user?.condominio?.toLowerCase()
+      return matchApt && matchCondo
+    })
+
+    const meusPets = pets.filter(p => {
+      const pAptDigits = String(p.apt || '').replace(/\D/g, '')
+      const matchApt = uAptDigits && pAptDigits && uAptDigits === pAptDigits
+      const matchCondo = !user?.condominio || p.condominio?.toLowerCase() === user?.condominio?.toLowerCase()
+      const matchDono = p.dono && user?.nome && p.dono.toLowerCase() === user?.nome.toLowerCase()
+      return (matchApt && matchCondo) || matchDono
+    })
 
     return (
       <div className="flex flex-col gap-6 animate-fade-in max-w-6xl mx-auto pb-12">
@@ -372,6 +390,104 @@ export default function Dashboard() {
             >
               + Solicitar Nova Reserva de Espaço
             </button>
+          </div>
+        </div>
+
+        {/* Seção: Membros da Minha Unidade & Pets */}
+        <div className="bg-white p-6 rounded-2xl border border-pale-300 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700 font-bold">
+                <Users size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-base leading-tight">Membros da Minha Unidade & Pets</h3>
+                <p className="text-xs text-gray-400">Familiares e animais de estimação cadastrados no seu apartamento</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate('/moradores')}
+                className="btn-secondary text-xs font-bold py-1.5 px-3 flex items-center gap-1 shadow-sm"
+              >
+                <Plus size={14} /> Adicionar Familiar
+              </button>
+              <button
+                onClick={() => navigate('/pets')}
+                className="btn-secondary text-xs font-bold py-1.5 px-3 flex items-center gap-1 bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 shadow-sm"
+              >
+                <PawPrint size={14} className="text-amber-600" /> Cadastrar Pet
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Bloco Familiares */}
+            <div className="bg-slate-50 p-4 rounded-xl border border-gray-200">
+              <p className="text-xs font-black text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Users size={14} className="text-brand-600" /> Familiares / Moradores ({meusFamiliares.length})
+              </p>
+              {meusFamiliares.length === 0 ? (
+                <p className="text-xs text-gray-400 py-3">Nenhum membro cadastrado.</p>
+              ) : (
+                <div className="space-y-2">
+                  {meusFamiliares.map(m => (
+                    <div key={m.id} className="p-2.5 bg-white rounded-lg border border-gray-200 flex items-center justify-between gap-2 shadow-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {m.fotoRosto ? (
+                          <img src={m.fotoRosto} alt={m.nome} className="w-8 h-8 rounded-full object-cover border border-brand-300" />
+                        ) : (
+                          <div className="w-8 h-8 bg-brand-100 text-brand-700 font-bold rounded-full flex items-center justify-center text-xs">
+                            {m.nome?.[0] || 'M'}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-900 text-xs truncate">{m.nome}</p>
+                          <p className="text-[10px] text-gray-500">{m.tel || m.email || 'Sem contato cadastrado'}</p>
+                        </div>
+                      </div>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 ${m.status === 'Proprietário' ? 'bg-blue-100 text-blue-800' : m.status === 'Inquilino' ? 'bg-emerald-100 text-emerald-800' : 'bg-purple-100 text-purple-800'}`}>
+                        {m.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Bloco Pets */}
+            <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200">
+              <p className="text-xs font-black text-amber-900 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <PawPrint size={14} className="text-amber-600" /> Animais de Estimação ({meusPets.length})
+              </p>
+              {meusPets.length === 0 ? (
+                <div className="py-3 text-center">
+                  <p className="text-xs text-amber-800 font-medium">Nenhum pet cadastrado para a sua unidade.</p>
+                  <button onClick={() => navigate('/pets')} className="text-xs font-bold text-amber-700 underline mt-1 block">
+                    + Clique aqui para cadastrar seu cãozinho, gato ou ave
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {meusPets.map(p => (
+                    <div key={p.id} className="p-2.5 bg-white rounded-lg border border-amber-200 flex items-center justify-between gap-2 shadow-xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-sm">
+                          🐾
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900 text-xs">{p.nome}</p>
+                          <p className="text-[10px] text-gray-500">{p.tipo || 'Pet'} • {p.raca || p.porte || 'Médio'}</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md">
+                        {p.porte || 'Médio'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
