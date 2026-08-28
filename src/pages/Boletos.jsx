@@ -67,18 +67,114 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
   const handleDownloadPDF = async () => {
     try {
       setDownloading(true)
-      const element = document.getElementById('boleto-print-area')
-      if (!element) {
-        window.print()
-        setDownloading(false)
-        return
-      }
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
-      const imgData = canvas.toDataURL('image/png')
       const pdf = new jsPDF('p', 'mm', 'a4')
       const pdfWidth = pdf.internal.pageSize.getWidth()
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(pdfHeight, 295))
+
+      const container = document.createElement('div')
+      container.style.position = 'fixed'
+      container.style.top = '-9999px'
+      container.style.left = '-9999px'
+      container.style.width = '780px'
+      container.style.backgroundColor = '#ffffff'
+      container.style.padding = '24px'
+      document.body.appendChild(container)
+
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(pixFinal)}`
+
+      container.innerHTML = `
+        <div style="font-family: Arial, sans-serif; color: #0f172a; padding: 24px; background: #fff; border: 1px solid #cbd5e1; border-radius: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+              <img src="/logo-alpha.png" width="56" height="56" style="object-fit: contain; border-radius: 12px;" />
+              <div>
+                <h2 style="margin: 0; font-size: 18px; font-weight: 900; color: #0f172a;">ALPHA SOLUÇÕES CONDOMINIAIS</h2>
+                <p style="margin: 2px 0 0; font-size: 11px; color: #64748b; font-weight: bold;">Gestão & Administração de Condomínios</p>
+                <p style="margin: 2px 0 0; font-size: 10px; color: #94a3b8; font-family: monospace;">CNPJ: 00.000.000/0001-00</p>
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <span style="display: inline-block; background: #dcfce7; color: #166534; border: 1px solid #86efac; padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 900; text-transform: uppercase;">Fatura / Boleto PIX</span>
+              <p style="margin: 4px 0 0; font-size: 11px; color: #94a3b8; font-family: monospace;">Recibo do Sacado</p>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; background: #f8fafc; padding: 14px; border-radius: 12px; border: 1px solid #e2e8f0; font-size: 12px; margin-bottom: 16px;">
+            <div>
+              <span style="font-size: 10px; font-weight: bold; color: #94a3b8; text-transform: uppercase;">Condomínio Beneficiário</span>
+              <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${condominio?.nome || boleto.condominio || 'Condomínio Residencial'}</p>
+              <p style="margin: 2px 0 0; color: #64748b;">${condominio?.endereco || 'Endereço Cadastrado'}</p>
+              <p style="margin: 4px 0 0; color: #047857; font-weight: bold; font-family: monospace;">Chave Pix: ${chavePixFinal}</p>
+            </div>
+            <div>
+              <span style="font-size: 10px; font-weight: bold; color: #94a3b8; text-transform: uppercase;">Pagador / Morador</span>
+              <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${boleto.morador}</p>
+              <p style="margin: 2px 0 0; color: #334155; font-weight: bold;">Unidade: ${boleto.apt ? 'Apt ' + boleto.apt : '—'}</p>
+              <p style="margin: 4px 0 0; color: #64748b; font-family: monospace;">Competência: ${boleto.competencia || 'Mês Vigente'}</p>
+            </div>
+            <div style="background: #ecfdf5; padding: 10px; border-radius: 10px; border: 1px solid #a7f3d0;">
+              <div>
+                <span style="font-size: 10px; font-weight: bold; color: #065f46; text-transform: uppercase;">Vencimento</span>
+                <p style="margin: 2px 0 0; font-weight: 900; font-size: 14px; color: #0f172a;">${dataVencFormatada}</p>
+              </div>
+              <div style="margin-top: 8px;">
+                <span style="font-size: 10px; font-weight: bold; color: #065f46; text-transform: uppercase;">Valor Total a Pagar</span>
+                <p style="margin: 2px 0 0; font-weight: 900; font-size: 18px; color: #047857;">R$ ${valorFormatado}</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 16px;">
+            <div style="background: #f1f5f9; padding: 8px 12px; font-weight: bold; font-size: 11px; color: #475569; text-transform: uppercase;">Composição da Taxa Condominial</div>
+            <div style="padding: 10px 14px; font-size: 12px;">
+              <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
+                <span>Taxa Ordinária de Condomínio (${boleto.competencia || 'Mês Atual'})</span>
+                <span style="font-family: monospace; font-weight: bold;">R$ ${(Number(boleto.valor || 0) * 0.9).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
+                <span>Fundo de Reserva (10%)</span>
+                <span style="font-family: monospace; font-weight: bold;">R$ ${(Number(boleto.valor || 0) * 0.1).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding: 6px 0 0; font-weight: 900; font-size: 13px;">
+                <span>TOTAL LIQUIDO COBRADO</span>
+                <span style="font-family: monospace; color: #047857;">R$ ${valorFormatado}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 16px; background: #f8fafc; padding: 14px; border-radius: 12px; border: 2px dashed #94a3b8; margin-bottom: 16px; align-items: center;">
+            <div style="background: #fff; padding: 8px; border-radius: 10px; border: 1px solid #cbd5e1; text-align: center;">
+              <img src="${qrUrl}" width="125" height="125" style="display: block;" />
+              <span style="font-size: 9px; font-weight: bold; color: #047857; display: block; margin-top: 4px;">PAGAMENTO INSTANTÂNEO</span>
+            </div>
+            <div style="flex: 1; font-size: 11px;">
+              <h4 style="margin: 0 0 6px; font-size: 13px; font-weight: 900; color: #0f172a;">💠 Instruções de Pagamento via PIX</h4>
+              <p style="margin: 0 0 8px; color: #475569; line-height: 1.4;">1. Abra o aplicativo do seu banco no celular.<br/>2. Escolha a opção <b>PIX</b> e aponte a câmera para o <b>QR Code</b> ou utilize o <b>PIX Copia e Cola</b> abaixo.<br/>3. A compensação é <b>imediata</b> (24h por dia, 7 dias por semana).</p>
+              <div style="background: #e2e8f0; padding: 8px; border-radius: 8px; font-family: monospace; font-size: 9px; word-break: break-all; color: #1e293b;">
+                ${pixFinal}
+              </div>
+            </div>
+          </div>
+
+          <div style="border-top: 2px solid #0f172a; padding-top: 10px; font-size: 11px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-weight: 900; color: #1e3a8a; font-size: 13px;">ALPHA 001-9</span>
+              <span style="font-family: monospace; font-weight: bold; font-size: 12px; letter-spacing: 1px;">${linhaDigitavel}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 10px;">
+              <span>Autenticação Mecânica / Ficha de Compensação</span>
+              <span>Alpha Soluções Condominiais • Suporte: contato@alphasolucoes.com.br</span>
+            </div>
+          </div>
+        </div>
+      `
+
+      await new Promise(r => setTimeout(r, 200))
+      const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+      const imgData = canvas.toDataURL('image/png')
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(imgHeight, 295))
+      document.body.removeChild(container)
+
       pdf.save(`Boleto-PIX-${(boleto.morador || 'Morador').replace(/\s+/g, '_')}-${(boleto.competencia || 'Mes').replace(/\//g, '-')}.pdf`)
       setDownloading(false)
     } catch(err) {
@@ -95,37 +191,37 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-3xl p-0 overflow-hidden bg-slate-100 rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="modal-content max-w-3xl w-[95vw] sm:w-full p-0 flex flex-col max-h-[92vh] overflow-hidden bg-slate-100 rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
         
         {/* Barra superior de ações */}
-        <div className="p-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
+        <div className="p-3 sm:p-4 bg-slate-900 text-white flex items-center justify-between print:hidden shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-emerald-400 font-mono text-sm font-bold">💠 Boleto PIX Condominial</span>
-            <span className="text-xs text-gray-400">• {condominio?.nome || 'Condomínio'}</span>
+            <span className="text-emerald-400 font-mono text-xs sm:text-sm font-bold">💠 Boleto PIX Condominial</span>
+            <span className="text-[10px] sm:text-xs text-gray-400 truncate max-w-[120px] sm:max-w-none">• {condominio?.nome || 'Condomínio'}</span>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={shareWhatsApp} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm">
-              <Share2 size={14} /> WhatsApp
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <button onClick={shareWhatsApp} className="px-2.5 sm:px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[11px] sm:text-xs font-black flex items-center gap-1 shadow-sm">
+              <Share2 size={13} /> WhatsApp
             </button>
-            <button onClick={handleDownloadPDF} disabled={downloading} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm">
-              <Download size={14} /> {downloading ? 'Gerando PDF...' : 'Baixar PDF'}
+            <button onClick={handleDownloadPDF} disabled={downloading} className="px-2.5 sm:px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[11px] sm:text-xs font-black flex items-center gap-1 shadow-sm">
+              <Download size={13} /> {downloading ? 'Gerando...' : 'Baixar PDF'}
             </button>
-            <button onClick={() => window.print()} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm">
-              <Printer size={14} /> Imprimir
+            <button onClick={() => window.print()} className="hidden sm:flex px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-black items-center gap-1 shadow-sm">
+              <Printer size={13} /> Imprimir
             </button>
             <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-white rounded-lg"><X size={18} /></button>
           </div>
         </div>
 
         {/* Corpo do Boleto / Fatura (Formatado para tela e folha A4) */}
-        <div id="boleto-print-area" className="p-6 md:p-8 bg-white font-sans text-gray-900 overflow-y-auto max-h-[85vh]">
+        <div id="boleto-print-area" className="p-4 sm:p-8 bg-white font-sans text-gray-900 overflow-y-auto flex-1">
           
           {/* Cabeçalho Bancário Oficial */}
           <div className="border-b-2 border-slate-900 pb-3 mb-4 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
             <div className="flex items-center gap-3">
-              <img src="/logo-alpha.png" alt="Alpha Soluções Condominiais" className="w-14 h-14 object-contain rounded-xl shadow-sm" />
+              <img src="/logo-alpha.png" alt="Alpha Soluções Condominiais" className="w-14 h-14 object-contain rounded-xl shadow-sm bg-slate-900/5 p-1" />
               <div>
-                <h2 className="text-lg font-black text-slate-900 leading-tight">ALPHA SOLUÇÕES CONDOMINIAIS</h2>
+                <h2 className="text-base sm:text-lg font-black text-slate-900 leading-tight">ALPHA SOLUÇÕES CONDOMINIAIS</h2>
                 <p className="text-[11px] text-gray-500 font-bold">Gestão & Administração de Condomínios</p>
                 <p className="text-[10px] text-gray-400 font-mono">CNPJ: 00.000.000/0001-00</p>
               </div>
@@ -414,20 +510,20 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-2xl p-0 overflow-hidden bg-white rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+      <div className="modal-content max-w-2xl w-[95vw] sm:w-full p-0 flex flex-col max-h-[92vh] overflow-hidden bg-white rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div>
-            <h3 className="font-black text-lg flex items-center gap-2">
+            <h3 className="font-black text-base sm:text-lg flex items-center gap-2">
               📦 Gerar Boletos do Mês em Lote
             </h3>
-            <p className="text-xs text-gray-400">Emissão em massa com QR Code PIX individual e valores editáveis por morador</p>
+            <p className="text-[11px] sm:text-xs text-gray-400">Emissão em massa com QR Code PIX individual e valores editáveis por morador</p>
           </div>
           <button onClick={onClose}><X size={20} className="text-gray-400 hover:text-white" /></button>
         </div>
 
-        <div className="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 flex flex-col gap-4 overflow-y-auto flex-1">
           {/* Seleção do Condomínio */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-gray-200">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-gray-200">
             <div>
               <label className="label text-xs font-black">Condomínio *</label>
               <select className="input text-xs font-bold w-full bg-white" value={condoNome} onChange={e => setCondoNome(e.target.value)}>
@@ -457,17 +553,17 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
           </div>
 
           {/* Lista de Moradores com Checkboxes e Edição de Valor Individual */}
-          <div className="border border-gray-200 rounded-2xl overflow-hidden mt-2">
+          <div className="border border-gray-200 rounded-2xl overflow-hidden mt-1">
             <div className="p-3 bg-slate-100 border-b border-gray-200 flex items-center justify-between">
               <span className="text-xs font-black text-gray-800">
-                👥 Moradores da {condoNome} ({selecionados.length} de {moradoresDoCondo.length} selecionados)
+                👥 Moradores ({selecionados.length} de {moradoresDoCondo.length} selecionados)
               </span>
               <button onClick={toggleTodos} className="text-xs font-bold text-brand-600 hover:text-brand-800">
                 {selecionados.length === moradoresDoCondo.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
               </button>
             </div>
 
-            <div className="max-h-56 overflow-y-auto divide-y divide-gray-100 p-2">
+            <div className="max-h-60 overflow-y-auto divide-y divide-gray-100 p-2">
               {moradoresDoCondo.length === 0 ? (
                 <p className="text-xs text-gray-400 p-4 text-center">Nenhum morador cadastrado neste condomínio.</p>
               ) : (
@@ -476,27 +572,27 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
                   const valMorador = valoresCustom[m.id] !== undefined ? valoresCustom[m.id] : valorStr
 
                   return (
-                    <div key={m.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl gap-3">
-                      <label className="flex items-center gap-3 cursor-pointer flex-1">
+                    <div key={m.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl gap-2 sm:gap-3">
+                      <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
                         <input
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => toggleMorador(m.id)}
-                          className="w-4 h-4 rounded text-brand-600 border-gray-300 focus:ring-brand-500"
+                          className="w-4 h-4 rounded text-brand-600 border-gray-300 focus:ring-brand-500 shrink-0"
                         />
-                        <div>
-                          <p className="font-bold text-gray-900 text-xs">{m.nome}</p>
-                          <p className="text-[10px] text-gray-500">Unidade / Apt: <b>{m.apt || m.unidade || '—'}</b> {m.bloco ? `• Bloco ${m.bloco}` : ''}</p>
+                        <div className="truncate">
+                          <p className="font-bold text-gray-900 text-xs truncate">{m.nome}</p>
+                          <p className="text-[10px] text-gray-500">Unidade: <b>{m.apt || m.unidade || '—'}</b> {m.bloco ? `• Bloco ${m.bloco}` : ''}</p>
                         </div>
                       </label>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-xs font-bold text-gray-400">R$</span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[11px] font-bold text-gray-400">R$</span>
                         <input
                           type="text"
                           value={valMorador}
                           onChange={e => handleCustomValChange(m.id, e.target.value)}
-                          className="w-24 px-2 py-1 border border-gray-300 rounded-lg text-xs font-black text-emerald-700 text-right bg-white focus:ring-1 focus:ring-emerald-500"
+                          className="w-20 sm:w-24 px-1.5 py-1 border border-gray-300 rounded-lg text-xs font-black text-emerald-700 text-right bg-white focus:ring-1 focus:ring-emerald-500"
                           placeholder="0,00"
                         />
                       </div>
@@ -508,10 +604,10 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
           </div>
         </div>
 
-        <div className="p-5 bg-slate-50 border-t border-gray-200 flex items-center justify-between">
+        <div className="p-4 sm:p-5 bg-slate-50 border-t border-gray-200 flex items-center justify-between shrink-0">
           <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
-          <button onClick={handleGerar} className="btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 flex items-center gap-2 shadow-md">
-            <CheckCircle2 size={16} /> Gerar {selecionados.length} Boletos PIX Agora
+          <button onClick={handleGerar} className="btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1.5 sm:gap-2 shadow-md">
+            <CheckCircle2 size={16} /> Gerar {selecionados.length} Boletos PIX
           </button>
         </div>
       </div>
@@ -1004,7 +1100,7 @@ export default function Boletos() {
     e.target.value = null;
   };
 
-  const handleReconciliationCSV = async (e) => {
+  const handleReconciliationExtrato = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -1012,50 +1108,96 @@ export default function Boletos() {
     reader.onload = async (event) => {
       try {
         const text = event.target.result;
-        const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-        if (lines.length < 2) {
-          alert('A planilha parece estar vazia ou sem cabeçalho.');
-          return;
-        }
-
-        const headers = lines[0].toLowerCase().split(/[;,]/).map(h => h.trim());
-        const getIdx = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)));
-
-        const idxMorador = getIdx(['nome', 'morador', 'pagador', 'sacado', 'cliente']);
-        const idxValor = getIdx(['valor', 'total', 'recebido', 'pago']);
-        
-        if (idxMorador === -1 || idxValor === -1) {
-          alert("Não conseguimos identificar as colunas 'Nome' e 'Valor' na sua planilha de extrato. Verifique se estão presentes.");
-          return;
-        }
-
+        const fileName = file.name.toLowerCase();
         let baixados = 0;
         const pendentes = allBoletos.filter(b => b.status === 'Pendente');
 
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(/[;,]/).map(c => c.trim().replace(/^"|"$/g, ''));
-          const nome = cols[idxMorador];
-          if (!nome) continue;
-
-          let valorBruto = cols[idxValor] || '0';
-          let valorLido = parseFloat(valorBruto.replace(/\./g, '').replace(',', '.')) || 0;
-          if (isNaN(valorLido)) valorLido = parseFloat(valorBruto.replace(',', '.')) || 0;
-
-          const boletoMatch = pendentes.find(b => 
-            b.morador.toLowerCase().trim() === nome.toLowerCase().trim() && 
-            Math.abs(Number(b.valor) - valorLido) < 0.1
-          );
-
-          if (boletoMatch) {
-            await updateItem(boletoMatch.id, { ...boletoMatch, status: 'Pago' });
-            pendentes.splice(pendentes.indexOf(boletoMatch), 1);
-            baixados++;
+        if (fileName.endsWith('.ofx')) {
+          // Parser nativo de arquivo bancário OFX (Padrão Bancos Brasileiros)
+          const transacoes = text.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) || [];
+          if (transacoes.length === 0) {
+            alert('Nenhuma transação encontrada no arquivo OFX. Verifique se é um extrato de conta corrente válido.');
+            return;
           }
+
+          for (const trn of transacoes) {
+            const getTag = (tag) => {
+              const m = trn.match(new RegExp(`<${tag}>([^<\\r\\n]+)`, 'i'));
+              return m ? m[1].trim() : '';
+            };
+
+            const trnType = getTag('TRNTYPE');
+            const trnAmtStr = getTag('TRNAMT').replace(',', '.');
+            const valor = parseFloat(trnAmtStr);
+            const memo = (getTag('MEMO') + ' ' + getTag('NAME')).toLowerCase();
+
+            // Apenas entradas de dinheiro / créditos recebidos
+            if (valor > 0 || trnType.toUpperCase() === 'CREDIT' || trnType.toUpperCase() === 'DEP') {
+              const absValor = Math.abs(valor);
+
+              // Tenta casar com o boleto pendente por valor e/ou nome do morador
+              const boletoMatch = pendentes.find(b => {
+                const mesmoValor = Math.abs(Number(b.valor) - absValor) < 0.1;
+                const moradorNome = (b.morador || '').toLowerCase().trim();
+                const aptNumero = String(b.apt || '').trim();
+                const matchTexto = memo.includes(moradorNome) || (aptNumero && memo.includes(aptNumero));
+                return mesmoValor && (matchTexto || pendentes.length === 1);
+              }) || pendentes.find(b => Math.abs(Number(b.valor) - absValor) < 0.05);
+
+              if (boletoMatch) {
+                await updateItem(boletoMatch.id, { ...boletoMatch, status: 'Pago' });
+                pendentes.splice(pendentes.indexOf(boletoMatch), 1);
+                baixados++;
+              }
+            }
+          }
+
+          alert(`🎉 Conciliação OFX Concluída com Sucesso!\n\n${baixados} boletos foram identificados no extrato bancário e marcados como PAGOS automaticamente.`);
+        } else {
+          // Parser CSV
+          const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+          if (lines.length < 2) {
+            alert('A planilha parece estar vazia ou sem cabeçalho.');
+            return;
+          }
+
+          const headers = lines[0].toLowerCase().split(/[;,]/).map(h => h.trim());
+          const getIdx = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)));
+
+          const idxMorador = getIdx(['nome', 'morador', 'pagador', 'sacado', 'cliente', 'descricao', 'historico']);
+          const idxValor = getIdx(['valor', 'total', 'recebido', 'pago', 'credito']);
+          
+          if (idxValor === -1) {
+            alert("Não conseguimos identificar a coluna de 'Valor' na sua planilha. Verifique se está presente.");
+            return;
+          }
+
+          for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(/[;,]/).map(c => c.trim().replace(/^"|"$/g, ''));
+            const nome = idxMorador !== -1 ? cols[idxMorador] : '';
+            let valorBruto = cols[idxValor] || '0';
+            let valorLido = parseFloat(valorBruto.replace(/\./g, '').replace(',', '.')) || 0;
+            if (isNaN(valorLido)) valorLido = parseFloat(valorBruto.replace(',', '.')) || 0;
+
+            if (valorLido <= 0) continue;
+
+            const boletoMatch = pendentes.find(b => {
+              const mesmoValor = Math.abs(Number(b.valor) - valorLido) < 0.1;
+              const matchNome = nome ? (b.morador.toLowerCase().includes(nome.toLowerCase()) || nome.toLowerCase().includes(b.morador.toLowerCase())) : true;
+              return mesmoValor && matchNome;
+            });
+
+            if (boletoMatch) {
+              await updateItem(boletoMatch.id, { ...boletoMatch, status: 'Pago' });
+              pendentes.splice(pendentes.indexOf(boletoMatch), 1);
+              baixados++;
+            }
+          }
+          alert(`🎉 Conciliação CSV Concluída!\n\n${baixados} boletos foram encontrados na planilha e marcados como Pagos automaticamente.`);
         }
-        alert(`Sucesso! ${baixados} boletos foram encontrados na planilha e marcados como Pagos automaticamente.`);
       } catch (err) {
         console.error(err);
-        alert('Erro ao processar a planilha. Verifique o formato CSV (separado por vírgula ou ponto e vírgula).');
+        alert('Erro ao processar o extrato. Verifique se o arquivo OFX ou CSV é válido.');
       }
     };
     reader.readAsText(file);
@@ -1076,17 +1218,17 @@ export default function Boletos() {
             <button onClick={()=>setModalLote(true)} className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-sm font-black flex items-center gap-1.5 shadow-md">
               <Package size={15}/> Gerar Boletos do Mês (Lote)
             </button>
-            <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1">
-              <CheckCircle2 size={14}/>
-              Conciliar Extrato (CSV)
-              <input type="file" accept=".csv" className="hidden" onChange={handleReconciliationCSV} />
+            <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-50">
+              <Clock size={14} className="text-brand-600" />
+              <span>Conciliar Extrato (OFX / CSV)</span>
+              <input type="file" accept=".ofx,.csv,.txt" className="hidden" onChange={handleReconciliationExtrato}/>
             </label>
-            <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1">
+            <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-50">
               <Upload size={14}/>
-              Importar (CSV)
-              <input type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
+              <span>Importar Planilha (CSV)</span>
+              <input type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVImport}/>
             </label>
-            <button onClick={()=>setModal('new')} className="btn-secondary text-sm"><Plus size={15}/>Novo Individual</button>
+            <button onClick={()=>setModal('new')} className="btn-primary text-sm flex items-center gap-1"><Plus size={14}/> Novo Individual</button>
           </div>
         )}
       </div>
