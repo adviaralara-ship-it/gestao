@@ -669,6 +669,7 @@ export default function Boletos() {
 
   const [tab, setTab] = useState('boletos')
   const [condoFilter, setCondoFilter] = useState('Todos')
+  const [statusFilter, setStatusFilter] = useState('Todos')
   const [viewing, setViewing] = useState(null)
   const [modal, setModal] = useState(null)
   const [modalLote, setModalLote] = useState(false)
@@ -835,7 +836,7 @@ export default function Boletos() {
     }
   }
 
-  const boletos = allBoletos.filter(b => {
+  const boletosFiltradosPorCondo = allBoletos.filter(b => {
     if (user?.role === 'Morador') {
       const uNome = (user?.nome || '').toLowerCase().trim()
       const uAptDigits = String(user?.apt || user?.unidade || '').replace(/\D/g, '')
@@ -864,6 +865,19 @@ export default function Boletos() {
     return true;
   })
 
+  const pago     = boletosFiltradosPorCondo.filter(b=>b.status==='Pago').length
+  const pendente = boletosFiltradosPorCondo.filter(b=>b.status==='Pendente').length
+  const vencido  = boletosFiltradosPorCondo.filter(b=>b.status==='Vencido').length
+
+  const boletos = boletosFiltradosPorCondo.filter(b => {
+    if (statusFilter === 'Todos') return true
+    if (statusFilter === 'Pago') return b.status === 'Pago'
+    if (statusFilter === 'Pendente') return b.status === 'Pendente'
+    if (statusFilter === 'Vencido') return b.status === 'Vencido'
+    if (statusFilter === 'OFX') return b.status === 'Pago' && b.metodoBaixa === 'Extrato OFX'
+    return true
+  })
+
   const condominios = allCondominios.filter(c => {
     if (user?.role === 'Morador') {
       const uCondo = (user?.condominio || '').toLowerCase().trim()
@@ -880,10 +894,6 @@ export default function Boletos() {
   })
 
   const uniqueCondos = Array.from(new Set(allCondominios.map(c=>c.nome).filter(Boolean)))
-
-  const pago     = boletos.filter(b=>b.status==='Pago').length
-  const pendente = boletos.filter(b=>b.status==='Pendente').length
-  const vencido  = boletos.filter(b=>b.status==='Vencido').length
 
   // ── Alertas de vencimento ao carregar ────────────────────────────────────
   useEffect(() => {
@@ -1303,13 +1313,26 @@ export default function Boletos() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {[{label:'Total',val:boletos.length,color:'text-brand-700'},{label:'Pagos',val:pago,color:'text-emerald-600'},{label:'Pendentes',val:pendente,color:'text-amber-600'},{label:'Vencidos',val:vencido,color:'text-red-600'}].map(s=>(
-              <div key={s.label} className="card text-center">
-                <p className={`text-3xl font-black mb-1 ${s.color}`}>{s.val}</p>
-                <p className="text-xs text-gray-500">{s.label}</p>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            {[
+              { id: 'Todos', label: 'Todos os Boletos', val: boletosFiltradosPorCondo.length, color: 'text-brand-700', bg: 'bg-brand-50 border-brand-400' },
+              { id: 'Pago', label: 'Pagos / Conciliados', val: pago, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-400' },
+              { id: 'Pendente', label: 'Pendentes', val: pendente, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-400' },
+              { id: 'Vencido', label: 'Vencidos', val: vencido, color: 'text-red-600', bg: 'bg-red-50 border-red-400' },
+            ].map(s => {
+              const active = statusFilter === s.id
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setStatusFilter(s.id)}
+                  className={`card text-center transition-all cursor-pointer border-2 ${active ? `${s.bg} shadow-md scale-[1.02]` : 'hover:bg-slate-50 border-transparent'}`}
+                >
+                  <p className={`text-2xl sm:text-3xl font-black mb-1 ${s.color}`}>{s.val}</p>
+                  <p className="text-xs font-bold text-gray-600">{s.label}</p>
+                  {active && <span className="text-[10px] font-black uppercase text-brand-600 mt-1 block">● Exibindo Agora</span>}
+                </button>
+              )
+            })}
           </div>
 
           {/* Aviso boletos próximos do vencimento */}
