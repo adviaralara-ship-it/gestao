@@ -172,10 +172,11 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
       const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
       const imgData = canvas.toDataURL('image/png')
       const imgHeight = (canvas.height * pdfWidth) / canvas.width
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(imgHeight, 295))
-      document.body.removeChild(container)
-
-      pdf.save(`Boleto-PIX-${(boleto.morador || 'Morador').replace(/\s+/g, '_')}-${(boleto.competencia || 'Mes').replace(/\//g, '-')}.pdf`)
+      const condoFmt = (condominio?.nome || boleto.condominio || 'Condominio').replace(/\s+/g, '_')
+      const moradorFmt = (boleto.morador || 'Morador').replace(/\s+/g, '_')
+      const aptFmt = boleto.apt ? `_Apt${boleto.apt}` : ''
+      const compFmt = (boleto.competencia || 'Mes').replace(/\//g, '-')
+      pdf.save(`Boleto-PIX_${condoFmt}_${moradorFmt}${aptFmt}_${compFmt}.pdf`)
       setDownloading(false)
     } catch(err) {
       console.error(err)
@@ -997,17 +998,19 @@ export default function Boletos() {
     const mor = moradores.find(m => m.nome === form.morador)
     const condoDoc = allCondominios.find(c => c.nome === (form.condominio || mor?.condominio))
     const chavePix = form.chave_pix || condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
+    const condoFinal = form.condominio || condoDoc?.nome || mor?.condominio || "Alpha Condomínios"
     
     const clean = {
       ...form,
       valor: val,
+      condominio: condoFinal,
       linha: form.linha || gerarLinhaDigitavel(form.apt || '101', val, form.vencimento),
-      pix_emv: generateStaticPix(chavePix, val, form.condominio || condoDoc?.nome || "Alpha Solucoes", "BR"),
+      pix_emv: generateStaticPix(chavePix, val, condoFinal, "BR"),
       emitido: true
     }
     if (modal !== 'new') await updateItem(modal.id, clean); else await addItem(clean)
     setModal(null)
-    alert("✅ Boleto salvo com sucesso! O novo valor já está atualizado na fatura e no PIX.")
+    alert(`🎉 Boleto Salvo com Sucesso!\n\n👤 Morador: ${clean.morador} (Apt ${clean.apt || '—'})\n🏢 Condomínio: ${clean.condominio}\n💰 Valor: R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)
   }
   
   const gerarSegundaVia = async b => {
@@ -1396,6 +1399,7 @@ export default function Boletos() {
                     )}
                     <th className="table-head">Morador</th>
                     <th className="table-head">Apt/Unidade</th>
+                    <th className="table-head">Condomínio</th>
                     <th className="table-head">Vencimento</th>
                     <th className="table-head">Valor</th>
                     <th className="table-head">Status</th>
@@ -1405,7 +1409,7 @@ export default function Boletos() {
                 </thead>
                 <tbody className="divide-y divide-cream-200">
                   {boletos.length === 0 ? (
-                    <tr><td colSpan={(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') ? 8 : 7} className="text-center py-10 text-gray-400">Nenhum boleto encontrado.</td></tr>
+                    <tr><td colSpan={(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') ? 9 : 8} className="text-center py-10 text-gray-400">Nenhum boleto encontrado.</td></tr>
                   ) : (
                     boletos.map(b => (
                       <tr key={b.id} className={`hover:bg-cream-50 transition-colors ${selectedIds.includes(b.id) ? 'bg-indigo-50/40' : ''}`}>
@@ -1420,7 +1424,12 @@ export default function Boletos() {
                           </td>
                         )}
                         <td className="table-cell font-medium text-gray-800">{b.morador}</td>
-                        <td className="table-cell text-gray-500">{b.apt}</td>
+                        <td className="table-cell text-gray-500 font-bold">{b.apt ? `Apt ${b.apt}` : '—'}</td>
+                        <td className="table-cell">
+                          <span className="bg-slate-100 text-slate-800 text-[11px] font-bold px-2 py-0.5 rounded-lg border border-slate-200 inline-block truncate max-w-[150px]">
+                            {b.condominio || 'Alpha Condomínios'}
+                          </span>
+                        </td>
                         <td className="table-cell text-gray-500">{b.vencimento}</td>
                         <td className="table-cell font-bold text-gray-800">R$ {fmt(b.valor)}</td>
                         <td className="table-cell"><span className={`${statusBadge(b.status)} flex items-center gap-1 w-fit`}>{statusIcon(b.status)}{b.status}</span></td>
