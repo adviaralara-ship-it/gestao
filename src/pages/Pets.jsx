@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Search, Filter, PawPrint } from 'lucide-react'
+import { Plus, Search, PawPrint, Edit2, Trash2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 
@@ -58,21 +58,17 @@ function PetModal({ data, onClose, onSave, isMorador, currentUser }) {
           </div>
           
           <div className="col-span-2"><label className="label">Raça / Cor</label><input className="input" value={form.raca} onChange={e=>set('raca',e.target.value)}/></div>
-
-          {!isMorador && (
-            <>
-              <div className="col-span-2"><label className="label">Dono Responsável</label><input className="input" value={form.dono} onChange={e=>set('dono',e.target.value)}/></div>
-              <div><label className="label">Condomínio</label><input className="input" value={form.condominio} onChange={e=>set('condominio',e.target.value)}/></div>
-              <div><label className="label">Apartamento / Bloco</label><input className="input" value={`${form.apt} ${form.bloco}`.trim()} onChange={e=>set('apt',e.target.value)}/></div>
-            </>
-          )}
-
+          
+          <div><label className="label">Condomínio</label><input className="input" value={form.condominio} onChange={e=>set('condominio',e.target.value)} disabled={isMorador}/></div>
+          <div><label className="label">Apartamento</label><input className="input" value={form.apt} onChange={e=>set('apt',e.target.value)} disabled={isMorador}/></div>
+          <div><label className="label">Bloco</label><input className="input" value={form.bloco} onChange={e=>set('bloco',e.target.value)} disabled={isMorador}/></div>
+          <div><label className="label">Dono / Responsável</label><input className="input" value={form.dono} onChange={e=>set('dono',e.target.value)} disabled={isMorador}/></div>
+          
           <div className="col-span-2 border-t border-cream-200 mt-2 pt-4">
-            <label className="label text-brand-700">Foto do Pet</label>
-            <p className="text-xs text-gray-500 mb-3">Tire uma foto para ajudar na identificação caso o pet escape.</p>
+            <label className="label text-brand-700 font-bold">Foto do Pet</label>
             {form.foto ? (
               <div className="flex items-center gap-4">
-                <img src={form.foto} alt="Pet" className="w-24 h-24 object-cover rounded-xl border border-brand-200 shadow-md" />
+                <img src={form.foto} alt="Pet" className="w-20 h-20 object-cover rounded-xl border border-cream-300" />
                 <button onClick={()=>set('foto','')} className="btn-secondary text-red-500 hover:text-red-600 text-xs py-1 px-3">Remover Foto</button>
               </div>
             ) : (
@@ -99,14 +95,21 @@ export default function Pets() {
 
   const filtered = pets.filter(p=>{
     if (isMorador) {
-       return p.condominio === user.condominio && p.apt === user.unidade && p.bloco === user.bloco
+       const uAptDigits = String(user?.unidade || user?.apt || '').replace(/\D/g, '')
+       const pAptDigits = String(p.apt || '').replace(/\D/g, '')
+       const matchApt = uAptDigits && pAptDigits && uAptDigits === pAptDigits
+       const matchCondo = !user?.condominio || p.condominio?.toLowerCase() === user?.condominio?.toLowerCase()
+       const matchDono = p.dono && user?.nome && p.dono.toLowerCase() === user?.nome.toLowerCase()
+       return (matchApt && matchCondo) || matchDono
     }
-    return p.nome?.toLowerCase().includes(search.toLowerCase()) || p.dono?.toLowerCase().includes(search.toLowerCase()) || p.apt?.includes(search)
+    return p.nome?.toLowerCase().includes(search.toLowerCase()) ||
+           p.dono?.toLowerCase().includes(search.toLowerCase()) ||
+           p.apt?.includes(search)
   })
 
   const handleSave = async form => {
     if (modal==='new') await addItem(form)
-    else await updateItem(modal.id,form)
+    else await updateItem(modal.id, form)
     setModal(null)
   }
 
@@ -114,8 +117,8 @@ export default function Pets() {
     <div className="flex flex-col gap-6 animate-fade-in">
       <div className="page-header">
         <div>
-          <h2 className="section-title text-xl flex items-center gap-2"><PawPrint size={22} className="text-brand-600"/> Meus Pets</h2>
-          <p className="section-sub">{isMorador ? 'Cadastre seus pets para controle da portaria' : `${pets.length} pets cadastrados`}</p>
+          <h2 className="section-title text-xl">{isMorador ? 'Meus Pets' : 'Cadastro de Pets'}</h2>
+          <p className="section-sub">{isMorador ? 'Gerencie os animais de estimação da sua residência' : `${pets.length} pets cadastrados no condomínio`}</p>
         </div>
         <button onClick={()=>setModal('new')} className="btn-primary"><Plus size={16}/>{isMorador ? 'Adicionar Pet' : 'Novo Pet'}</button>
       </div>
@@ -124,7 +127,7 @@ export default function Pets() {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"/>
-            <input className="input pl-9" placeholder="Buscar por nome, dono ou apartamento..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            <input className="input pl-9 text-xs" placeholder="Buscar por nome, dono ou apartamento..." value={search} onChange={e=>setSearch(e.target.value)}/>
           </div>
         </div>
       )}
@@ -146,8 +149,9 @@ export default function Pets() {
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start">
                     <h3 className="font-bold text-gray-800 truncate text-lg">{p.nome}</h3>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={()=>setModal(p)} className="p-1.5 text-gray-400 hover:text-brand-600 rounded-lg hover:bg-brand-50"><Filter size={14}/></button>
+                    <div className="flex gap-1 items-center">
+                      <button onClick={()=>setModal(p)} className="p-1.5 text-gray-400 hover:text-brand-600 rounded-lg hover:bg-brand-50" title="Editar"><Edit2 size={13}/></button>
+                      <button onClick={()=>{ if (window.confirm(`Deseja realmente excluir o pet "${p.nome}"?`)) deleteItem(p.id) }} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50" title="Excluir"><Trash2 size={13}/></button>
                     </div>
                   </div>
                   <p className="text-xs font-semibold text-brand-600 mt-0.5">{p.tipo} • {p.porte}</p>
@@ -155,8 +159,8 @@ export default function Pets() {
                 </div>
               </div>
               <div className="bg-gray-50/50 p-3 px-4 border-t border-cream-100 text-xs text-gray-600 flex justify-between items-center">
-                <span className="font-semibold text-gray-700">Dono: {p.dono || 'Não informado'}</span>
-                {!isMorador && <span className="text-[10px] bg-white border border-gray-200 px-2 py-0.5 rounded-full">Apt {p.apt} {p.bloco}</span>}
+                <span className="font-semibold text-gray-700 truncate">Dono: {p.dono || 'Não informado'}</span>
+                {!isMorador && <span className="text-[10px] bg-white border border-gray-200 px-2 py-0.5 rounded-full shrink-0">Apt {p.apt} {p.bloco}</span>}
               </div>
             </div>
           ))}

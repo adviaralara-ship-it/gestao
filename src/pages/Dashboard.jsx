@@ -7,7 +7,7 @@ import {
   CreditCard, DollarSign, FileText, Bell, Clock, Wrench, Shield, Plus,
   FileSpreadsheet, ArrowRight, CheckCircle2, AlertCircle, Sparkles, ChevronRight,
   ExternalLink, Layers, Eye, Bot, Megaphone, Car, QrCode, Gavel, FolderOpen, Check, User, Camera,
-  DoorOpen, Package, PhoneCall, AlertOctagon, Truck, BookOpen, RefreshCw, PawPrint, Home
+  DoorOpen, Package, PhoneCall, AlertOctagon, Truck, BookOpen, RefreshCw, PawPrint, Home, Trash2
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useNavigate } from 'react-router-dom'
@@ -30,7 +30,7 @@ export default function Dashboard() {
   const { items: avisos }       = useFirestore('avisos')
   const { items: reservas }     = useFirestore('reservas')
   const { items: moradores }    = useFirestore('moradores')
-  const { items: pets }         = useFirestore('pets')
+  const { items: pets, deleteItem: deletePet } = useFirestore('pets')
   const { items: veiculos }     = useFirestore('veiculos')
   const { items: visitantes }   = useFirestore('visitantes')
   const { items: acessosPortaria } = useFirestore('portaria_visitantes')
@@ -471,18 +471,31 @@ export default function Dashboard() {
                 <div className="space-y-2">
                   {meusPets.map(p => (
                     <div key={p.id} className="p-2.5 bg-white rounded-lg border border-amber-200 flex items-center justify-between gap-2 shadow-xs">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-sm">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-sm shrink-0">
                           🐾
                         </div>
-                        <div>
-                          <p className="font-bold text-gray-900 text-xs">{p.nome}</p>
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-900 text-xs truncate">{p.nome}</p>
                           <p className="text-[10px] text-gray-500">{p.tipo || 'Pet'} • {p.raca || p.porte || 'Médio'}</p>
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md">
-                        {p.porte || 'Médio'}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md">
+                          {p.porte || 'Médio'}
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Deseja realmente remover o pet "${p.nome}"?`)) {
+                              deletePet(p.id)
+                            }
+                          }}
+                          className="p-1 hover:bg-red-100 text-gray-400 hover:text-red-600 rounded-md transition-colors"
+                          title={`Remover pet ${p.nome}`}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

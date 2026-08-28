@@ -447,8 +447,19 @@ export default function Moradores() {
                           <PawPrint size={14} className="text-amber-600" /> Pets da Unidade ({u.pets.length}):
                         </span>
                         {u.pets.map(p => (
-                          <span key={p.id} className="text-xs bg-slate-100 text-slate-800 font-bold px-2.5 py-1 rounded-lg border border-slate-200 flex items-center gap-1.5">
-                            🐾 <b>{p.nome}</b> ({p.tipo || 'Pet'} • {p.raca || p.porte || 'Médio'})
+                          <span key={p.id} className="text-xs bg-slate-100 text-slate-800 font-bold pl-2.5 pr-1.5 py-1 rounded-lg border border-slate-200 flex items-center gap-2">
+                            <span>🐾 <b>{p.nome}</b> ({p.tipo || 'Pet'} • {p.raca || p.porte || 'Médio'})</span>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Deseja realmente excluir o pet "${p.nome}"?`)) {
+                                  deletePet(p.id)
+                                }
+                              }}
+                              className="p-1 hover:bg-red-100 text-gray-400 hover:text-red-600 rounded-md transition-colors"
+                              title={`Excluir pet ${p.nome}`}
+                            >
+                              <Trash2 size={12} />
+                            </button>
                           </span>
                         ))}
                       </div>
