@@ -25,15 +25,15 @@ export default function Layout() {
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-20 lg:pb-6">
           <Outlet />
 
-          {/* Botão de Voltar na parte inferior no celular */}
+          {/* Botão de Voltar menor no canto inferior esquerdo no celular */}
           {!isHome && (
-            <div className="lg:hidden sticky bottom-3 z-30 mt-6">
+            <div className="lg:hidden fixed bottom-4 left-4 z-40">
               <button
                 onClick={() => navigate('/dashboard')}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-white hover:bg-slate-50 text-black rounded-2xl text-xs font-black shadow-xl border border-gray-300 active:scale-98 transition-all"
+                className="flex items-center gap-1.5 py-2 px-3.5 bg-orange-500 hover:bg-orange-600 active:scale-95 text-black rounded-full text-xs font-black shadow-2xl border-2 border-orange-600/30 transition-all cursor-pointer"
               >
-                <ArrowLeft size={16} className="text-black" strokeWidth={2.5} />
-                <span className="text-black font-black">Voltar</span>
+                <ArrowLeft size={15} className="text-black" strokeWidth={3} />
+                <span className="text-black font-black tracking-wide">Voltar</span>
               </button>
             </div>
           )}
