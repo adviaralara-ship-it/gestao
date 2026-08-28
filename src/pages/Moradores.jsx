@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Users, Plus, Search, Edit2, Trash2, Phone, Mail, Filter, PawPrint, Home, UserCheck, LayoutGrid, Table as TableIcon } from 'lucide-react'
+import { Users, Plus, Search, Edit2, Trash2, Phone, Mail, Filter, PawPrint, Home, UserCheck, LayoutGrid, Table as TableIcon, X } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 
@@ -42,9 +42,9 @@ function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialAp
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content max-w-lg" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">{data ? 'Editar Membro da Família' : 'Novo Morador / Familiar'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        <div className="p-4 sm:p-6 border-b border-cream-300 flex items-center justify-between gap-3">
+          <h3 className="font-bold text-gray-800 text-base sm:text-lg min-w-0 flex-1 truncate">{data ? 'Editar Membro da Família' : 'Novo Morador / Familiar'}</h3>
+          <button onClick={onClose} className="modal-close-btn" title="Fechar"><X size={20} strokeWidth={2.5} /></button>
         </div>
         <div className="p-6 grid grid-cols-2 gap-4">
           <div className="col-span-2">
@@ -133,9 +133,9 @@ function PetModalRapido({ data, onClose, onSave, currentUser }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">🐾 {data ? 'Editar Pet' : 'Cadastrar Pet da Unidade'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        <div className="p-4 sm:p-6 border-b border-cream-300 flex items-center justify-between gap-3">
+          <h3 className="font-bold text-gray-800 text-base min-w-0 flex-1 truncate">🐾 {data ? 'Editar Pet' : 'Cadastrar Pet da Unidade'}</h3>
+          <button onClick={onClose} className="modal-close-btn" title="Fechar"><X size={20} strokeWidth={2.5} /></button>
         </div>
         <div className="p-6 grid grid-cols-2 gap-4">
           <div className="col-span-2">

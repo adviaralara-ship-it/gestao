@@ -1,5 +1,5 @@
-﻿import React, { useState } from 'react'
-import { Briefcase, Plus, Search, Edit2, Trash2, Star, QrCode, Printer, CheckCircle2, Clock, Building2, User, Camera, Calendar, Phone, Mail, Sparkles, Filter } from 'lucide-react'
+import React, { useState } from 'react'
+import { Briefcase, Plus, Search, Edit2, Trash2, Star, QrCode, Printer, CheckCircle2, Clock, Building2, User, Camera, Calendar, Phone, Mail, Sparkles, Filter, X } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -19,9 +19,9 @@ function Modal({ data, onClose, onSave, condominios }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content max-w-lg" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">{data ? 'Editar Fornecedor / Prestador' : 'Novo Fornecedor / Prestador'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        <div className="p-4 sm:p-6 border-b border-cream-300 flex items-center justify-between gap-3">
+          <h3 className="font-bold text-gray-800 text-base sm:text-lg min-w-0 flex-1 truncate">{data ? 'Editar Fornecedor / Prestador' : 'Novo Fornecedor / Prestador'}</h3>
+          <button onClick={onClose} className="modal-close-btn" title="Fechar"><X size={20} strokeWidth={2.5} /></button>
         </div>
         <div className="p-6 grid grid-cols-2 gap-4">
           <div className="col-span-2">
@@ -110,7 +110,7 @@ function ModalPlacaQRCode({ condominios, condoInicial, onClose }) {
             <button onClick={handleImprimir} className="btn-primary py-1.5 px-3 text-xs font-black bg-brand-700 hover:bg-brand-600 flex items-center gap-1.5 shadow-sm">
               <Printer size={14} /> Imprimir
             </button>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1">✕</button>
+            <button onClick={onClose} className="modal-close-btn" title="Fechar"><X size={20} strokeWidth={2.5} /></button>
           </div>
         </div>
 

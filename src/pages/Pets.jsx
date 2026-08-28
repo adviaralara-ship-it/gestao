@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Search, PawPrint, Edit2, Trash2 } from 'lucide-react'
+import { Plus, Search, PawPrint, Edit2, Trash2, X } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 
@@ -39,9 +39,9 @@ function PetModal({ data, onClose, onSave, isMorador, currentUser }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e=>e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">{data?'Editar Pet':'Novo Pet'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        <div className="p-4 sm:p-6 border-b border-cream-300 flex items-center justify-between gap-3">
+          <h3 className="font-bold text-gray-800 text-base sm:text-lg min-w-0 flex-1 truncate">{data?'Editar Pet':'Novo Pet'}</h3>
+          <button onClick={onClose} className="modal-close-btn" title="Fechar"><X size={20} strokeWidth={2.5} /></button>
         </div>
         <div className="p-6 grid grid-cols-2 gap-4">
           <div className="col-span-2"><label className="label">Nome do Pet</label><input className="input" value={form.nome} onChange={e=>set('nome',e.target.value)}/></div>

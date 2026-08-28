@@ -75,12 +75,14 @@ function Modal({ data, user, condominios = [], onClose, onSave }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content max-w-xl" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-            <Wrench className="text-brand-600" size={20} />
-            {data ? 'Editar Solicitação' : 'Nova Solicitação do Morador'}
+        <div className="p-4 sm:p-6 border-b border-cream-300 flex items-center justify-between gap-3">
+          <h3 className="font-bold text-gray-800 text-base sm:text-lg flex items-center gap-2 min-w-0 flex-1">
+            <Wrench className="text-brand-600 shrink-0" size={20} />
+            <span className="truncate">{data ? 'Editar Solicitação' : 'Nova Solicitação do Morador'}</span>
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+          <button onClick={onClose} className="modal-close-btn" title="Fechar">
+            <X size={20} strokeWidth={2.5} />
+          </button>
         </div>
         <div className="p-6 flex flex-col gap-4 text-xs">
           {!isMorador && condominios.length > 0 && (

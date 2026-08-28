@@ -30,7 +30,7 @@ export default function Layout() {
             <div className="lg:hidden fixed bottom-4 left-4 z-40">
               <button
                 onClick={() => navigate('/dashboard')}
-                style={{ backgroundColor: '#fcd86c', borderColor: '#e4c055', color: '#2f2f49' }}
+                style={{ backgroundColor: '#f8df86', borderColor: '#e2c970', color: '#2f2f49' }}
                 className="flex items-center gap-1.5 py-2 px-3.5 active:scale-95 rounded-full text-xs font-black shadow-2xl border transition-all cursor-pointer"
               >
                 <ArrowLeft size={15} style={{ color: '#2f2f49' }} strokeWidth={3} />

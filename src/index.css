@@ -91,4 +91,7 @@
   .modal-content {
     @apply bg-white border border-cream-400 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl;
   }
+  .modal-close-btn {
+    @apply w-9 h-9 rounded-full bg-slate-100 hover:bg-rose-100 text-gray-700 hover:text-rose-600 flex items-center justify-center transition-all shadow-sm shrink-0 active:scale-90 cursor-pointer;
+  }
 }
