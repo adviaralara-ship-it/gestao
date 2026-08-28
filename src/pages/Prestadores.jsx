@@ -1,5 +1,5 @@
-﻿import React, { useState, useEffect, useRef } from 'react'
-import { Briefcase, Plus, Search, Edit2, Trash2, Star, QrCode, Printer, CheckCircle2, Clock, MapPin, Building2, User, Camera, Calendar, FileText, Phone, Mail, ChevronRight } from 'lucide-react'
+﻿import React, { useState } from 'react'
+import { Briefcase, Plus, Search, Edit2, Trash2, Star, QrCode, Printer, CheckCircle2, Clock, Building2, User, Camera, Calendar, Phone, Mail, Sparkles, Filter } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -77,8 +77,10 @@ function Modal({ data, onClose, onSave, condominios }) {
   )
 }
 
-function ModalPlacaQRCode({ condo, onClose }) {
-  const urlCheckin = `https://alpha-solucoes-condominiais.vercel.app/checkin-prestador?condo=${encodeURIComponent(condo || '')}`
+function ModalPlacaQRCode({ condominios, condoInicial, onClose }) {
+  const [condoEscolhido, setCondoEscolhido] = useState(condoInicial && condoInicial !== 'Todos' ? condoInicial : (condominios[0]?.nome || 'Residencial'))
+
+  const urlCheckin = `https://alpha-solucoes-condominiais.vercel.app/checkin-prestador?condo=${encodeURIComponent(condoEscolhido)}`
 
   const handleImprimir = () => {
     window.print()
@@ -87,13 +89,26 @@ function ModalPlacaQRCode({ condo, onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content max-w-xl" onClick={e => e.stopPropagation()}>
-        <div className="p-4 border-b border-cream-300 flex items-center justify-between no-print">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <QrCode size={18} className="text-brand-600" /> Placa de Check-in para Imprimir
-          </h3>
+        
+        {/* Barra superior de controle */}
+        <div className="p-4 border-b border-cream-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print">
           <div className="flex items-center gap-2">
+            <QrCode size={20} className="text-brand-600" />
+            <div>
+              <h3 className="font-bold text-gray-800 text-sm">Placa QR Code para Condomínio</h3>
+              <p className="text-[11px] text-gray-400">Escolha o condomínio para gerar a placa individual</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={condoEscolhido}
+              onChange={e => setCondoEscolhido(e.target.value)}
+              className="input py-1 text-xs font-bold bg-amber-50 border-amber-300"
+            >
+              {condominios.map(c => <option key={c.id} value={c.nome}>🏢 {c.nome}</option>)}
+            </select>
             <button onClick={handleImprimir} className="btn-primary py-1.5 px-3 text-xs font-black bg-brand-700 hover:bg-brand-600 flex items-center gap-1.5 shadow-sm">
-              <Printer size={14} /> Imprimir Placa
+              <Printer size={14} /> Imprimir
             </button>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1">✕</button>
           </div>
@@ -106,7 +121,7 @@ function ModalPlacaQRCode({ condo, onClose }) {
               Alpha Soluções Condominiais
             </span>
             <h2 className="text-2xl font-black text-slate-900 mt-2">
-              {condo || 'Condomínio'}
+              {condoEscolhido}
             </h2>
             <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">
               Controle de Entrada & Saída de Terceirizados
@@ -123,13 +138,13 @@ function ModalPlacaQRCode({ condo, onClose }) {
             </h4>
             <p className="text-xs text-slate-600 leading-relaxed font-medium">
               1. Aponte a câmera do seu celular para este QR Code.<br />
-              2. Registre sua <b>Entrada</b> ao iniciar o trabalho.<br />
+              2. Registre sua <b>Entrada</b> ao iniciar o serviço.<br />
               3. Ao terminar, aponte novamente e registre sua <b>Saída com foto</b>.
             </p>
           </div>
 
           <div className="pt-4 border-t border-slate-200 text-[10px] text-slate-400 font-medium flex items-center justify-between">
-            <span>Registro Oficial com Horário e GPS</span>
+            <span>Comprovante Oficial com Horário e GPS</span>
             <span>Alpha ADM</span>
           </div>
         </div>
@@ -143,7 +158,7 @@ export default function Prestadores() {
   const { items: atendimentos } = useFirestore('prestadores_atendimentos')
   const { items: condominios } = useFirestore('condominios')
 
-  const [activeTab, setActiveTab] = useState('cadastro') // 'cadastro' | 'atendimentos'
+  const [activeTab, setActiveTab] = useState('atendimentos') // Padrão nos atendimentos para fácil visualização
   const [search, setSearch] = useState('')
   const [filtroCondo, setFiltroCondo] = useState('Todos')
   const [modal, setModal] = useState(null)
@@ -156,7 +171,10 @@ export default function Prestadores() {
   })
 
   const filteredAtendimentos = atendimentos.filter(a => {
-    const matchSearch = (a.nome || '').toLowerCase().includes(search.toLowerCase()) || (a.servico || '').toLowerCase().includes(search.toLowerCase()) || (a.empresa || '').toLowerCase().includes(search.toLowerCase())
+    const matchSearch = (a.nome || '').toLowerCase().includes(search.toLowerCase()) ||
+                        (a.servico || '').toLowerCase().includes(search.toLowerCase()) ||
+                        (a.empresa || '').toLowerCase().includes(search.toLowerCase()) ||
+                        (a.telefone || '').includes(search)
     const matchCondo = filtroCondo === 'Todos' || a.condominio === filtroCondo
     return matchSearch && matchCondo
   }).sort((a, b) => new Date(b.entradaISO || 0) - new Date(a.entradaISO || 0))
@@ -174,7 +192,7 @@ export default function Prestadores() {
       <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="section-title text-xl">Fornecedores & Prestadores Terceirizados</h2>
-          <p className="section-sub">Cadastro de parceiros, emissão de placas QR Code e registro de presença em tempo real</p>
+          <p className="section-sub">Acompanhamento em tempo real de serviços executados, horários e cadastro de parceiros</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -195,21 +213,21 @@ export default function Prestadores() {
       {/* Abas de Navegação */}
       <div className="flex gap-2 p-1 bg-cream-200/50 border border-cream-300 rounded-xl w-fit flex-wrap">
         <button
-          onClick={() => setActiveTab('cadastro')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${activeTab === 'cadastro' ? 'bg-white shadow-sm text-brand-700' : 'text-gray-500 hover:text-brand-600 hover:bg-white/50'}`}
-        >
-          <Briefcase size={16} /> Fornecedores Cadastrados ({prestadores.length})
-        </button>
-        <button
           onClick={() => setActiveTab('atendimentos')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all relative ${activeTab === 'atendimentos' ? 'bg-white shadow-sm text-brand-700' : 'text-gray-500 hover:text-brand-600 hover:bg-white/50'}`}
         >
-          <Clock size={16} /> Presença & Check-in QR Code
+          <Clock size={16} /> 📋 Presença & Registros de Serviços ({atendimentos.length})
           {emAndamentoCount > 0 && (
             <span className="bg-emerald-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
               {emAndamentoCount} no local
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab('cadastro')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${activeTab === 'cadastro' ? 'bg-white shadow-sm text-brand-700' : 'text-gray-500 hover:text-brand-600 hover:bg-white/50'}`}
+        >
+          <Briefcase size={16} /> Fornecedores Cadastrados ({prestadores.length})
         </button>
       </div>
 
@@ -219,7 +237,7 @@ export default function Prestadores() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
             className="input pl-9 text-xs"
-            placeholder={activeTab === 'cadastro' ? "Buscar por prestador, serviço ou empresa..." : "Buscar por nome do terceirizado, empresa ou serviço..."}
+            placeholder="Buscar por nome do prestador, empresa, telefone ou serviço..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -237,9 +255,126 @@ export default function Prestadores() {
         </div>
       </div>
 
-      {/* ABA 1: FORNECEDORES CADASTRADOS */}
+      {/* ABA 1: HISTÓRICO & PRESENÇA DE TERCEIRIZADOS (CHECK-IN QR CODE) */}
+      {activeTab === 'atendimentos' && (
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-blue-900">
+            <div className="flex items-center gap-3">
+              <QrCode size={24} className="text-blue-600 shrink-0" />
+              <div>
+                <p className="font-bold">Onde visualizo o que os terceirizados fizeram?</p>
+                <p className="text-blue-700 mt-0.5">
+                  Aqui você tem a lista com <b>Nome</b>, <b>Empresa</b>, <b>Telefone</b>, <b>Serviço Prestado</b>, <b>Hora de Entrada</b>, <b>Hora de Saída</b>, <b>Duração</b> e <b>Fotos do Serviço</b>.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setModalPlaca(true)}
+              className="btn-primary py-1.5 px-3 text-xs font-black bg-blue-700 hover:bg-blue-600 shrink-0 whitespace-nowrap"
+            >
+              Imprimir Placa QR Code
+            </button>
+          </div>
+
+          {filteredAtendimentos.length === 0 ? (
+            <div className="card text-center py-12 text-gray-400 text-sm">
+              <Clock size={36} className="mx-auto mb-2 opacity-30 text-gray-400" />
+              Nenhum registro de atendimento ou presença de terceirizados no momento.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredAtendimentos.map(atend => {
+                const emAndamento = atend.status === 'Em Andamento'
+
+                return (
+                  <div
+                    key={atend.id}
+                    className={`p-4 rounded-2xl border transition-all ${emAndamento ? 'bg-white border-emerald-400 shadow-md ring-2 ring-emerald-100' : 'bg-slate-50 border-gray-200'}`}
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex items-start gap-3.5">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm shrink-0 shadow-sm ${emAndamento ? 'bg-emerald-600 text-white animate-pulse' : 'bg-slate-700 text-white'}`}>
+                          {emAndamento ? '🟢' : '✓'}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-black text-gray-900 text-base">{atend.nome}</h4>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${emAndamento ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-200 text-slate-800'}`}>
+                              {atend.status}
+                            </span>
+                            <span className="text-xs font-bold text-gray-700 bg-white border border-gray-300 px-2 py-0.5 rounded-md">
+                              🏢 {atend.condominio}
+                            </span>
+                          </div>
+
+                          {/* Empresa e Contato */}
+                          <p className="text-xs font-semibold text-brand-700 mt-1 flex items-center gap-2 flex-wrap">
+                            <span>🏢 Empresa: <b>{atend.empresa || 'Autônomo'}</b></span>
+                            {atend.telefone && <span>• 📞 Tel: <b>{atend.telefone}</b></span>}
+                          </p>
+
+                          {/* Serviço Prestado / O que foi feito */}
+                          <div className="mt-2 bg-white p-2.5 rounded-xl border border-gray-200 text-xs text-gray-800">
+                            <span className="font-bold text-brand-900 block mb-0.5">🛠️ Serviço Prestado / O que foi feito:</span>
+                            <p className="text-gray-700">{atend.servico || 'Não informado'}</p>
+                            {atend.observacoesSaida && atend.observacoesSaida !== atend.servico && (
+                              <p className="text-gray-600 mt-1 pt-1 border-t border-gray-100 text-[11px]">
+                                <b>Relato de conclusão:</b> {atend.observacoesSaida}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Horários e Duração */}
+                          <div className="flex items-center gap-3 mt-2 text-xs text-gray-600 flex-wrap">
+                            <span className="bg-slate-100 px-2 py-1 rounded border border-gray-200 font-bold">
+                              📅 Data: {atend.entradaData || 'Hoje'}
+                            </span>
+                            <span className="bg-emerald-50 px-2 py-1 rounded border border-emerald-200 font-bold text-emerald-800">
+                              🟢 Entrada: {atend.entradaHora}
+                            </span>
+                            {atend.saidaHora && (
+                              <span className="bg-rose-50 px-2 py-1 rounded border border-rose-200 font-bold text-rose-800">
+                                🔴 Saída: {atend.saidaHora}
+                              </span>
+                            )}
+                            {atend.duracao && (
+                              <span className="bg-amber-100 text-amber-900 px-2 py-1 rounded font-black border border-amber-300">
+                                ⏳ Duração: {atend.duracao}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Fotos de Comprovação */}
+                          {(atend.fotoEntrada || atend.fotoSaida) && (
+                            <div className="flex items-center gap-3 mt-3">
+                              {atend.fotoEntrada && (
+                                <div>
+                                  <span className="text-[10px] text-gray-400 font-bold block mb-1">Foto Entrada / Selfie</span>
+                                  <img src={atend.fotoEntrada} alt="Entrada" className="w-14 h-14 object-cover rounded-xl border border-gray-300 shadow-sm cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(atend.fotoEntrada, '_blank')} />
+                                </div>
+                              )}
+                              {atend.fotoSaida && (
+                                <div>
+                                  <span className="text-[10px] text-gray-400 font-bold block mb-1">Foto do Serviço Finalizado</span>
+                                  <img src={atend.fotoSaida} alt="Saída" className="w-14 h-14 object-cover rounded-xl border border-gray-300 shadow-sm cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(atend.fotoSaida, '_blank')} />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ABA 2: FORNECEDORES CADASTRADOS */}
       {activeTab === 'cadastro' && (
-        prestadores.length === 0 ? (
+        filteredPrestadores.length === 0 ? (
           <div className="card text-center py-12 text-gray-400 text-sm">
             <Briefcase size={36} className="mx-auto mb-2 opacity-30 text-gray-400" />
             Nenhum fornecedor ou prestador cadastrado ainda.
@@ -289,117 +424,8 @@ export default function Prestadores() {
         )
       )}
 
-      {/* ABA 2: HISTÓRICO & PRESENÇA DE TERCEIRIZADOS (CHECK-IN QR CODE) */}
-      {activeTab === 'atendimentos' && (
-        <div className="space-y-4">
-          <div className="bg-blue-50 border border-blue-200 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-blue-900">
-            <div className="flex items-center gap-3">
-              <QrCode size={24} className="text-blue-600 shrink-0" />
-              <div>
-                <p className="font-bold">Como funciona a comprovação de terceirizados?</p>
-                <p className="text-blue-700 mt-0.5">
-                  O prestador (limpeza, piscina, elevador, etc.) aponta a câmera para a placa QR Code do condomínio ao chegar e ao sair, registrando horários, duração e fotos do serviço realizado.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setModalPlaca(true)}
-              className="btn-primary py-1.5 px-3 text-xs font-black bg-blue-700 hover:bg-blue-600 shrink-0 whitespace-nowrap"
-            >
-              Ver Placa QR Code
-            </button>
-          </div>
-
-          {filteredAtendimentos.length === 0 ? (
-            <div className="card text-center py-12 text-gray-400 text-sm">
-              <Clock size={36} className="mx-auto mb-2 opacity-30 text-gray-400" />
-              Nenhum registro de check-in de terceirizados encontrado.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredAtendimentos.map(atend => {
-                const emAndamento = atend.status === 'Em Andamento'
-
-                return (
-                  <div
-                    key={atend.id}
-                    className={`p-4 rounded-2xl border transition-all ${emAndamento ? 'bg-white border-emerald-400 shadow-sm' : 'bg-slate-50 border-gray-200'}`}
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="flex items-start gap-3.5">
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm shrink-0 shadow-sm ${emAndamento ? 'bg-emerald-600 text-white animate-pulse' : 'bg-slate-700 text-white'}`}>
-                          {emAndamento ? '🟢' : '✓'}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-black text-gray-900 text-base">{atend.nome}</h4>
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${emAndamento ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-200 text-slate-800'}`}>
-                              {atend.status}
-                            </span>
-                            <span className="text-xs font-bold text-gray-600 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
-                              🏢 {atend.condominio}
-                            </span>
-                          </div>
-
-                          <p className="text-xs font-semibold text-brand-700 mt-0.5">
-                            {atend.servico} • {atend.empresa || 'Autônomo'} {atend.telefone ? `• 📞 ${atend.telefone}` : ''}
-                          </p>
-
-                          <div className="flex items-center gap-3 mt-2 text-xs text-gray-600 flex-wrap">
-                            <span className="bg-white px-2 py-1 rounded border border-gray-200 font-bold">
-                              📅 Data: {atend.entradaData || 'Hoje'}
-                            </span>
-                            <span className="bg-white px-2 py-1 rounded border border-gray-200 font-bold text-emerald-700">
-                              🟢 Entrada: {atend.entradaHora}
-                            </span>
-                            {atend.saidaHora && (
-                              <span className="bg-white px-2 py-1 rounded border border-gray-200 font-bold text-rose-700">
-                                🔴 Saída: {atend.saidaHora}
-                              </span>
-                            )}
-                            {atend.duracao && (
-                              <span className="bg-amber-100 text-amber-900 px-2 py-1 rounded font-black border border-amber-300">
-                                ⏳ Tempo Total: {atend.duracao}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Fotos de Comprovação */}
-                          {(atend.fotoEntrada || atend.fotoSaida) && (
-                            <div className="flex items-center gap-3 mt-3">
-                              {atend.fotoEntrada && (
-                                <div>
-                                  <span className="text-[10px] text-gray-400 font-bold block mb-1">Foto Entrada</span>
-                                  <img src={atend.fotoEntrada} alt="Entrada" className="w-14 h-14 object-cover rounded-xl border border-gray-300 shadow-sm cursor-pointer" onClick={() => window.open(atend.fotoEntrada, '_blank')} />
-                                </div>
-                              )}
-                              {atend.fotoSaida && (
-                                <div>
-                                  <span className="text-[10px] text-gray-400 font-bold block mb-1">Foto Conclusão</span>
-                                  <img src={atend.fotoSaida} alt="Saída" className="w-14 h-14 object-cover rounded-xl border border-gray-300 shadow-sm cursor-pointer" onClick={() => window.open(atend.fotoSaida, '_blank')} />
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {atend.observacoesSaida && (
-                            <p className="mt-2 text-xs bg-white p-2 rounded-lg border border-gray-200 text-gray-700">
-                              <b>Relato do serviço:</b> {atend.observacoesSaida}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
       {modal && <Modal data={modal === 'new' ? null : modal} onClose={() => setModal(null)} onSave={handleSave} condominios={condominios} />}
-      {modalPlaca && <ModalPlacaQRCode condo={filtroCondo === 'Todos' ? (condominios[0]?.nome || 'Alpha Condomínios') : filtroCondo} onClose={() => setModalPlaca(false)} />}
+      {modalPlaca && <ModalPlacaQRCode condominios={condominios} condoInicial={filtroCondo} onClose={() => setModalPlaca(false)} />}
     </div>
   )
 }

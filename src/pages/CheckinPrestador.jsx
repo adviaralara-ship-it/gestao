@@ -1,8 +1,8 @@
-﻿import React, { useState, useEffect, useRef } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { collection, addDoc, updateDoc, doc, getDocs, query, where, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
-import { QrCode, CheckCircle2, Clock, Camera, MapPin, Briefcase, Building2, User, FileText, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, Clock, Camera, Building2, User, FileText, Phone, Briefcase, ShieldCheck, ArrowRight, Sparkles } from 'lucide-react'
 
 export default function CheckinPrestador() {
   const [searchParams] = useSearchParams()
@@ -34,7 +34,6 @@ export default function CheckinPrestador() {
     }
     fetchCondos()
 
-    // Tenta obter geolocalização do prestador
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         pos => {
@@ -47,11 +46,10 @@ export default function CheckinPrestador() {
 
   useEffect(() => {
     if (condoParam) {
-      setCondoSelecionado(condoParam)
+      setCondoSelecionado(decodeURIComponent(condoParam))
     }
   }, [condoParam])
 
-  // Verifica se já tem atendimento em aberto quando digita o nome
   const verificarAtendimentoEmAberto = async () => {
     if (!nome || !condoSelecionado) return
     try {
@@ -98,7 +96,7 @@ export default function CheckinPrestador() {
   const handleRegistrarEntrada = async (e) => {
     e.preventDefault()
     if (!condoSelecionado || !nome || !servico) {
-      alert('Por favor, selecione o Condomínio, informe seu Nome e o Serviço a ser realizado.')
+      alert('Por favor, confirme o Condomínio, informe seu Nome e o Serviço a ser realizado.')
       return
     }
 
@@ -135,7 +133,7 @@ export default function CheckinPrestador() {
     setLoading(true)
     try {
       const agora = new Date()
-      const entradaTime = new Date(atendimentoAtivo.entradaISO || atendimentoAtivo.createdAt?.toDate ? atendimentoAtivo.createdAt.toDate() : agora)
+      const entradaTime = new Date(atendimentoAtivo.entradaISO || (atendimentoAtivo.createdAt?.toDate ? atendimentoAtivo.createdAt.toDate() : agora))
       const diffMs = agora - entradaTime
       const diffHoras = Math.floor(diffMs / 3600000)
       const diffMin = Math.round((diffMs % 3600000) / 60000)
@@ -149,7 +147,7 @@ export default function CheckinPrestador() {
         saidaHora: agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
         gpsSaida: gps,
         duracao: duracaoFormatada,
-        observacoesSaida: observacoes,
+        observacoesSaida: observacoes || servico,
         finalizadoEm: serverTimestamp()
       })
 
@@ -162,6 +160,18 @@ export default function CheckinPrestador() {
     }
   }
 
+  const servicosSugestoes = [
+    'Tratamento e Limpeza de Piscina',
+    'Jardinagem e Poda de Grama',
+    'Limpeza e Conservação Geral',
+    'Manutenção Preventiva de Elevador',
+    'Elétrica e Troca de Lâmpadas',
+    'Hidráulica / Bombas d\'Água',
+    'Controle de Pragas / Dedetização',
+    'Manutenção de Portões e CFTV',
+    'Pintura / Reparos Gerais'
+  ]
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-brand-950 to-slate-900 text-gray-800 p-4 sm:p-6 flex items-center justify-center">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-white/20 animate-fade-in">
@@ -173,9 +183,17 @@ export default function CheckinPrestador() {
           </div>
           <h1 className="text-xl font-black tracking-tight">Alpha Soluções Condominiais</h1>
           <p className="text-xs text-brand-200 mt-0.5 font-medium">Registro de Serviço & Presença de Terceirizados</p>
+
+          {/* Se o condomínio veio direto pelo QR Code do Residencial */}
+          {condoSelecionado && (
+            <div className="mt-3 bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/30 text-xs font-black text-white inline-flex items-center gap-1.5 shadow-sm">
+              <Building2 size={14} className="text-amber-300" />
+              <span>{condoSelecionado}</span>
+            </div>
+          )}
         </div>
 
-        {/* Conteúdo Principal */}
+        {/* Conteúdo */}
         <div className="p-6">
 
           {/* SUCESSO ENTRADA */}
@@ -187,19 +205,23 @@ export default function CheckinPrestador() {
               <div>
                 <h2 className="text-lg font-black text-slate-900">Entrada Registrada com Sucesso!</h2>
                 <p className="text-xs text-slate-600 mt-1">
-                  Bom trabalho, <b>{nome}</b>! Seu início de serviço no condomínio <b>{condoSelecionado}</b> foi registrado no sistema.
+                  Bom trabalho, <b>{nome}</b>! Seu início de serviço no <b>{condoSelecionado}</b> foi registrado no painel da administração.
                 </p>
               </div>
 
               <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs text-left space-y-1.5 font-medium">
+                <p className="flex justify-between"><span>Empresa:</span> <b className="text-slate-900">{empresa || 'Autônomo'}</b></p>
                 <p className="flex justify-between"><span>Serviço:</span> <b className="text-slate-900">{servico}</b></p>
-                <p className="flex justify-between"><span>Horário de Entrada:</span> <b className="text-slate-900">{new Date().toLocaleTimeString('pt-BR')}</b></p>
+                <p className="flex justify-between"><span>Horário de Início:</span> <b className="text-emerald-700">{new Date().toLocaleTimeString('pt-BR')}</b></p>
                 <p className="flex justify-between"><span>Condomínio:</span> <b className="text-slate-900">{condoSelecionado}</b></p>
               </div>
 
-              <p className="text-[11px] text-amber-700 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
-                🔔 <b>Importante:</b> Ao concluir o serviço, aponte a câmera novamente para o QR Code para registrar sua saída.
-              </p>
+              <div className="text-[11px] text-amber-900 bg-amber-50 p-3 rounded-xl border border-amber-200 text-left space-y-1">
+                <p className="font-bold flex items-center gap-1">🔔 Ao terminar o serviço:</p>
+                <p className="text-amber-800 leading-relaxed">
+                  Aponte a câmera novamente para a placa QR Code deste condomínio para registrar sua <b>Saída com a foto do serviço executado</b>.
+                </p>
+              </div>
 
               <button
                 onClick={() => { setEtapa('selecao'); setFoto(''); setObservacoes(''); }}
@@ -219,15 +241,15 @@ export default function CheckinPrestador() {
               <div>
                 <h2 className="text-lg font-black text-slate-900">Serviço Concluído & Saída Registrada!</h2>
                 <p className="text-xs text-slate-600 mt-1">
-                  Obrigado, <b>{nome}</b>! A comprovação do seu serviço foi enviada para a administração da Alpha e para o síndico.
+                  Obrigado, <b>{nome}</b>! A comprovação do seu serviço foi gravada com sucesso.
                 </p>
               </div>
 
               <div className="bg-emerald-50 p-3.5 rounded-2xl border border-emerald-200 text-xs text-left space-y-1.5 font-medium text-emerald-900">
-                <p className="flex justify-between"><span>Serviço:</span> <b>{atendimentoAtivo?.servico}</b></p>
+                <p className="flex justify-between"><span>Serviço Realizado:</span> <b>{atendimentoAtivo?.servico}</b></p>
                 <p className="flex justify-between"><span>Entrada:</span> <b>{atendimentoAtivo?.entradaHora}</b></p>
                 <p className="flex justify-between"><span>Saída:</span> <b>{new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</b></p>
-                <p className="flex justify-between"><span>Tempo no Local:</span> <b className="text-emerald-700 font-black">{atendimentoAtivo?.duracao || 'Concluído'}</b></p>
+                <p className="flex justify-between"><span>Tempo no Condomínio:</span> <b className="text-emerald-700 font-black">{atendimentoAtivo?.duracao || 'Concluído'}</b></p>
               </div>
 
               <button
@@ -243,21 +265,23 @@ export default function CheckinPrestador() {
           {etapa === 'selecao' && (
             <form onSubmit={handleRegistrarEntrada} className="space-y-4">
               
-              {/* Condomínio */}
-              <div>
-                <label className="label font-bold text-xs text-slate-700 flex items-center gap-1">
-                  <Building2 size={14} className="text-brand-600" /> Condomínio *
-                </label>
-                <select
-                  value={condoSelecionado}
-                  onChange={e => setCondoSelecionado(e.target.value)}
-                  className="input text-xs font-bold bg-slate-50"
-                  required
-                >
-                  <option value="">Selecione o Condomínio...</option>
-                  {condominios.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-                </select>
-              </div>
+              {/* Seleção de Condomínio (Caso não tenha vindo direto pela URL) */}
+              {!condoParam ? (
+                <div>
+                  <label className="label font-bold text-xs text-slate-700 flex items-center gap-1">
+                    <Building2 size={14} className="text-brand-600" /> Condomínio *
+                  </label>
+                  <select
+                    value={condoSelecionado}
+                    onChange={e => setCondoSelecionado(e.target.value)}
+                    className="input text-xs font-bold bg-slate-50"
+                    required
+                  >
+                    <option value="">Selecione o Condomínio...</option>
+                    {condominios.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+                  </select>
+                </div>
+              ) : null}
 
               {/* Nome do Prestador */}
               <div>
@@ -275,20 +299,20 @@ export default function CheckinPrestador() {
                 />
               </div>
 
-              {/* SE JÁ ESTIVER EM ANDAMENTO -> MOSTRA CARD DE SAÍDA */}
+              {/* SE JÁ ESTIVER EM ANDAMENTO -> MOSTRA CARD DE REGISTRAR SAÍDA */}
               {atendimentoAtivo ? (
                 <div className="bg-amber-50 p-4 rounded-2xl border-2 border-amber-300 space-y-3 animate-fade-in">
                   <div className="flex items-center gap-2">
                     <Clock size={18} className="text-amber-700 animate-pulse" />
                     <div>
-                      <h3 className="text-xs font-black text-amber-900 uppercase">Serviço em Andamento Encontrado!</h3>
+                      <h3 className="text-xs font-black text-amber-900 uppercase">Serviço em Andamento!</h3>
                       <p className="text-[11px] text-amber-800">
-                        Entrada registrada às <b>{atendimentoAtivo.entradaHora}</b> ({atendimentoAtivo.servico})
+                        Entrada às <b>{atendimentoAtivo.entradaHora}</b> ({atendimentoAtivo.servico})
                       </p>
                     </div>
                   </div>
 
-                  {/* Foto de Conclusão */}
+                  {/* Foto do Serviço Executado */}
                   <div>
                     <label className="label text-xs font-bold text-amber-900">Foto do Serviço Executado (Opcional)</label>
                     {foto ? (
@@ -302,11 +326,11 @@ export default function CheckinPrestador() {
                   </div>
 
                   <div>
-                    <label className="label text-xs font-bold text-amber-900">Observações / O que foi feito:</label>
+                    <label className="label text-xs font-bold text-amber-900">O que foi feito / Relato do Serviço:</label>
                     <input
                       type="text"
                       className="input text-xs bg-white"
-                      placeholder="Ex: Manutenção da bomba concluída, peças trocadas..."
+                      placeholder="Ex: Piscina limpa, dosagem de cloro aplicada, filtros lavados..."
                       value={observacoes}
                       onChange={e => setObservacoes(e.target.value)}
                     />
@@ -322,12 +346,12 @@ export default function CheckinPrestador() {
                   </button>
                 </div>
               ) : (
-                /* FORMULÁRIO DE ENTRADA NORMAL */
+                /* FORMULÁRIO DE ENTRADA */
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="label font-bold text-xs text-slate-700 flex items-center gap-1">
-                        <Briefcase size={14} className="text-brand-600" /> Empresa / Terceirizada
+                        <Briefcase size={14} className="text-brand-600" /> Empresa
                       </label>
                       <input
                         type="text"
@@ -338,7 +362,9 @@ export default function CheckinPrestador() {
                       />
                     </div>
                     <div>
-                      <label className="label font-bold text-xs text-slate-700">WhatsApp / Telefone</label>
+                      <label className="label font-bold text-xs text-slate-700 flex items-center gap-1">
+                        <Phone size={14} className="text-brand-600" /> WhatsApp / Tel
+                      </label>
                       <input
                         type="tel"
                         className="input text-xs"
@@ -351,32 +377,36 @@ export default function CheckinPrestador() {
 
                   <div>
                     <label className="label font-bold text-xs text-slate-700 flex items-center gap-1">
-                      <FileText size={14} className="text-brand-600" /> Serviço a Realizar *
+                      <FileText size={14} className="text-brand-600" /> Serviço Prestado / O que veio fazer *
                     </label>
-                    <select
+                    <input
+                      type="text"
+                      className="input text-xs font-semibold"
+                      placeholder="Digite ou escolha uma sugestão abaixo..."
                       value={servico}
                       onChange={e => setServico(e.target.value)}
-                      className="input text-xs font-bold"
                       required
-                    >
-                      <option value="">Selecione o Tipo de Serviço...</option>
-                      <option value="Limpeza / Conservação">Limpeza / Conservação</option>
-                      <option value="Jardinagem / Paisagismo">Jardinagem / Paisagismo</option>
-                      <option value="Tratamento de Piscina">Tratamento de Piscina</option>
-                      <option value="Manutenção de Elevador">Manutenção de Elevador</option>
-                      <option value="Elétrica / Iluminação">Elétrica / Iluminação</option>
-                      <option value="Hidráulica / Encanamento">Hidráulica / Encanamento</option>
-                      <option value="Dedetização / Controle de Pragas">Dedetização / Controle de Pragas</option>
-                      <option value="Segurança / Câmeras / CFTV">Segurança / Câmeras / CFTV</option>
-                      <option value="Pintura / Reformas">Pintura / Reformas</option>
-                      <option value="Outro Serviço">Outro Serviço</option>
-                    </select>
+                    />
+                    
+                    {/* Sugestões rápidas com 1 clique */}
+                    <div className="flex gap-1.5 flex-wrap mt-2">
+                      {servicosSugestoes.slice(0, 5).map(s => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setServico(s)}
+                          className={`text-[10px] px-2 py-0.5 rounded-md border font-medium transition-all ${servico === s ? 'bg-brand-600 text-white border-brand-600' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+                        >
+                          + {s}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Foto Selfie ou Crachá */}
+                  {/* Foto de Comprovação ou Selfie */}
                   <div>
                     <label className="label font-bold text-xs text-slate-700 flex items-center gap-1">
-                      <Camera size={14} className="text-brand-600" /> Foto Selfie ou Crachá (Comprovação)
+                      <Camera size={14} className="text-brand-600" /> Foto Selfie / Crachá (Opcional)
                     </label>
                     {foto ? (
                       <div className="flex items-center gap-3">
@@ -386,17 +416,6 @@ export default function CheckinPrestador() {
                     ) : (
                       <input type="file" accept="image/*" capture="user" onChange={handleFoto} className="input text-xs file:mr-3 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700" />
                     )}
-                  </div>
-
-                  <div>
-                    <label className="label font-bold text-xs text-slate-700">Observações adicionais (opcional):</label>
-                    <input
-                      type="text"
-                      className="input text-xs"
-                      placeholder="Ex: Manutenção preventiva mensal..."
-                      value={observacoes}
-                      onChange={e => setObservacoes(e.target.value)}
-                    />
                   </div>
 
                   <button
