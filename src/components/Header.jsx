@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Bell, Search, LogOut, ChevronDown, X, CheckCircle2, Trash2, Home, Signal, Bot, Clock } from 'lucide-react'
+import { Menu, Bell, Search, LogOut, ChevronDown, X, CheckCircle2, Trash2, Home, Signal, Bot, Clock, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import OneSignal from 'react-onesignal'
 import { useFirestore } from '../hooks/useFirestore'
@@ -104,9 +104,20 @@ export default function Header({ onMenuClick }) {
     <header className="h-16 bg-white/90 backdrop-blur-md border-b border-cream-400 flex items-center justify-between px-4 gap-4 sticky top-0 z-30 shadow-sm">
       <div className="flex items-center gap-3">
         <button onClick={onMenuClick} className="lg:hidden p-2 rounded-lg text-gray-500 hover:text-brand-600 hover:bg-pale-100 transition-all"><Menu size={20}/></button>
-        <button onClick={() => navigate('/dashboard')} className="lg:hidden flex items-center justify-center p-2 rounded-lg text-[#2E3045] bg-[#D1D3DF] hover:bg-[#A4B6BA] border border-[#2E3045]/10 transition-all" title="Voltar ao Início">
-          <Home size={20}/>
-        </button>
+        {location.pathname !== '/dashboard' && location.pathname !== '/' ? (
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black text-brand-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-all shadow-xs shrink-0 active:scale-95"
+            title="Voltar ao Início"
+          >
+            <ArrowLeft size={16} className="text-brand-700" />
+            <span>Voltar</span>
+          </button>
+        ) : (
+          <button onClick={() => navigate('/dashboard')} className="lg:hidden flex items-center justify-center p-2 rounded-lg text-[#2E3045] bg-[#D1D3DF] hover:bg-[#A4B6BA] border border-[#2E3045]/10 transition-all" title="Início">
+            <Home size={18}/>
+          </button>
+        )}
         <button onClick={() => { 
           if (!window.OneSignal) {
             alert("O OneSignal não carregou! O script pode estar bloqueado pelo navegador.");

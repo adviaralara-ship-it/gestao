@@ -130,7 +130,7 @@ export default function Dashboard() {
               onClick={() => navigate('/ocorrencias')}
               className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2"
             >
-              <Plus size={16} /> Nova Solicitação
+              <FileText size={16} /> Solicitações
             </button>
           </div>
         </div>
