@@ -57,6 +57,7 @@ import Mediacao from './pages/Mediacao'
 import MediacaoNova from './pages/MediacaoNova'
 import MediacaoSalaExterna from './pages/MediacaoSalaExterna'
 import Cotacoes from './pages/Cotacoes'
+import CheckinPrestador from './pages/CheckinPrestador'
 
 // Spinner de carregamento enquanto o Firebase Auth verifica a sessão
 function AuthLoader() {
@@ -147,6 +148,7 @@ function AppRoutes() {
         <Route path="/trabalhe-conosco" element={<PortalVagas />} />
         <Route path="/onboarding/:id" element={<OnboardingCandidato />} />
         <Route path="/totem" element={<Totem />} />
+        <Route path="/checkin-prestador" element={<CheckinPrestador />} />
         {/* Rota pública para o morador acessar e assinar o termo de mediação ODR */}
         <Route path="/mediacao/sala/:id" element={<MediacaoSalaExterna />} />
         
