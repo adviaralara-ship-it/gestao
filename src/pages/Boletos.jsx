@@ -265,18 +265,31 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
 
           {/* Demonstrativo da Taxa Condominial */}
           <div className="border border-gray-200 rounded-2xl overflow-hidden mb-5">
-            <div className="bg-slate-100 p-2.5 px-4 font-bold text-xs text-gray-700 border-b border-gray-200">
-              Demonstrativo de Composição da Cobrança
+            <div className="bg-slate-100 p-2.5 px-4 font-bold text-xs text-gray-700 border-b border-gray-200 flex justify-between items-center">
+              <span>Demonstrativo de Composição da Cobrança</span>
+              {boleto.multa > 0 && <span className="text-[10px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-black">2ª Via com Juros e Multa</span>}
             </div>
             <div className="p-4 divide-y divide-gray-100 text-xs">
               <div className="py-2 flex justify-between">
                 <span className="text-gray-700 font-medium">Taxa Condominial Ordinária (Manutenção, Limpeza, Portaria)</span>
-                <span className="font-bold text-gray-900">R$ {(Number(boleto.valor || 0) * 0.9).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                <span className="font-bold text-gray-900">R$ {((Number(boleto.valorOriginal || boleto.valor || 0)) * 0.9).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
               </div>
               <div className="py-2 flex justify-between">
                 <span className="text-gray-700 font-medium">Fundo de Reserva (10%)</span>
-                <span className="font-bold text-gray-900">R$ {(Number(boleto.valor || 0) * 0.1).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                <span className="font-bold text-gray-900">R$ {((Number(boleto.valorOriginal || boleto.valor || 0)) * 0.1).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
               </div>
+              {boleto.multa > 0 && (
+                <div className="py-2 flex justify-between text-amber-800">
+                  <span className="font-medium">Multa por Atraso (2%)</span>
+                  <span className="font-bold">+ R$ {Number(boleto.multa).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              {boleto.juros > 0 && (
+                <div className="py-2 flex justify-between text-amber-800">
+                  <span className="font-medium">Juros de Mora (1% a.m. • {boleto.diasAtraso || 1} dias de atraso)</span>
+                  <span className="font-bold">+ R$ {Number(boleto.juros).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
               <div className="py-2.5 flex justify-between font-black text-sm bg-slate-50 px-2 rounded-lg mt-1 text-slate-900">
                 <span>VALOR TOTAL COBRADO</span>
                 <span className="text-emerald-700">R$ {valorFormatado}</span>
@@ -1024,15 +1037,58 @@ export default function Boletos() {
   }
   
   const gerarSegundaVia = async b => {
-    if (window.confirm(`Deseja gerar a 2ª via atualizada com vencimento para HOJE?\n\nOs juros de mora e multa serão calculados automaticamente pelo banco de acordo com os dias de atraso.`)) {
-      const hoje = new Date().toISOString().split('T')[0];
-      
-      // Atualiza a data do boleto no banco de dados e volta para pendente
-      await updateItem(b.id, { vencimento: hoje, status: 'Pendente', emitido: false, url: '', pix_emv: '', linha: '' });
-      
-      // Emite o boleto novamente no banco para gerar a nova URL com os juros (API Cora)
-      const boletoAtualizado = { ...b, vencimento: hoje, status: 'Pendente' };
-      await emitirBoleto(boletoAtualizado);
+    const valorBase = Number(b.valorOriginal || b.valor || 0)
+    const hoje = new Date()
+    const hojeStr = hoje.toISOString().split('T')[0]
+    
+    let diasAtraso = 1
+    if (b.vencimento) {
+      const dataVenc = new Date(b.vencimento + 'T12:00:00')
+      diasAtraso = Math.max(1, Math.floor((hoje - dataVenc) / 86400000))
+    }
+
+    // Multa padrão de 2% (Art. 1336 Código Civil)
+    const multa = Number((valorBase * 0.02).toFixed(2))
+    // Juros de mora de 1% ao mês (0,033% ao dia de atraso)
+    const juros = Number((valorBase * (0.01 / 30) * diasAtraso).toFixed(2))
+    const novoValor = Number((valorBase + multa + juros).toFixed(2))
+
+    const msgConfirm = `📄 EMISSÃO DE 2ª VIA ATUALIZADA\n\n` +
+      `👤 Morador: ${b.morador} (Apt ${b.apt})\n` +
+      `📅 Vencimento Original: ${b.vencimento}\n` +
+      `⏳ Dias em Atraso: ${diasAtraso} dia(s)\n\n` +
+      `💵 Valor Original: R$ ${valorBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n` +
+      `📌 Multa por Atraso (2%): R$ ${multa.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n` +
+      `📈 Juros de Mora (1% a.m.): R$ ${juros.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `💰 NOVO VALOR TOTAL: R$ ${novoValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n` +
+      `📅 Novo Vencimento: HOJE\n\n` +
+      `Deseja gerar a 2ª via com o novo QR Code PIX atualizado agora?`
+
+    if (window.confirm(msgConfirm)) {
+      const mor = moradores.find(m => m.nome === b.morador)
+      const condoDoc = allCondominios.find(c => c.nome === (b.condominio || mor?.condominio))
+      const chavePix = b.chave_pix || condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
+      const condoFinal = b.condominio || condoDoc?.nome || "Alpha Condomínios"
+
+      const boletoAtualizado = {
+        ...b,
+        vencimento: hojeStr,
+        valorOriginal: valorBase,
+        valor: novoValor,
+        multa: multa,
+        juros: juros,
+        diasAtraso: diasAtraso,
+        status: 'Pendente',
+        emitido: true,
+        notifAtraso: false,
+        linha: gerarLinhaDigitavel(b.apt, novoValor, hojeStr),
+        pix_emv: generateStaticPix(chavePix, novoValor, condoFinal, "BR")
+      }
+
+      await updateItem(b.id, boletoAtualizado)
+      setViewing(boletoAtualizado)
+      alert(`🎉 2ª Via Gerada com Sucesso!\n\nNovo Valor: R$ ${novoValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\nNovo Vencimento: HOJE\n\nO QR Code PIX já foi atualizado com o valor corrigido para pagamento imediato.`)
     }
   }
   
