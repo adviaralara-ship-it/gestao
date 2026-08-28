@@ -87,9 +87,9 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
             <div style="display: flex; align-items: center; gap: 14px;">
               <img src="/logo-alpha.png" width="56" height="56" style="object-fit: contain; border-radius: 12px;" />
               <div>
-                <h2 style="margin: 0; font-size: 18px; font-weight: 900; color: #0f172a;">ALPHA SOLUÇÕES CONDOMINIAIS</h2>
+                <h2 style="margin: 0; font-size: 17px; font-weight: 900; color: #0f172a;">ALPHA SOLUÇÕES CONDOMINIAIS LTDA</h2>
                 <p style="margin: 2px 0 0; font-size: 11px; color: #64748b; font-weight: bold;">Gestão & Administração de Condomínios</p>
-                <p style="margin: 2px 0 0; font-size: 10px; color: #94a3b8; font-family: monospace;">CNPJ: 00.000.000/0001-00</p>
+                <p style="margin: 2px 0 0; font-size: 10px; color: #64748b; font-family: monospace; font-weight: bold;">CNPJ: 66.643.272/0001-18</p>
               </div>
             </div>
             <div style="text-align: right;">
@@ -221,9 +221,9 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
             <div className="flex items-center gap-3">
               <img src="/logo-alpha.png" alt="Alpha Soluções Condominiais" className="w-14 h-14 object-contain rounded-xl shadow-sm bg-slate-900/5 p-1" />
               <div>
-                <h2 className="text-base sm:text-lg font-black text-slate-900 leading-tight">ALPHA SOLUÇÕES CONDOMINIAIS</h2>
+                <h2 className="text-base sm:text-lg font-black text-slate-900 leading-tight">ALPHA SOLUÇÕES CONDOMINIAIS LTDA</h2>
                 <p className="text-[11px] text-gray-500 font-bold">Gestão & Administração de Condomínios</p>
-                <p className="text-[10px] text-gray-400 font-mono">CNPJ: 00.000.000/0001-00</p>
+                <p className="text-[10px] text-gray-600 font-mono font-bold">CNPJ: 66.643.272/0001-18</p>
               </div>
             </div>
             <div className="text-right">
@@ -368,10 +368,12 @@ function ModalBoleto({ data, onClose, onSave, moradores = [] }) {
         </div>
         <div className="p-6 grid grid-cols-2 gap-4">
           <div className="col-span-2">
-            <label className="label">Morador</label>
+            <label className="label">Morador Responsável (Titular/Inquilino)</label>
             <select className="input" value={form.morador} onChange={handleMoradorChange}>
                <option value="">Selecione um morador cadastrado...</option>
-               {moradores.map(m => <option key={m.id} value={m.nome}>{m.nome} (Apt {m.apt})</option>)}
+               {moradores.filter(m => m.status !== 'Dependente' && m.tipo !== 'Dependente').map(m => (
+                 <option key={m.id} value={m.nome}>{m.nome} (Apt {m.apt || m.unidade || '—'}) {m.status ? `• ${m.status}` : ''}</option>
+               ))}
             </select>
           </div>
           <div><label className="label">Unidade / Apt.</label><input className="input" value={form.apt} onChange={e=>set('apt',e.target.value)} placeholder="Ex: 101-A"/></div>
@@ -444,8 +446,12 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
     if (c) setChavePix(c.chave_pix || '')
   }, [condoNome, condominios])
 
-  // Moradores filtrados por condomínio
-  const moradoresDoCondo = moradores.filter(m => !condoNome || m.condominio === condoNome || m.condominioNome === condoNome)
+  // Moradores filtrados por condomínio (Apenas Titulares/Responsáveis: Proprietário ou Inquilino, excluindo Dependentes)
+  const moradoresDoCondo = moradores.filter(m => {
+    const matchCondo = !condoNome || m.condominio === condoNome || m.condominioNome === condoNome
+    const isDependente = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente' || (m.parentesco && m.parentesco !== 'Titular')
+    return matchCondo && !isDependente
+  })
   const [selecionados, setSelecionados] = useState(() => moradoresDoCondo.map(m => m.id))
 
   useEffect(() => {
@@ -715,9 +721,9 @@ export default function Boletos() {
               <div style="display: flex; align-items: center; gap: 12px;">
                 <img src="/logo-alpha.png" width="48" height="48" style="object-fit: contain; border-radius: 10px;" />
                 <div>
-                  <h2 style="margin: 0; font-size: 18px; font-weight: 900; color: #0f172a;">ALPHA SOLUÇÕES CONDOMINIAIS</h2>
+                  <h2 style="margin: 0; font-size: 17px; font-weight: 900; color: #0f172a;">ALPHA SOLUÇÕES CONDOMINIAIS LTDA</h2>
                   <p style="margin: 2px 0 0; font-size: 11px; color: #64748b; font-weight: bold;">Gestão & Administração de Condomínios</p>
-                  <p style="margin: 2px 0 0; font-size: 10px; color: #94a3b8; font-family: monospace;">CNPJ: 00.000.000/0001-00</p>
+                  <p style="margin: 2px 0 0; font-size: 10px; color: #64748b; font-family: monospace; font-weight: bold;">CNPJ: 66.643.272/0001-18</p>
                 </div>
               </div>
               <div style="text-align: right;">
@@ -1345,12 +1351,30 @@ export default function Boletos() {
                   </button>
 
                   {selectedIds.length > 0 && (
-                    <button
-                      onClick={() => setSelectedIds([])}
-                      className="px-2.5 py-1.5 text-gray-500 hover:text-gray-800 text-xs font-bold bg-white border border-gray-300 rounded-xl"
-                    >
-                      Desmarcar
-                    </button>
+                    <>
+                      <button
+                        onClick={async () => {
+                          if (window.confirm(`⚠️ Tem certeza que deseja EXCLUIR os ${selectedIds.length} boletos selecionados? Esta ação não pode ser desfeita.`)) {
+                            const total = selectedIds.length
+                            for (const id of selectedIds) {
+                              await deleteItem(id)
+                            }
+                            setSelectedIds([])
+                            alert(`✅ ${total} boletos foram excluídos com sucesso.`)
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm transition-all"
+                      >
+                        <Trash2 size={14} /> Excluir ({selectedIds.length})
+                      </button>
+
+                      <button
+                        onClick={() => setSelectedIds([])}
+                        className="px-2.5 py-1.5 text-gray-500 hover:text-gray-800 text-xs font-bold bg-white border border-gray-300 rounded-xl"
+                      >
+                        Desmarcar
+                      </button>
+                    </>
                   )}
                 </div>
               )}
@@ -1364,27 +1388,34 @@ export default function Boletos() {
                       <th className="table-head w-10 text-center">
                         <input
                           type="checkbox"
-                          className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
                           checked={boletos.length > 0 && selectedIds.length === boletos.length}
                           onChange={toggleSelectAll}
+                          className="w-4 h-4 rounded text-brand-600 border-gray-300 focus:ring-brand-500"
                         />
                       </th>
                     )}
-                    {['Morador','Unidade','Vencimento','Valor','Status','Emitido','Ações'].map(h=><th key={h} className="table-head">{h}</th>)}
+                    <th className="table-head">Morador</th>
+                    <th className="table-head">Apt/Unidade</th>
+                    <th className="table-head">Vencimento</th>
+                    <th className="table-head">Valor</th>
+                    <th className="table-head">Status</th>
+                    <th className="table-head">Emitido</th>
+                    <th className="table-head">Ações</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {boletos.length===0
-                    ? <tr><td colSpan={8} className="text-center py-10 text-gray-400 text-sm">Nenhum boleto cadastrado.</td></tr>
-                    : boletos.map(b=>(
-                      <tr key={b.id} className={`table-row ${selectedIds.includes(b.id) ? 'bg-indigo-50/50' : ''}`}>
+                <tbody className="divide-y divide-cream-200">
+                  {boletos.length === 0 ? (
+                    <tr><td colSpan={(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') ? 8 : 7} className="text-center py-10 text-gray-400">Nenhum boleto encontrado.</td></tr>
+                  ) : (
+                    boletos.map(b => (
+                      <tr key={b.id} className={`hover:bg-cream-50 transition-colors ${selectedIds.includes(b.id) ? 'bg-indigo-50/40' : ''}`}>
                         {(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
                           <td className="table-cell text-center">
                             <input
                               type="checkbox"
-                              className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
                               checked={selectedIds.includes(b.id)}
                               onChange={() => toggleSelectBoleto(b.id)}
+                              className="w-4 h-4 rounded text-brand-600 border-gray-300 focus:ring-brand-500"
                             />
                           </td>
                         )}
@@ -1395,7 +1426,7 @@ export default function Boletos() {
                         <td className="table-cell"><span className={`${statusBadge(b.status)} flex items-center gap-1 w-fit`}>{statusIcon(b.status)}{b.status}</span></td>
                         <td className="table-cell">{b.emitido?<span className="badge-green flex items-center gap-1 w-fit"><CheckCircle2 size={11}/>Sim</span>:<span className="badge-yellow">Não</span>}</td>
                         <td className="table-cell">
-                          <div className="flex gap-1.5 flex-wrap">
+                          <div className="flex gap-1.5 flex-wrap items-center">
                             <button onClick={()=>setViewing(b)} className="btn-secondary py-1 px-2.5 text-xs text-brand-700 bg-brand-50 border-brand-200 hover:bg-brand-100 flex items-center gap-1 font-bold">
                               <QrCode size={12}/> Ver Boleto PIX
                             </button>
@@ -1417,19 +1448,29 @@ export default function Boletos() {
                               </button>
                             )}
                             
-                            {(user?.role === 'Administrador' || user?.role === 'Financeiro') && (
+                            {(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
                               <>
-                                <button onClick={()=>enviarWhats(b)} className="btn-secondary py-1 px-2.5 text-xs text-green-700 bg-green-50 border-green-200 hover:bg-green-100"><MessageSquare size={11}/>Whats</button>
-                                {b.status !== 'Pago' && <button onClick={()=>marcarPago(b)} className="btn-success py-1 px-2.5 text-xs"><CheckCircle2 size={11}/>Pago</button>}
-                                <button onClick={()=>setModal(b)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={11}/></button>
-                                <button onClick={()=>deleteItem(b.id)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={11}/></button>
+                                <button onClick={()=>enviarWhats(b)} className="btn-secondary py-1 px-2 text-xs text-green-700 bg-green-50 border-green-200 hover:bg-green-100 flex items-center gap-1"><MessageSquare size={11}/>Whats</button>
+                                {b.status !== 'Pago' && <button onClick={()=>marcarPago(b)} className="btn-success py-1 px-2 text-xs flex items-center gap-1"><CheckCircle2 size={11}/>Pago</button>}
+                                <button onClick={()=>setModal(b)} title="Editar Boleto" className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={12}/></button>
+                                <button 
+                                  onClick={() => {
+                                    if (window.confirm(`Deseja realmente excluir o boleto de ${b.morador} (Apt ${b.apt}) no valor de R$ ${fmt(b.valor)}?`)) {
+                                      deleteItem(b.id)
+                                    }
+                                  }} 
+                                  title="Excluir Boleto" 
+                                  className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 transition-all border border-red-200"
+                                >
+                                  <Trash2 size={12}/>
+                                </button>
                               </>
                             )}
                           </div>
                         </td>
                       </tr>
                     ))
-                  }
+                  )}
                 </tbody>
               </table>
             </div>
