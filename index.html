@@ -28,27 +28,15 @@
   </head>
   <body>
     <script>
+      // Captura segura de erros para log sem travar a interface do usuário
       window.addEventListener('error', function(e) {
-        if (e.message === 'Script error.') {
-          console.warn('Ignored cross-origin Script error.');
-          return; // Ignore cross-origin script errors (e.g., OneSignal blocked in iOS PWA)
-        }
-        document.body.innerHTML = '<div style="padding: 20px; background: white; color: red; font-family: monospace; word-wrap: break-word;"><b>FATAL ERROR:</b> ' + e.message + '<br>' + e.filename + ':' + e.lineno + '<br><br>Please send a screenshot of this.</div>';
+        console.warn('App error handled:', e.message);
       });
       window.addEventListener('unhandledrejection', function(e) {
-        document.body.innerHTML = '<div style="padding: 20px; background: white; color: red; font-family: monospace; word-wrap: break-word;"><b>PROMISE ERROR:</b> ' + (e.reason && e.reason.message ? e.reason.message : e.reason) + '<br><br>Please send a screenshot of this.</div>';
+        console.warn('Promise rejection handled:', e.reason);
       });
     </script>
     <div id="root"></div>
-    <script>
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for(let registration of registrations) {
-            registration.unregister();
-          }
-        });
-      }
-    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
