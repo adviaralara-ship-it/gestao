@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { notificarAdm, enviarEmail } from '../emailjs.config'
+import RepassesAlphaModal from '../components/RepassesAlphaModal'
 
 function gerarLinhaDigitavel(apt, valor, venc) {
   const r = () => Math.floor(Math.random() * 9)
@@ -126,14 +127,32 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
           <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 16px;">
             <div style="background: #f1f5f9; padding: 8px 12px; font-weight: bold; font-size: 11px; color: #475569; text-transform: uppercase;">Composição da Taxa Condominial</div>
             <div style="padding: 10px 14px; font-size: 12px;">
-              <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
-                <span>Taxa Ordinária de Condomínio (${boleto.competencia || 'Mês Atual'})</span>
-                <span style="font-family: monospace; font-weight: bold;">R$ ${(Number(boleto.valor || 0) * 0.9).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
-                <span>Fundo de Reserva (10%)</span>
-                <span style="font-family: monospace; font-weight: bold;">R$ ${(Number(boleto.valor || 0) * 0.1).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-              </div>
+              ${(() => {
+                const taxaEmissao = (condominio?.discriminarTaxa && Number(condominio?.taxaEmissao || 0) > 0) ? Number(condominio.taxaEmissao) : 0
+                const valCheio = Number(boleto.valorOriginal || boleto.valor || 0)
+                const cotaBase = Math.max(0, valCheio - taxaEmissao)
+                const nomeTaxa = condominio?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema'
+
+                if (taxaEmissao > 0) {
+                  return `
+                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
+                      <span>Taxa Condominial Ordinária (${boleto.competencia || 'Mês Atual'})</span>
+                      <span style="font-family: monospace; font-weight: bold;">R$ ${cotaBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0; color: #475569;">
+                      <span>${nomeTaxa}</span>
+                      <span style="font-family: monospace; font-weight: bold;">R$ ${taxaEmissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  `
+                } else {
+                  return `
+                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
+                      <span>Taxa Ordinária de Condomínio (${boleto.competencia || 'Mês Atual'})</span>
+                      <span style="font-family: monospace; font-weight: bold;">R$ ${valCheio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  `
+                }
+              })()}
               <div style="display: flex; justify-content: space-between; padding: 6px 0 0; font-weight: 900; font-size: 13px;">
                 <span>TOTAL LIQUIDO COBRADO</span>
                 <span style="font-family: monospace; color: #047857;">R$ ${valorFormatado}</span>
@@ -270,14 +289,34 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
               {boleto.multa > 0 && <span className="text-[10px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-black">2ª Via com Juros e Multa</span>}
             </div>
             <div className="p-4 divide-y divide-gray-100 text-xs">
-              <div className="py-2 flex justify-between">
-                <span className="text-gray-700 font-medium">Taxa Condominial Ordinária (Manutenção, Limpeza, Portaria)</span>
-                <span className="font-bold text-gray-900">R$ {((Number(boleto.valorOriginal || boleto.valor || 0)) * 0.9).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div className="py-2 flex justify-between">
-                <span className="text-gray-700 font-medium">Fundo de Reserva (10%)</span>
-                <span className="font-bold text-gray-900">R$ {((Number(boleto.valorOriginal || boleto.valor || 0)) * 0.1).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-              </div>
+              {(() => {
+                const taxaEmissao = (condominio?.discriminarTaxa && Number(condominio?.taxaEmissao || 0) > 0) ? Number(condominio.taxaEmissao) : 0
+                const valCheio = Number(boleto.valorOriginal || boleto.valor || 0)
+                const cotaBase = Math.max(0, valCheio - taxaEmissao)
+                const nomeTaxa = condominio?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema'
+
+                if (taxaEmissao > 0) {
+                  return (
+                    <>
+                      <div className="py-2 flex justify-between">
+                        <span className="text-gray-700 font-medium">Taxa Condominial Ordinária ({boleto.competencia || 'Mês Atual'})</span>
+                        <span className="font-bold text-gray-900">R$ {cotaBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="py-2 flex justify-between text-brand-800 bg-brand-50/50 px-2 rounded-lg">
+                        <span className="font-medium">{nomeTaxa}</span>
+                        <span className="font-bold">R$ {taxaEmissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </>
+                  )
+                } else {
+                  return (
+                    <div className="py-2 flex justify-between">
+                      <span className="text-gray-700 font-medium">Taxa Condominial Ordinária ({boleto.competencia || 'Mês Atual'})</span>
+                      <span className="font-bold text-gray-900">R$ {valCheio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )
+                }
+              })()}
               {boleto.multa > 0 && (
                 <div className="py-2 flex justify-between text-amber-800">
                   <span className="font-medium">Multa por Atraso (2%)</span>
@@ -689,6 +728,7 @@ export default function Boletos() {
   const [condoFundoEdit, setCondoFundoEdit] = useState(null)
   const [selectedIds, setSelectedIds] = useState([])
   const [downloadingLote, setDownloadingLote] = useState(false)
+  const [showRepasses, setShowRepasses] = useState(false)
 
   const handleSaveLote = async (lista) => {
     let criados = 0
@@ -775,10 +815,32 @@ export default function Boletos() {
             <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 16px;">
               <div style="background: #f1f5f9; padding: 8px 12px; font-weight: bold; font-size: 11px; color: #475569; text-transform: uppercase;">Composição da Taxa Condominial</div>
               <div style="padding: 10px 14px; font-size: 12px;">
-                <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
-                  <span>Taxa Ordinária de Condomínio (${b.competencia || 'Mês Atual'})</span>
-                  <span style="font-family: monospace; font-weight: bold;">R$ ${valorFmt}</span>
-                </div>
+                ${(() => {
+                  const taxaEmissao = (condoDoc?.discriminarTaxa && Number(condoDoc?.taxaEmissao || 0) > 0) ? Number(condoDoc.taxaEmissao) : 0
+                  const valCheio = Number(b.valor || 0)
+                  const cotaBase = Math.max(0, valCheio - taxaEmissao)
+                  const nomeTaxa = condoDoc?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema'
+
+                  if (taxaEmissao > 0) {
+                    return `
+                      <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
+                        <span>Taxa Condominial Ordinária (${b.competencia || 'Mês Atual'})</span>
+                        <span style="font-family: monospace; font-weight: bold;">R$ ${cotaBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0; color: #475569;">
+                        <span>${nomeTaxa}</span>
+                        <span style="font-family: monospace; font-weight: bold;">R$ ${taxaEmissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    `
+                  } else {
+                    return `
+                      <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
+                        <span>Taxa Ordinária de Condomínio (${b.competencia || 'Mês Atual'})</span>
+                        <span style="font-family: monospace; font-weight: bold;">R$ ${valCheio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    `
+                  }
+                })()}
                 <div style="display: flex; justify-content: space-between; padding: 6px 0 0; font-weight: 900; font-size: 13px;">
                   <span>TOTAL LIQUIDO</span>
                   <span style="font-family: monospace; color: #047857;">R$ ${valorFmt}</span>
@@ -1288,22 +1350,29 @@ export default function Boletos() {
           </h2>
           <p className="section-sub">Emissão e acompanhamento de cobranças</p>
         </div>
-        {tab==='boletos' && (user?.role === 'Administrador' || user?.role === 'Financeiro') && (
+        {tab==='boletos' && (user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
           <div className="flex gap-2 flex-wrap items-center">
-            <button onClick={()=>setModalLote(true)} className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-sm font-black flex items-center gap-1.5 shadow-md">
-              <Package size={15}/> Gerar Boletos do Mês (Lote)
+            <button onClick={()=>setShowRepasses(true)} className="btn-secondary text-sm flex items-center gap-1.5 bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 font-bold shadow-sm">
+              <DollarSign size={15} className="text-amber-700"/> Fechamento & Repasses Alpha
             </button>
-            <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-50">
-              <Clock size={14} className="text-brand-600" />
-              <span>Conciliar Extrato (OFX / CSV)</span>
-              <input type="file" accept=".ofx,.csv,.txt" className="hidden" onChange={handleReconciliationExtrato}/>
-            </label>
-            <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-50">
-              <Upload size={14}/>
-              <span>Importar Planilha (CSV)</span>
-              <input type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVImport}/>
-            </label>
-            <button onClick={()=>setModal('new')} className="btn-primary text-sm flex items-center gap-1"><Plus size={14}/> Novo Individual</button>
+            {(user?.role === 'Administrador' || user?.role === 'Financeiro') && (
+              <>
+                <button onClick={()=>setModalLote(true)} className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-sm font-black flex items-center gap-1.5 shadow-md">
+                  <Package size={15}/> Gerar Boletos do Mês (Lote)
+                </button>
+                <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-50">
+                  <Clock size={14} className="text-brand-600" />
+                  <span>Conciliar Extrato (OFX / CSV)</span>
+                  <input type="file" accept=".ofx,.csv,.txt" className="hidden" onChange={handleReconciliationExtrato}/>
+                </label>
+                <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-50">
+                  <Upload size={14}/>
+                  <span>Importar Planilha (CSV)</span>
+                  <input type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVImport}/>
+                </label>
+                <button onClick={()=>setModal('new')} className="btn-primary text-sm flex items-center gap-1"><Plus size={14}/> Novo Individual</button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1657,6 +1726,13 @@ export default function Boletos() {
       {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores}/>}
       {modalLote&&<ModalGerarLote condominios={allCondominios} moradores={moradores} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
       {condoFundoEdit&&<ModalFundo condo={condoFundoEdit} onClose={()=>setCondoFundoEdit(null)} onSave={handleSaveFundo}/>}
+      <RepassesAlphaModal
+        isOpen={showRepasses}
+        onClose={()=>setShowRepasses(false)}
+        condominios={allCondominios}
+        allBoletos={allBoletos}
+        selectedCondoName={condoFilter !== 'Todos' ? condoFilter : ''}
+      />
     </div>
   )
 }

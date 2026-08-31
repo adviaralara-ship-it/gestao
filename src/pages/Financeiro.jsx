@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import { Plus, Wallet, FileText, CreditCard, LayoutDashboard, Calendar, ShieldAlert, Calculator, FileCheck } from 'lucide-react'
+import { Plus, Wallet, FileText, CreditCard, LayoutDashboard, Calendar, ShieldAlert, Calculator, FileCheck, DollarSign } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
+import RepassesAlphaModal from '../components/RepassesAlphaModal'
 
 // Importando as novas abas
 import DashboardFinanceiro from './financeiro/DashboardFinanceiro'
@@ -186,12 +187,14 @@ export default function Financeiro() {
   const { items: allLancamentos, addItem: addLancamento, updateItem: updateLancamento, deleteItem: deleteLancamento } = useFirestore('financeiro_lancamentos')
   const { items: contas, addItem: addConta, updateItem: updateConta, deleteItem: deleteConta } = useFirestore('financeiro_contas')
   const { items: condominiosList } = useFirestore('condominios')
+  const { items: allBoletos } = useFirestore('boletos')
 
   const searchParams = new URLSearchParams(window.location.search)
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || (isMorador ? 'Historico' : 'Dashboard'))
   const [modalLanc, setModalLanc] = useState(null)
   const [modalConta, setModalConta] = useState(null)
   const [condoFilter, setCondoFilter] = useState('Todos')
+  const [showRepasses, setShowRepasses] = useState(false)
 
   const lancamentos = allLancamentos.filter(l => {
     if (['Morador', 'Síndico', 'Subsíndico', 'Conselheiro'].includes(user?.role)) {
@@ -319,9 +322,19 @@ export default function Financeiro() {
           )}
 
           {!isMorador && (
-            <button onClick={() => setModalLanc({})} className="btn-primary shadow-lg shadow-brand-500/30 whitespace-nowrap">
-              <Plus size={16} /> Novo Lançamento
-            </button>
+            <div className="flex items-center gap-2">
+              {(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
+                <button
+                  onClick={() => setShowRepasses(true)}
+                  className="btn-secondary text-sm flex items-center gap-1.5 bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 font-bold shadow-sm"
+                >
+                  <DollarSign size={15} className="text-amber-700"/> Repasses Alpha
+                </button>
+              )}
+              <button onClick={() => setModalLanc({})} className="btn-primary shadow-lg shadow-brand-500/30 whitespace-nowrap">
+                <Plus size={16} /> Novo Lançamento
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -410,6 +423,13 @@ export default function Financeiro() {
       {/* Modais */}
       {modalLanc && <ModalLancamento data={modalLanc.id ? modalLanc : null} user={user} condominiosDisponiveis={uniqueCondos} filtroAtual={condoFilter} onClose={() => setModalLanc(null)} onSave={handleSaveLanc} />}
       {modalConta && <ModalConta data={modalConta.id ? modalConta : null} onClose={() => setModalConta(null)} onSave={handleSaveConta} />}
+      <RepassesAlphaModal
+        isOpen={showRepasses}
+        onClose={() => setShowRepasses(false)}
+        condominios={condominiosList}
+        allBoletos={allBoletos}
+        selectedCondoName={condoFilter !== 'Todos' ? condoFilter : ''}
+      />
     </div>
   )
 }

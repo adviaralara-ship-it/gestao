@@ -13,20 +13,25 @@ function fmtInput(v, setter) {
 }
 
 function CondoModal({ data, onClose, onSave }) {
-  const [form, setForm] = useState(data || { nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'' })
+  const [form, setForm] = useState(data || {
+    nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
+    honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Tarifa de Processamento Digital e Sistema'
+  })
   const [fundoStr, setFundoStr] = useState(data?.fundoReserva ? fmtBR(data.fundoReserva) : '')
   const [metaStr,  setMetaStr]  = useState(data?.fundoMeta    ? fmtBR(data.fundoMeta)    : '')
+  const [honorariosStr, setHonorariosStr] = useState(data?.honorariosAdm ? fmtBR(data.honorariosAdm) : '')
+  const [taxaStr, setTaxaStr] = useState(data?.taxaEmissao !== undefined ? fmtBR(data.taxaEmissao) : '3,50')
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e=>e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">{data?'Editar Condomínio':'Novo Condomínio'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+      <div className="modal-content max-w-xl" onClick={e=>e.stopPropagation()}>
+        <div className="p-4 sm:p-6 border-b border-cream-300 flex items-center justify-between gap-3">
+          <h3 className="font-bold text-gray-800 text-base sm:text-lg min-w-0 flex-1 truncate">{data?'Editar Condomínio':'Novo Condomínio'}</h3>
+          <button onClick={onClose} className="modal-close-btn" title="Fechar">✕</button>
         </div>
-        <div className="p-6 flex flex-col gap-4">
-          {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['mandatoFim','Fim do Mandato (Síndico)'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX (E-mail, CNPJ ou Celular)']].map(([k,l])=>(
+        <div className="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto">
+          {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['mandatoFim','Fim do Mandato (Síndico)'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX do Condomínio (Para onde vão as cotas)']].map(([k,l])=>(
             <div key={k}><label className="label">{l}</label><input type={k==='mandatoFim'?'date':'text'} className="input" value={form[k]||''} onChange={e=>set(k,e.target.value)} placeholder={l}/></div>
           ))}
           <div><label className="label">Status</label>
@@ -34,6 +39,61 @@ function CondoModal({ data, onClose, onSave }) {
               <option>Ativo</option><option>Manutenção</option><option>Inativo</option>
             </select>
           </div>
+
+          {/* Seção de Remuneração e Taxas da Alpha */}
+          <div className="p-4 bg-brand-50/70 border border-brand-200 rounded-2xl flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-black text-brand-900 flex items-center gap-1.5 uppercase tracking-wide">
+                <DollarSign size={14} className="text-brand-600"/> Remuneração da Administradora (Alpha)
+              </p>
+              <span className="text-[10px] font-bold text-brand-700 bg-brand-100 px-2 py-0.5 rounded-md">Contrato</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Honorários de Administração (R$)</label>
+                <input className="input font-bold text-gray-800" value={honorariosStr} inputMode="numeric" placeholder="Ex: 900,00"
+                  onChange={e=>fmtInput(e.target.value,setHonorariosStr)}/>
+              </div>
+              <div>
+                <label className="label">Chave PIX da Alpha (Para receber)</label>
+                <input className="input font-mono text-xs" value={form.chavePixAlpha || ''} onChange={e=>set('chavePixAlpha',e.target.value)} placeholder="CNPJ ou Chave PIX da Alpha"/>
+              </div>
+            </div>
+
+            {/* Controle de discriminação da Taxa de Emissão */}
+            <div className="mt-2 pt-3 border-t border-brand-200/60 flex flex-col gap-2.5">
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.discriminarTaxa || false}
+                  onChange={e => set('discriminarTaxa', e.target.checked)}
+                  className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer"
+                />
+                <span className="text-xs font-black text-gray-800">
+                  Discriminar Taxa de Emissão/Sistema no Boleto e Relatórios
+                </span>
+              </label>
+              <p className="text-[11px] text-gray-500 ml-6.5 leading-relaxed">
+                Marque se este condomínio já possui a taxa aprovada em contrato. Se desmarcado, a cota sairá sem discriminar a taxa.
+              </p>
+
+              {form.discriminarTaxa && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 ml-6.5 bg-white p-3 rounded-xl border border-brand-200">
+                  <div>
+                    <label className="label">Valor da Taxa por Unidade (R$)</label>
+                    <input className="input font-bold text-emerald-700" value={taxaStr} inputMode="numeric" placeholder="3,50"
+                      onChange={e=>fmtInput(e.target.value,setTaxaStr)}/>
+                  </div>
+                  <div>
+                    <label className="label">Descrição no Boleto</label>
+                    <input className="input text-xs" value={form.nomeTaxa || ''} onChange={e=>set('nomeTaxa', e.target.value)} placeholder="Tarifa de Processamento Digital"/>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Fundo de Reserva */}
           <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col gap-3">
             <p className="text-xs font-bold text-emerald-800 flex items-center gap-1.5"><DollarSign size={13}/>Fundo de Reserva</p>
@@ -49,11 +109,13 @@ function CondoModal({ data, onClose, onSave }) {
             </div>
           </div>
         </div>
-        <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
+        <div className="p-4 sm:p-6 border-t border-cream-300 flex gap-3 justify-end">
           <button onClick={onClose} className="btn-secondary">Cancelar</button>
           <button onClick={()=>onSave({
             ...form,
             unidades:Number(form.unidades)||0,
+            honorariosAdm: parseBR(honorariosStr),
+            taxaEmissao: form.discriminarTaxa ? parseBR(taxaStr) : 0,
             fundoReserva:parseBR(fundoStr),
             fundoMeta:parseBR(metaStr)
           })} className="btn-primary">Salvar</button>
