@@ -71,23 +71,23 @@ function CondoModal({ data, onClose, onSave }) {
                   className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer"
                 />
                 <span className="text-xs font-black text-gray-800">
-                  Discriminar Taxa de Emissão/Sistema no Boleto e Relatórios
+                  Serviço de Cobrança Digital no Boleto e Relatórios
                 </span>
               </label>
               <p className="text-[11px] text-gray-500 ml-6.5 leading-relaxed">
-                Marque se este condomínio já possui a taxa aprovada em contrato. Se desmarcado, a cota sairá sem discriminar a taxa.
+                Marque se este condomínio já possui o Serviço de Cobrança Digital no contrato. Se desmarcado, a cota sairá sem discriminar o serviço.
               </p>
 
               {form.discriminarTaxa && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 ml-6.5 bg-white p-3 rounded-xl border border-brand-200">
                   <div>
-                    <label className="label">Valor da Taxa por Unidade (R$)</label>
+                    <label className="label">Valor do Serviço por Unidade (R$)</label>
                     <input className="input font-bold text-emerald-700" value={taxaStr} inputMode="numeric" placeholder="3,50"
                       onChange={e=>fmtInput(e.target.value,setTaxaStr)}/>
                   </div>
                   <div>
                     <label className="label">Descrição no Boleto</label>
-                    <input className="input text-xs" value={form.nomeTaxa || ''} onChange={e=>set('nomeTaxa', e.target.value)} placeholder="Tarifa de Processamento Digital"/>
+                    <input className="input text-xs" value={form.nomeTaxa || 'Serviço de Cobrança Digital'} onChange={e=>set('nomeTaxa', e.target.value)} placeholder="Serviço de Cobrança Digital"/>
                   </div>
                 </div>
               )}

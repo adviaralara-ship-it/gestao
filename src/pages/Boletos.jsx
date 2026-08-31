@@ -626,31 +626,31 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
           </div>
 
           {/* Opção de Taxa Discriminada */}
-          <div className="p-3.5 bg-brand-50/70 border border-brand-200 rounded-2xl flex flex-col gap-2">
+          <div className="p-3.5 bg-brand-50/80 border-2 border-brand-300 rounded-2xl flex flex-col gap-2 shadow-sm">
             <label className="flex items-center gap-2.5 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={discriminarTaxa}
                 onChange={e => setDiscriminarTaxa(e.target.checked)}
-                className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer shrink-0"
+                className="w-5 h-5 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer shrink-0"
               />
               <span className="text-xs font-black text-brand-950">
-                Discriminar Taxa de Processamento Digital / Sistema no Boleto (R$ {taxaStr})
+                Serviço de Cobrança Digital (R$ {taxaStr})
               </span>
             </label>
-            <p className="text-[11px] text-gray-500 ml-6 leading-relaxed">
-              Ao marcar, o boleto dividirá o valor entre Cota Ordinária e a Taxa Digital. Se desmarcado, sai como valor único normal.
+            <p className="text-[11px] text-gray-600 ml-7 leading-relaxed">
+              Marque para discriminar o <b>Serviço de Cobrança Digital</b> no boleto. Se desmarcado, a cota sairá com valor único sem discriminação.
             </p>
 
             {discriminarTaxa && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 ml-6 bg-white p-3 rounded-xl border border-brand-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 ml-7 bg-white p-3 rounded-xl border border-brand-200">
                 <div>
-                  <label className="label text-[10px] font-bold">Valor da Taxa por Boleto (R$)</label>
+                  <label className="label text-[10px] font-bold">Valor do Serviço por Boleto (R$)</label>
                   <input className="input text-xs font-bold text-emerald-700" value={taxaStr} onChange={e => setTaxaStr(e.target.value)} placeholder="3,50" />
                 </div>
                 <div>
-                  <label className="label text-[10px] font-bold">Descrição da Taxa no Boleto</label>
-                  <input className="input text-xs text-gray-800" value={nomeTaxa} onChange={e => setNomeTaxa(e.target.value)} placeholder="Tarifa de Processamento Digital e Sistema" />
+                  <label className="label text-[10px] font-bold">Descrição no Boleto</label>
+                  <input className="input text-xs text-gray-800" value={nomeTaxa} onChange={e => setNomeTaxa(e.target.value)} placeholder="Serviço de Cobrança Digital" />
                 </div>
               </div>
             )}

@@ -31,6 +31,24 @@
   </head>
   <body>
     <script>
+      // Limpeza imediata de Service Worker e Caches antigos para forçar atualização
+      try {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(regs) {
+            for (var i = 0; i < regs.length; i++) {
+              regs[i].unregister();
+            }
+          });
+        }
+        if ('caches' in window) {
+          caches.keys().then(function(keys) {
+            for (var j = 0; j < keys.length; j++) {
+              caches.delete(keys[j]);
+            }
+          });
+        }
+      } catch(e) {}
+
       // Captura segura de erros para log sem travar a interface do usuário
       window.addEventListener('error', function(e) {
         console.warn('App error handled:', e.message);
