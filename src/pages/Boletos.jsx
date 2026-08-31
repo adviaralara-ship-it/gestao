@@ -1350,12 +1350,12 @@ export default function Boletos() {
           </h2>
           <p className="section-sub">Emissão e acompanhamento de cobranças</p>
         </div>
-        {tab==='boletos' && (user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
+        {tab==='boletos' && user?.role !== 'Morador' && (
           <div className="flex gap-2 flex-wrap items-center">
             <button onClick={()=>setShowRepasses(true)} className="btn-secondary text-sm flex items-center gap-1.5 bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 font-bold shadow-sm">
               <DollarSign size={15} className="text-amber-700"/> Fechamento & Repasses Alpha
             </button>
-            {(user?.role === 'Administrador' || user?.role === 'Financeiro') && (
+            {user?.role !== 'Morador' && (
               <>
                 <button onClick={()=>setModalLote(true)} className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-sm font-black flex items-center gap-1.5 shadow-md">
                   <Package size={15}/> Gerar Boletos do Mês (Lote)
