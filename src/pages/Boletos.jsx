@@ -68,138 +68,34 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
   const handleDownloadPDF = async () => {
     try {
       setDownloading(true)
+      const printEl = document.getElementById('boleto-print-area')
+      if (!printEl) {
+        window.print()
+        setDownloading(false)
+        return
+      }
+
+      const canvas = await html2canvas(printEl, { 
+        scale: 2, 
+        useCORS: true, 
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false
+      })
+      const imgData = canvas.toDataURL('image/png')
       const pdf = new jsPDF('p', 'mm', 'a4')
       const pdfWidth = pdf.internal.pageSize.getWidth()
-
-      const container = document.createElement('div')
-      container.style.position = 'fixed'
-      container.style.top = '-9999px'
-      container.style.left = '-9999px'
-      container.style.width = '780px'
-      container.style.backgroundColor = '#ffffff'
-      container.style.padding = '24px'
-      document.body.appendChild(container)
-
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(pixFinal)}`
-
-      container.innerHTML = `
-        <div style="font-family: Arial, sans-serif; color: #0f172a; padding: 24px; background: #fff; border: 1px solid #cbd5e1; border-radius: 16px;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px;">
-            <div style="display: flex; align-items: center; gap: 14px;">
-              <img src="/logo-alpha.png" width="56" height="56" style="object-fit: contain; border-radius: 12px;" />
-              <div>
-                <h2 style="margin: 0; font-size: 17px; font-weight: 900; color: #0f172a;">ALPHA SOLUÇÕES CONDOMINIAIS LTDA</h2>
-                <p style="margin: 2px 0 0; font-size: 11px; color: #64748b; font-weight: bold;">Gestão & Administração de Condomínios</p>
-                <p style="margin: 2px 0 0; font-size: 10px; color: #64748b; font-family: monospace; font-weight: bold;">CNPJ: 66.643.272/0001-18</p>
-              </div>
-            </div>
-            <div style="text-align: right;">
-              <span style="display: inline-block; background: #dcfce7; color: #166534; border: 1px solid #86efac; padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 900; text-transform: uppercase;">Fatura / Boleto PIX</span>
-              <p style="margin: 4px 0 0; font-size: 11px; color: #94a3b8; font-family: monospace;">Recibo do Sacado</p>
-            </div>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; background: #f8fafc; padding: 14px; border-radius: 12px; border: 1px solid #e2e8f0; font-size: 12px; margin-bottom: 16px;">
-            <div>
-              <span style="font-size: 10px; font-weight: bold; color: #94a3b8; text-transform: uppercase;">Condomínio Beneficiário</span>
-              <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${condominio?.nome || boleto.condominio || 'Condomínio Residencial'}</p>
-              <p style="margin: 2px 0 0; color: #64748b;">${condominio?.endereco || 'Endereço Cadastrado'}</p>
-              <p style="margin: 4px 0 0; color: #047857; font-weight: bold; font-family: monospace;">Chave Pix: ${chavePixFinal}</p>
-            </div>
-            <div>
-              <span style="font-size: 10px; font-weight: bold; color: #94a3b8; text-transform: uppercase;">Pagador / Morador</span>
-              <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${boleto.morador}</p>
-              <p style="margin: 2px 0 0; color: #334155; font-weight: bold;">Unidade: ${boleto.apt ? 'Apt ' + boleto.apt : '—'}</p>
-              <p style="margin: 4px 0 0; color: #64748b; font-family: monospace;">Competência: ${boleto.competencia || 'Mês Vigente'}</p>
-            </div>
-            <div style="background: #ecfdf5; padding: 10px; border-radius: 10px; border: 1px solid #a7f3d0;">
-              <div>
-                <span style="font-size: 10px; font-weight: bold; color: #065f46; text-transform: uppercase;">Vencimento</span>
-                <p style="margin: 2px 0 0; font-weight: 900; font-size: 14px; color: #0f172a;">${dataVencFormatada}</p>
-              </div>
-              <div style="margin-top: 8px;">
-                <span style="font-size: 10px; font-weight: bold; color: #065f46; text-transform: uppercase;">Valor Total a Pagar</span>
-                <p style="margin: 2px 0 0; font-weight: 900; font-size: 18px; color: #047857;">R$ ${valorFormatado}</p>
-              </div>
-            </div>
-          </div>
-
-          <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-bottom: 16px;">
-            <div style="background: #f1f5f9; padding: 8px 12px; font-weight: bold; font-size: 11px; color: #475569; text-transform: uppercase;">Composição da Taxa Condominial</div>
-            <div style="padding: 10px 14px; font-size: 12px;">
-              ${(() => {
-                const deveDiscriminar = boleto.discriminarTaxa !== undefined ? boleto.discriminarTaxa : (condominio?.discriminarTaxa || false)
-                const taxaEmissao = deveDiscriminar ? Number(boleto.taxaEmissao || condominio?.taxaEmissao || 3.50) : 0
-                const valCheio = Number(boleto.valorOriginal || boleto.valor || 0)
-                const cotaBase = Math.max(0, valCheio - taxaEmissao)
-                const nomeTaxa = boleto.nomeTaxa || condominio?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema'
-
-                if (taxaEmissao > 0) {
-                  return `
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
-                      <span>Taxa Condominial Ordinária (${boleto.competencia || 'Mês Atual'})</span>
-                      <span style="font-family: monospace; font-weight: bold;">R$ ${cotaBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0; color: #475569;">
-                      <span>${nomeTaxa}</span>
-                      <span style="font-family: monospace; font-weight: bold;">R$ ${taxaEmissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  `
-                } else {
-                  return `
-                    <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0;">
-                      <span>Taxa Ordinária de Condomínio (${boleto.competencia || 'Mês Atual'})</span>
-                      <span style="font-family: monospace; font-weight: bold;">R$ ${valCheio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  `
-                }
-              })()}
-              <div style="display: flex; justify-content: space-between; padding: 6px 0 0; font-weight: 900; font-size: 13px;">
-                <span>TOTAL LIQUIDO COBRADO</span>
-                <span style="font-family: monospace; color: #047857;">R$ ${valorFormatado}</span>
-              </div>
-            </div>
-          </div>
-
-          <div style="display: flex; gap: 16px; background: #f8fafc; padding: 14px; border-radius: 12px; border: 2px dashed #94a3b8; margin-bottom: 16px; align-items: center;">
-            <div style="background: #fff; padding: 8px; border-radius: 10px; border: 1px solid #cbd5e1; text-align: center;">
-              <img src="${qrUrl}" width="125" height="125" style="display: block;" />
-              <span style="font-size: 9px; font-weight: bold; color: #047857; display: block; margin-top: 4px;">PAGAMENTO INSTANTÂNEO</span>
-            </div>
-            <div style="flex: 1; font-size: 11px;">
-              <h4 style="margin: 0 0 6px; font-size: 13px; font-weight: 900; color: #0f172a;">💠 Instruções de Pagamento via PIX</h4>
-              <p style="margin: 0 0 8px; color: #475569; line-height: 1.4;">1. Abra o aplicativo do seu banco no celular.<br/>2. Escolha a opção <b>PIX</b> e aponte a câmera para o <b>QR Code</b> ou utilize o <b>PIX Copia e Cola</b> abaixo.<br/>3. A compensação é <b>imediata</b> (24h por dia, 7 dias por semana).</p>
-              <div style="background: #e2e8f0; padding: 8px; border-radius: 8px; font-family: monospace; font-size: 9px; word-break: break-all; color: #1e293b;">
-                ${pixFinal}
-              </div>
-            </div>
-          </div>
-
-          <div style="border-top: 2px solid #0f172a; padding-top: 10px; font-size: 11px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span style="font-weight: 900; color: #1e3a8a; font-size: 13px;">ALPHA 001-9</span>
-              <span style="font-family: monospace; font-weight: bold; font-size: 12px; letter-spacing: 1px;">${linhaDigitavel}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 10px;">
-              <span>Autenticação Mecânica / Ficha de Compensação</span>
-              <span>Alpha Soluções Condominiais • Suporte: contato@alphasolucoes.com.br</span>
-            </div>
-          </div>
-        </div>
-      `
-
-      await new Promise(r => setTimeout(r, 200))
-      const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
-      const imgData = canvas.toDataURL('image/png')
       const imgHeight = (canvas.height * pdfWidth) / canvas.width
       const condoFmt = (condominio?.nome || boleto.condominio || 'Condominio').replace(/\s+/g, '_')
       const moradorFmt = (boleto.morador || 'Morador').replace(/\s+/g, '_')
       const aptFmt = boleto.apt ? `_Apt${boleto.apt}` : ''
       const compFmt = (boleto.competencia || 'Mes').replace(/\//g, '-')
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(imgHeight, 295))
       pdf.save(`Boleto-PIX_${condoFmt}_${moradorFmt}${aptFmt}_${compFmt}.pdf`)
       setDownloading(false)
     } catch(err) {
-      console.error(err)
+      console.error('Erro na captura do PDF:', err)
       window.print()
       setDownloading(false)
     }

@@ -1,35 +1,58 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { X, DollarSign, Copy, Check, Download, FileText, Building2, Calendar, ShieldCheck } from 'lucide-react'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 
-export default function RepassesAlphaModal({ isOpen, onClose, condominios, allBoletos, selectedCondoName }) {
+export default function RepassesAlphaModal({ isOpen, onClose, condominios = [], allBoletos = [], selectedCondoName = '' }) {
   if (!isOpen) return null
 
   const uniqueCondoList = condominios.filter(c => c.status !== 'Inativo')
-  const defaultCondo = uniqueCondoList.find(c => c.nome === selectedCondoName) || uniqueCondoList[0] || {}
+  
+  const initialCondo = uniqueCondoList.find(c => 
+    c.nome?.trim().toLowerCase() === selectedCondoName?.trim().toLowerCase()
+  ) || uniqueCondoList[0] || {}
 
-  const [condoId, setCondoId] = useState(defaultCondo.id || '')
-  const currentCondo = condominios.find(c => c.id === condoId) || defaultCondo
+  const [condoId, setCondoId] = useState(initialCondo.id || '')
+  
+  useEffect(() => {
+    if (selectedCondoName) {
+      const found = uniqueCondoList.find(c => c.nome?.trim().toLowerCase() === selectedCondoName?.trim().toLowerCase())
+      if (found) setCondoId(found.id)
+    }
+  }, [selectedCondoName, condominios.length])
 
-  // Mês de competência
-  const mesesDisponiveis = Array.from(new Set(allBoletos.map(b => b.competencia).filter(Boolean)))
-  const defaultMes = mesesDisponiveis[0] || new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '/')
-  const [competencia, setCompetencia] = useState(defaultMes)
+  const currentCondo = condominios.find(c => c.id === condoId) || initialCondo
+
+  // Mês de competência (lista dinâmica de todos os boletos do condomínio atual)
+  const boletosDoCondominio = allBoletos.filter(b => 
+    b.condominio && currentCondo?.nome && (
+      b.condominio.trim().toLowerCase() === currentCondo.nome.trim().toLowerCase()
+    )
+  )
+
+  const mesesDisponiveis = Array.from(new Set(boletosDoCondominio.map(b => b.competencia).filter(Boolean)))
+  const [competencia, setCompetencia] = useState(mesesDisponiveis[0] || 'Todas')
+
+  useEffect(() => {
+    if (mesesDisponiveis.length > 0 && !mesesDisponiveis.includes(competencia) && competencia !== 'Todas') {
+      setCompetencia(mesesDisponiveis[0])
+    }
+  }, [condoId, mesesDisponiveis.length])
 
   const [copiedKey, setCopiedKey] = useState(null)
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
 
   // Cálculos
-  const boletosDoCondoMes = allBoletos.filter(b => 
-    (b.condominio === currentCondo.nome) && 
-    (!competencia || b.competencia === competencia)
+  const boletosDoCondoMes = boletosDoCondominio.filter(b => 
+    competencia === 'Todas' || !competencia || (
+      b.competencia && b.competencia.trim().toLowerCase() === competencia.trim().toLowerCase()
+    )
   )
   const totalBoletos = boletosDoCondoMes.length
   const boletosPagos = boletosDoCondoMes.filter(b => b.status === 'Pago').length
 
   const honorarios = Number(currentCondo.honorariosAdm || 0)
-  const taxaUnit = currentCondo.discriminarTaxa ? Number(currentCondo.taxaEmissao || 3.50) : Number(currentCondo.taxaEmissao || 3.50)
+  const taxaUnit = Number(currentCondo.taxaEmissao !== undefined ? currentCondo.taxaEmissao : 3.50)
   const totalTaxas = totalBoletos * taxaUnit
   const totalGeral = honorarios + totalTaxas
 
