@@ -131,76 +131,75 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
         </div>
 
         {/* Corpo do Boleto / Fatura (Formatado para tela e folha A4) */}
-        <div id="boleto-print-area" className="p-4 sm:p-8 bg-white font-sans text-gray-900 overflow-y-auto flex-1">
+        <div id="boleto-print-area" className="p-4 sm:p-6 bg-white font-sans text-gray-900 overflow-y-auto flex-1 max-w-[760px] mx-auto w-full">
           
           {/* Cabeçalho Bancário Oficial */}
-          <div className="border-b-2 border-slate-900 pb-3 mb-4 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <img src="/logo-alpha.png" alt="Alpha Soluções Condominiais" className="w-14 h-14 object-contain rounded-xl shadow-sm bg-slate-900/5 p-1" />
+          <div className="border-b-2 border-slate-900 pb-2.5 mb-3 flex flex-row items-end justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <img src="/logo-alpha.png" alt="Alpha Soluções Condominiais" className="w-10 h-10 object-contain rounded-lg shadow-sm bg-slate-900/5 p-0.5" />
               <div>
-                <h2 className="text-base sm:text-lg font-black text-slate-900 leading-tight">ALPHA SOLUÇÕES CONDOMINIAIS LTDA</h2>
-                <p className="text-[11px] text-gray-500 font-bold">Gestão & Administração de Condomínios</p>
-                <p className="text-[10px] text-gray-600 font-mono font-bold">CNPJ: 66.643.272/0001-18</p>
+                <h2 className="text-sm sm:text-base font-black text-slate-900 leading-tight">ALPHA SOLUÇÕES CONDOMINIAIS LTDA</h2>
+                <p className="text-[10px] text-gray-500 font-bold">Gestão & Administração • CNPJ: 66.643.272/0001-18</p>
               </div>
             </div>
             <div className="text-right">
-              <span className="text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1 rounded-full uppercase tracking-wider">
+              <span className="inline-block bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider">
                 Fatura / Boleto PIX
               </span>
-              <p className="text-xs text-gray-400 font-mono mt-1">Recibo do Sacado</p>
+              <p className="text-[10px] text-gray-400 font-mono mt-0.5">Recibo do Sacado</p>
             </div>
           </div>
 
           {/* Dados do Condomínio e Morador */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-gray-200 text-xs mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-3 rounded-xl border border-gray-200 text-xs mb-3">
             <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase">Condomínio Beneficiário</span>
-              <p className="font-black text-gray-900 text-sm">{condominio?.nome || boleto.condominio || 'Condomínio Residencial'}</p>
-              <p className="text-gray-500">{condominio?.endereco || 'Endereço Cadastrado'}</p>
-              <p className="text-emerald-700 font-mono font-bold mt-1">Chave Pix: {chavePixFinal}</p>
+              <span className="text-[9px] font-bold text-gray-400 uppercase">Condomínio Beneficiário</span>
+              <p className="font-black text-gray-900 text-xs truncate">{condominio?.nome || boleto.condominio || 'Condomínio Residencial'}</p>
+              <p className="text-[10px] text-gray-500 truncate">{condominio?.endereco || 'Endereço Cadastrado'}</p>
+              <p className="text-emerald-700 font-mono text-[10px] font-bold mt-0.5 truncate">PIX: {chavePixFinal}</p>
             </div>
 
             <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase">Pagador / Morador</span>
-              <p className="font-black text-gray-900 text-sm">{boleto.morador}</p>
-              <p className="text-gray-700 font-bold">Unidade: {boleto.apt ? `Apt ${boleto.apt}` : '—'}</p>
-              <p className="text-gray-400 font-mono">Competência: {boleto.competencia || 'Mês Vigente'}</p>
+              <span className="text-[9px] font-bold text-gray-400 uppercase">Pagador / Morador</span>
+              <p className="font-black text-gray-900 text-xs truncate">{boleto.morador}</p>
+              <p className="text-gray-700 font-bold text-[10px]">Unidade: {boleto.apt ? `Apt ${boleto.apt}` : '—'}</p>
+              <p className="text-gray-500 font-mono text-[10px]">Competência: {boleto.competencia || 'Mês Vigente'}</p>
             </div>
 
-            <div className="bg-emerald-50/80 p-3 rounded-xl border border-emerald-200 flex flex-col justify-between">
-              <div>
-                <span className="text-[10px] font-black text-emerald-800 uppercase">Data de Vencimento</span>
-                <p className="text-base font-black text-emerald-900">{dataVencFormatada}</p>
+            <div className="bg-emerald-50 p-2.5 rounded-lg border border-emerald-200 flex flex-col justify-between">
+              <div className="flex justify-between items-center sm:block">
+                <span className="text-[9px] font-black text-emerald-800 uppercase">Vencimento</span>
+                <p className="text-xs sm:text-sm font-black text-emerald-900">{dataVencFormatada}</p>
               </div>
-              <div className="mt-2">
-                <span className="text-[10px] font-black text-emerald-800 uppercase">Valor Total do Documento</span>
-                <p className="text-2xl font-black text-emerald-700">R$ {valorFormatado}</p>
+              <div className="mt-1 flex justify-between items-center sm:block">
+                <span className="text-[9px] font-black text-emerald-800 uppercase">Total a Pagar</span>
+                <p className="text-base sm:text-lg font-black text-emerald-700">R$ {valorFormatado}</p>
               </div>
             </div>
           </div>
 
           {/* Demonstrativo da Taxa Condominial */}
-          <div className="border border-gray-200 rounded-2xl overflow-hidden mb-5">
-            <div className="bg-slate-100 p-2.5 px-4 font-bold text-xs text-gray-700 border-b border-gray-200 flex justify-between items-center">
+          <div className="border border-gray-200 rounded-xl overflow-hidden mb-3">
+            <div className="bg-slate-100 py-1 px-3 font-bold text-[11px] text-gray-700 border-b border-gray-200 flex justify-between items-center">
               <span>Demonstrativo de Composição da Cobrança</span>
-              {boleto.multa > 0 && <span className="text-[10px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-black">2ª Via com Juros e Multa</span>}
+              {boleto.multa > 0 && <span className="text-[9px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-bold">2ª Via</span>}
             </div>
-            <div className="p-4 divide-y divide-gray-100 text-xs">
+            <div className="p-2.5 divide-y divide-gray-100 text-xs">
               {(() => {
                 const deveDiscriminar = boleto.discriminarTaxa !== undefined ? boleto.discriminarTaxa : (condominio?.discriminarTaxa || false)
                 const taxaEmissao = deveDiscriminar ? Number(boleto.taxaEmissao || condominio?.taxaEmissao || 3.50) : 0
                 const valCheio = Number(boleto.valorOriginal || boleto.valor || 0)
                 const cotaBase = Math.max(0, valCheio - taxaEmissao)
-                const nomeTaxa = boleto.nomeTaxa || condominio?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema'
+                const nomeTaxa = boleto.nomeTaxa || condominio?.nomeTaxa || 'Serviço de Cobrança Digital'
 
                 if (taxaEmissao > 0) {
                   return (
                     <>
-                      <div className="py-2 flex justify-between">
+                      <div className="py-1 flex justify-between">
                         <span className="text-gray-700 font-medium">Taxa Condominial Ordinária ({boleto.competencia || 'Mês Atual'})</span>
                         <span className="font-bold text-gray-900">R$ {cotaBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                       </div>
-                      <div className="py-2 flex justify-between text-brand-800 bg-brand-50/50 px-2 rounded-lg">
+                      <div className="py-1 flex justify-between text-brand-800 bg-brand-50/50 px-1.5 rounded">
                         <span className="font-medium">{nomeTaxa}</span>
                         <span className="font-bold">R$ {taxaEmissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                       </div>
@@ -208,7 +207,7 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
                   )
                 } else {
                   return (
-                    <div className="py-2 flex justify-between">
+                    <div className="py-1 flex justify-between">
                       <span className="text-gray-700 font-medium">Taxa Ordinária de Condomínio ({boleto.competencia || 'Mês Atual'})</span>
                       <span className="font-bold text-gray-900">R$ {valCheio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                     </div>
@@ -216,78 +215,79 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
                 }
               })()}
               {boleto.multa > 0 && (
-                <div className="py-2 flex justify-between text-amber-800">
+                <div className="py-1 flex justify-between text-amber-800">
                   <span className="font-medium">Multa por Atraso (2%)</span>
                   <span className="font-bold">+ R$ {Number(boleto.multa).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                 </div>
               )}
               {boleto.juros > 0 && (
-                <div className="py-2 flex justify-between text-amber-800">
-                  <span className="font-medium">Juros de Mora (1% a.m. • {boleto.diasAtraso || 1} dias de atraso)</span>
+                <div className="py-1 flex justify-between text-amber-800">
+                  <span className="font-medium">Juros de Mora (1% a.m.)</span>
                   <span className="font-bold">+ R$ {Number(boleto.juros).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                 </div>
               )}
-              <div className="py-2.5 flex justify-between font-black text-sm bg-slate-50 px-2 rounded-lg mt-1 text-slate-900">
+              <div className="py-1.5 flex justify-between font-black text-xs bg-slate-50 px-2 rounded mt-0.5 text-slate-900">
                 <span>VALOR TOTAL COBRADO</span>
-                <span className="text-emerald-700">R$ {valorFormatado}</span>
+                <span className="text-emerald-700 font-mono">R$ {valorFormatado}</span>
               </div>
             </div>
           </div>
 
-          {/* ÁREA CENTRAL PIX & QR CODE */}
-          <div className="bg-gradient-to-br from-emerald-50 via-teal-50 to-slate-50 p-6 rounded-3xl border-2 border-emerald-400 shadow-sm flex flex-col md:flex-row items-center gap-6 mb-5">
+          {/* ÁREA CENTRAL PIX & QR CODE (COMPACTA) */}
+          <div className="bg-gradient-to-br from-emerald-50 via-teal-50 to-slate-50 p-3 rounded-2xl border border-emerald-300 shadow-sm flex flex-col sm:flex-row items-center gap-3.5 mb-3">
             
             {/* QR Code */}
             <div className="flex flex-col items-center shrink-0">
-              <div className="bg-white p-3 rounded-2xl border-2 border-emerald-500 shadow-md">
-                <QRCodeSVG value={pixFinal} size={150} level="H" includeMargin={false} />
+              <div className="bg-white p-2 rounded-xl border border-emerald-400 shadow-sm">
+                <QRCodeSVG value={pixFinal} size={110} level="M" includeMargin={false} />
               </div>
-              <span className="text-[10px] font-black uppercase text-emerald-800 mt-2 bg-emerald-100 px-2.5 py-0.5 rounded-full">
-                QR Code PIX Instantâneo
+              <span className="text-[9px] font-black uppercase text-emerald-800 mt-1 bg-emerald-100 px-2 py-0.5 rounded-full">
+                QR Code PIX
               </span>
             </div>
 
             {/* Instruções e Copia e Cola */}
-            <div className="flex-1 text-center md:text-left">
-              <div className="flex items-center gap-2 mb-1 justify-center md:justify-start">
-                <QrCode size={18} className="text-emerald-600" />
-                <h4 className="font-black text-gray-900 text-sm">Pague em 1 segundo via PIX no seu Banco</h4>
+            <div className="flex-1 text-center sm:text-left min-w-0 w-full">
+              <div className="flex items-center gap-1.5 mb-0.5 justify-center sm:justify-start">
+                <QrCode size={15} className="text-emerald-700" />
+                <h4 className="font-black text-gray-900 text-xs">Pague via PIX Instantâneo</h4>
               </div>
-              <p className="text-xs text-gray-600 leading-relaxed mb-3">
-                1. Abra o aplicativo do seu banco.<br />
-                2. Aponte a câmera para o QR Code ao lado <b>OU</b> clique no botão abaixo para copiar o código.
+              <p className="text-[11px] text-gray-600 leading-snug mb-2">
+                Aponte a câmera do seu banco para o QR Code ao lado ou utilize o código Copia e Cola abaixo.
               </p>
 
-              {/* Botão Copiar Pix */}
-              <button
-                onClick={handleCopyPix}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-95"
-              >
-                {copied ? <><Check size={16} /> Código PIX Copiado com Sucesso!</> : <><Copy size={16} /> 📋 Copiar Código PIX Copia e Cola</>}
-              </button>
-
-              <p className="text-[10px] text-gray-400 font-mono mt-2 truncate bg-white/80 p-1.5 rounded-lg border border-gray-200">
-                {pixFinal}
-              </p>
+              {/* Botão Copiar Pix Compacto */}
+              <div className="flex gap-2 items-center">
+                <button
+                  onClick={handleCopyPix}
+                  className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[11px] flex items-center justify-center gap-1.5 shadow-sm transition-all active:scale-95 shrink-0 print:hidden"
+                >
+                  {copied ? <><Check size={13} /> Copiado!</> : <><Copy size={13} /> Copiar PIX Copia e Cola</>}
+                </button>
+                <div className="text-[9px] text-gray-500 font-mono bg-white/90 px-2 py-1 rounded border border-gray-200 truncate flex-1 select-all">
+                  {pixFinal}
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Linha Digitável e Código de Barras Tradicional */}
-          <div className="p-4 bg-slate-50 rounded-2xl border border-gray-200">
-            <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-              <span className="font-bold">Linha Digitável / Código de Compensação:</span>
-              <span className="font-mono">{linhaDigitavel}</span>
+          <div className="p-2.5 bg-slate-50 rounded-xl border border-gray-200">
+            <div className="flex items-center justify-between text-[11px] text-gray-600 mb-1">
+              <span className="font-bold">Linha Digitável / Ficha de Compensação:</span>
+              <span className="font-mono font-bold text-slate-900 text-xs">{linhaDigitavel}</span>
             </div>
-            <div className="flex justify-center mt-3">
-              <div className="flex gap-px h-10 w-full max-w-md justify-center">
-                {Array.from({ length: 90 }).map((_, i) => (
-                  <div key={i} className="bg-gray-900" style={{ width: (i % 3 === 0 ? 3 : i % 5 === 0 ? 4 : 1.5) }} />
+            <div className="flex justify-center my-1.5">
+              <div className="flex gap-px h-7 w-full max-w-sm justify-center">
+                {Array.from({ length: 70 }).map((_, i) => (
+                  <div key={i} className="bg-gray-900" style={{ width: (i % 3 === 0 ? 2.5 : i % 5 === 0 ? 3.5 : 1.2) }} />
                 ))}
               </div>
             </div>
-            <p className="text-[10px] text-gray-400 text-center mt-2">
-              Instruções: Pagamento com compensação bancária e baixa automática. Em caso de dúvidas, contate a administração Alpha.
-            </p>
+            <div className="flex justify-between items-center text-[9px] text-gray-400 mt-1">
+              <span>Autenticação Mecânica • Baixa Automática</span>
+              <span>Alpha Soluções Condominiais</span>
+            </div>
           </div>
 
         </div>
@@ -1332,16 +1332,27 @@ export default function Boletos() {
           ))}
         </div>
 
-        {/* Filtro ADM */}
-        {(user?.role === 'Administrador' || user?.role === 'Financeiro') && uniqueCondos.length > 0 && (
-          <div className="w-full sm:w-auto flex items-center gap-2">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-0 block">Filtrar:</label>
-            <select className="input text-sm py-1.5 h-auto w-48" value={condoFilter} onChange={e=>setCondoFilter(e.target.value)}>
-              <option value="Todos">Todos os Condomínios</option>
-              {uniqueCondos.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-        )}
+        {/* Filtro ADM e Botão Repasses */}
+        <div className="w-full sm:w-auto flex flex-wrap items-center gap-2">
+          {user?.role !== 'Morador' && (
+            <button
+              onClick={() => setShowRepasses(true)}
+              className="px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 rounded-lg text-xs font-black flex items-center gap-1.5 shadow-sm transition-all"
+            >
+              <DollarSign size={14} className="text-amber-800" />
+              <span>💼 Fechamento & Repasses Alpha</span>
+            </button>
+          )}
+          {(user?.role === 'Administrador' || user?.role === 'Financeiro') && uniqueCondos.length > 0 && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-0 block">Filtrar:</label>
+              <select className="input text-sm py-1.5 h-auto w-44" value={condoFilter} onChange={e=>setCondoFilter(e.target.value)}>
+                <option value="Todos">Todos os Condomínios</option>
+                {uniqueCondos.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── ABA BOLETOS ─────────────────────────────────────────────── */}
