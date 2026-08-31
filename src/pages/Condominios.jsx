@@ -15,7 +15,7 @@ function fmtInput(v, setter) {
 function CondoModal({ data, onClose, onSave }) {
   const [form, setForm] = useState(data || {
     nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
-    honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Tarifa de Processamento Digital e Sistema'
+    honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital'
   })
   const [fundoStr, setFundoStr] = useState(data?.fundoReserva ? fmtBR(data.fundoReserva) : '')
   const [metaStr,  setMetaStr]  = useState(data?.fundoMeta    ? fmtBR(data.fundoMeta)    : '')

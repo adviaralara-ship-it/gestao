@@ -122,7 +122,7 @@ export default function RepassesAlphaModal({ isOpen, onClose, condominios = [], 
 
               <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #cbd5e1;">
                 <div>
-                  <strong style="color: #0f172a;">2. Taxa de Arrecadação Digital e Sistema Web/App</strong>
+                  <strong style="color: #0f172a;">2. Serviço de Cobrança Digital e Sistema Web/App</strong>
                   <p style="margin: 2px 0 0; font-size: 11px; color: #64748b;">Processamento e conciliação de <b>${totalBoletos} cotas/boletos</b> gerados (R$ ${taxaUnit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / unidade).</p>
                 </div>
                 <div style="font-family: monospace; font-weight: bold; font-size: 14px; color: #0f172a;">
@@ -255,20 +255,20 @@ export default function RepassesAlphaModal({ isOpen, onClose, condominios = [], 
               </div>
             </div>
 
-            {/* Card 2: Taxas de Arrecadação e Sistema */}
+            {/* Card 2: Serviço de Cobrança Digital */}
             <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-brand-300 transition-all">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded uppercase tracking-wider">
-                    Item 2 • Arrecadação Digital
+                    Item 2 • Cobrança Digital
                   </span>
-                  <h4 className="font-black text-gray-900 text-sm mt-1">Taxas de Emissão & Processamento Digital</h4>
+                  <h4 className="font-black text-gray-900 text-sm mt-1">Serviço de Cobrança Digital</h4>
                   <p className="text-xs text-gray-500 mt-0.5">
                     <b>{totalBoletos} cotas geradas</b> ({boletosPagos} pagas) x R$ {taxaUnit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} por unidade
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-gray-400 font-bold uppercase">Total Taxas</p>
+                  <p className="text-xs text-gray-400 font-bold uppercase">Total Serviços</p>
                   <p className="text-lg font-black text-emerald-700 font-mono">
                     R$ {totalTaxas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </p>

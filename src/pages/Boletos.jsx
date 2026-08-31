@@ -200,7 +200,8 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
                 const taxaEmissao = deveDiscriminar ? Number(boleto.taxaEmissao || condominio?.taxaEmissao || 3.50) : 0
                 const valCheio = Number(boleto.valorOriginal || boleto.valor || 0)
                 const cotaBase = Math.max(0, valCheio - taxaEmissao)
-                const nomeTaxa = boleto.nomeTaxa || condominio?.nomeTaxa || 'Serviço de Cobrança Digital'
+                const rawTaxa = boleto.nomeTaxa || condominio?.nomeTaxa || 'Serviço de Cobrança Digital'
+                const nomeTaxa = (rawTaxa.includes('Processamento') || rawTaxa.includes('Tarifa')) ? 'Serviço de Cobrança Digital' : rawTaxa
 
                 if (taxaEmissao > 0) {
                   return (
@@ -402,7 +403,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
   const [chavePix, setChavePix] = useState(condoSelecionado?.chave_pix || '')
   const [discriminarTaxa, setDiscriminarTaxa] = useState(condoSelecionado?.discriminarTaxa || false)
   const [taxaStr, setTaxaStr] = useState(condoSelecionado?.taxaEmissao !== undefined ? String(condoSelecionado.taxaEmissao).replace('.', ',') : '3,50')
-  const [nomeTaxa, setNomeTaxa] = useState(condoSelecionado?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema')
+  const [nomeTaxa, setNomeTaxa] = useState(condoSelecionado?.nomeTaxa || 'Serviço de Cobrança Digital')
   const [valoresCustom, setValoresCustom] = useState({})
 
   useEffect(() => {
@@ -411,7 +412,10 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
       setChavePix(c.chave_pix || '')
       if (c.discriminarTaxa !== undefined) setDiscriminarTaxa(c.discriminarTaxa)
       if (c.taxaEmissao !== undefined) setTaxaStr(String(c.taxaEmissao).replace('.', ','))
-      if (c.nomeTaxa) setNomeTaxa(c.nomeTaxa)
+      if (c.nomeTaxa) {
+        const n = c.nomeTaxa.includes('Processamento') || c.nomeTaxa.includes('Tarifa') ? 'Serviço de Cobrança Digital' : c.nomeTaxa
+        setNomeTaxa(n)
+      }
     }
   }, [condoNome, condominios])
 
