@@ -4,50 +4,78 @@ import { Plus, Edit2, Trash2, Search, CheckCircle, AlertTriangle } from 'lucide-
 export default function ContasReceber({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
   const [search, setSearch] = useState('')
   const [filterMes, setFilterMes] = useState('')
+  const [statusFilter, setStatusFilter] = useState('Todas')
 
-  // Filtrar apenas Receitas Pendentes (Contas a Receber)
-  let contasReceber = lancamentos.filter(t => t.tipo === 'Receita' && t.status === 'Pendente')
+  // Filtrar Receitas
+  let contasReceber = lancamentos.filter(t => t.tipo === 'Receita')
 
+  if (statusFilter !== 'Todas') {
+    contasReceber = contasReceber.filter(t => t.status === statusFilter)
+  }
   if (filterMes) {
     contasReceber = contasReceber.filter(t => t.data?.startsWith(filterMes))
   }
   if (search) {
-    contasReceber = contasReceber.filter(t => (t.descricao || '').toLowerCase().includes(search.toLowerCase()))
+    contasReceber = contasReceber.filter(t => (t.descricao || '').toLowerCase().includes(search.toLowerCase()) || (t.categoria || '').toLowerCase().includes(search.toLowerCase()))
   }
 
-  // Ordenar por data de vencimento
-  contasReceber.sort((a, b) => new Date(a.data) - new Date(b.data))
+  // Ordenar por data
+  contasReceber.sort((a, b) => new Date(b.data) - new Date(a.data))
 
-  const totalReceber = contasReceber.reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
-  const hoje = new Date()
+  const totalPendente = lancamentos.filter(t => t.tipo === 'Receita' && t.status === 'Pendente').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
+  const totalRecebido = lancamentos.filter(t => t.tipo === 'Receita' && t.status === 'Recebido').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
+  const totalExibido = contasReceber.reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   const marcarComoRecebido = async (t) => {
-    if (window.confirm(`Confirmar o recebimento de "${t.descricao}"?`)) {
-      await updateLancamento(t.id, { ...t, status: 'Recebido' })
+    const novoStatus = t.status === 'Recebido' ? 'Pendente' : 'Recebido'
+    const acao = novoStatus === 'Recebido' ? 'Confirmar recebimento' : 'Voltar para Pendente'
+    if (window.confirm(`${acao} de "${t.descricao}"?`)) {
+      await updateLancamento(t.id, { ...t, status: novoStatus })
     }
   }
 
   return (
     <div className="flex flex-col gap-4 animate-fade-in">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
         <div>
-          <h3 className="text-xl font-bold text-gray-800">Contas a Receber (Inadimplência)</h3>
-          <p className="text-sm text-gray-500">Total a receber: <span className="font-bold text-emerald-600">R$ {fmt(totalReceber)}</span></p>
+          <h3 className="text-xl font-bold text-gray-800">Contas a Receber (Receitas)</h3>
+          <p className="text-xs sm:text-sm text-gray-500">
+            A Receber: <span className="font-bold text-amber-600">R$ {fmt(totalPendente)}</span> &nbsp;•&nbsp; 
+            Recebido: <span className="font-bold text-emerald-600">R$ {fmt(totalRecebido)}</span> &nbsp;•&nbsp; 
+            Exibindo: <span className="font-black text-gray-900">R$ {fmt(totalExibido)}</span> ({contasReceber.length} lançamentos)
+          </p>
         </div>
-        <button onClick={() => setModalLanc({ tipo: 'Receita', status: 'Pendente', descricao: '', categoria: '', valor: '', data: '' })} className="btn-primary">
-          <Plus size={16} /> Nova Conta a Receber
+        <button onClick={() => setModalLanc({ tipo: 'Receita', status: 'Pendente', descricao: '', categoria: '', valor: '', data: new Date().toISOString().split('T')[0] })} className="btn-primary shrink-0">
+          <Plus size={16} /> Nova Receita
         </button>
       </div>
 
-      <div className="flex gap-3 mt-2">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
+        <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input className="input pl-9" placeholder="Buscar cobrança..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input className="input pl-9 text-xs" placeholder="Buscar receita ou morador..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <input type="month" className="input w-auto" value={filterMes} onChange={e => setFilterMes(e.target.value)} />
-        <button onClick={() => setFilterMes('')} className="text-xs text-brand-600 hover:underline px-2">Ver Todas</button>
+
+        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 text-xs">
+          {['Todas', 'Pendente', 'Recebido'].map(st => (
+            <button
+              key={st}
+              onClick={() => setStatusFilter(st)}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${statusFilter === st ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              {st === 'Todas' ? 'Todas as Receitas' : st === 'Pendente' ? 'Pendentes' : 'Recebidas'}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input type="month" className="input text-xs w-auto py-1.5" value={filterMes} onChange={e => setFilterMes(e.target.value)} />
+          {filterMes && (
+            <button onClick={() => setFilterMes('')} className="text-xs text-brand-600 font-bold hover:underline">Ver Histórico Todo</button>
+          )}
+        </div>
       </div>
 
       <div className="card p-0 overflow-hidden mt-2">
