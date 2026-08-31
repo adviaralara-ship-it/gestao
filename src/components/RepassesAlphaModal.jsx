@@ -214,8 +214,8 @@ export default function RepassesAlphaModal({ isOpen, onClose, condominios = [], 
                 <Calendar size={13} className="text-brand-600"/> Competência / Mês:
               </label>
               <select className="input text-xs font-bold text-gray-900 bg-white" value={competencia} onChange={e => setCompetencia(e.target.value)}>
+                <option value="Todas">Todas as Competências</option>
                 {mesesDisponiveis.map(m => <option key={m} value={m}>{m}</option>)}
-                {!mesesDisponiveis.includes(defaultMes) && <option value={defaultMes}>{defaultMes}</option>}
               </select>
             </div>
           </div>
