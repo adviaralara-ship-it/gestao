@@ -1002,16 +1002,31 @@ export default function Dashboard() {
     return list
   }, [contasVencidas, statsContratos, statsCotacoes, statsManutencoes, ocFiltradas])
 
+  const saudacaoHora = useMemo(() => {
+    const hora = new Date().getHours()
+    if (hora >= 5 && hora < 12) return 'Bom dia'
+    if (hora >= 12 && hora < 18) return 'Boa tarde'
+    return 'Boa noite'
+  }, [])
+
+  const dataHojeFormatada = useMemo(() => {
+    return new Intl.DateTimeFormat('pt-BR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }).format(new Date())
+  }, [])
+
   return (
     <div className="flex flex-col gap-6 animate-fade-in max-w-7xl mx-auto pb-12">
       {/* Header Central de Comando */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-pale-300 shadow-sm">
         <div>
           <h2 className="text-2xl font-black bg-gradient-to-r from-brand-700 to-brand-500 bg-clip-text text-transparent">
-            Bom dia, {user?.nome?.split(' ')[0] || 'Gestor'}.
+            {saudacaoHora}, {user?.nome?.split(' ')[0] || 'Gestor'}.
           </h2>
           <p className="text-gray-500 font-medium text-xs md:text-sm mt-0.5">
-            Central de Comando e Decisões • {format(new Date(), "dd 'de' MMMM 'de' yyyy")}
+            Central de Comando e Decisões • {dataHojeFormatada}
           </p>
         </div>
 
