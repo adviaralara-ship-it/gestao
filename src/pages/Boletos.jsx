@@ -128,10 +128,11 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
             <div style="background: #f1f5f9; padding: 8px 12px; font-weight: bold; font-size: 11px; color: #475569; text-transform: uppercase;">Composição da Taxa Condominial</div>
             <div style="padding: 10px 14px; font-size: 12px;">
               ${(() => {
-                const taxaEmissao = (condominio?.discriminarTaxa && Number(condominio?.taxaEmissao || 0) > 0) ? Number(condominio.taxaEmissao) : 0
+                const deveDiscriminar = boleto.discriminarTaxa !== undefined ? boleto.discriminarTaxa : (condominio?.discriminarTaxa || false)
+                const taxaEmissao = deveDiscriminar ? Number(boleto.taxaEmissao || condominio?.taxaEmissao || 3.50) : 0
                 const valCheio = Number(boleto.valorOriginal || boleto.valor || 0)
                 const cotaBase = Math.max(0, valCheio - taxaEmissao)
-                const nomeTaxa = condominio?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema'
+                const nomeTaxa = boleto.nomeTaxa || condominio?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema'
 
                 if (taxaEmissao > 0) {
                   return `
@@ -290,10 +291,11 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
             </div>
             <div className="p-4 divide-y divide-gray-100 text-xs">
               {(() => {
-                const taxaEmissao = (condominio?.discriminarTaxa && Number(condominio?.taxaEmissao || 0) > 0) ? Number(condominio.taxaEmissao) : 0
+                const deveDiscriminar = boleto.discriminarTaxa !== undefined ? boleto.discriminarTaxa : (condominio?.discriminarTaxa || false)
+                const taxaEmissao = deveDiscriminar ? Number(boleto.taxaEmissao || condominio?.taxaEmissao || 3.50) : 0
                 const valCheio = Number(boleto.valorOriginal || boleto.valor || 0)
                 const cotaBase = Math.max(0, valCheio - taxaEmissao)
-                const nomeTaxa = condominio?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema'
+                const nomeTaxa = boleto.nomeTaxa || condominio?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema'
 
                 if (taxaEmissao > 0) {
                   return (
@@ -311,7 +313,7 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
                 } else {
                   return (
                     <div className="py-2 flex justify-between">
-                      <span className="text-gray-700 font-medium">Taxa Condominial Ordinária ({boleto.competencia || 'Mês Atual'})</span>
+                      <span className="text-gray-700 font-medium">Taxa Ordinária de Condomínio ({boleto.competencia || 'Mês Atual'})</span>
                       <span className="font-bold text-gray-900">R$ {valCheio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                     </div>
                   )
@@ -492,11 +494,19 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
   
   const condoSelecionado = condominios.find(c => c.nome === condoNome)
   const [chavePix, setChavePix] = useState(condoSelecionado?.chave_pix || '')
+  const [discriminarTaxa, setDiscriminarTaxa] = useState(condoSelecionado?.discriminarTaxa || false)
+  const [taxaStr, setTaxaStr] = useState(condoSelecionado?.taxaEmissao !== undefined ? String(condoSelecionado.taxaEmissao).replace('.', ',') : '3,50')
+  const [nomeTaxa, setNomeTaxa] = useState(condoSelecionado?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema')
   const [valoresCustom, setValoresCustom] = useState({})
 
   useEffect(() => {
     const c = condominios.find(c => c.nome === condoNome)
-    if (c) setChavePix(c.chave_pix || '')
+    if (c) {
+      setChavePix(c.chave_pix || '')
+      if (c.discriminarTaxa !== undefined) setDiscriminarTaxa(c.discriminarTaxa)
+      if (c.taxaEmissao !== undefined) setTaxaStr(String(c.taxaEmissao).replace('.', ','))
+      if (c.nomeTaxa) setNomeTaxa(c.nomeTaxa)
+    }
   }, [condoNome, condominios])
 
   // Moradores filtrados por condomínio (Apenas Titulares/Responsáveis: Proprietário ou Inquilino, excluindo Dependentes)
@@ -529,6 +539,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
 
   const handleGerar = () => {
     const valorPadraoNum = parseFloat(valorStr.replace(/\./g, '').replace(',', '.')) || 0
+    const taxaNum = parseFloat(taxaStr.replace(/\./g, '').replace(',', '.')) || 0
     if (valorPadraoNum <= 0) {
       alert("Por favor, informe um valor válido para a taxa condominial padrão.")
       return
@@ -558,6 +569,9 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
           chave_pix: chavePix,
           status: 'Pendente',
           emitido: true,
+          discriminarTaxa: discriminarTaxa,
+          taxaEmissao: discriminarTaxa ? taxaNum : 0,
+          nomeTaxa: nomeTaxa,
           linha: gerarLinhaDigitavel(m.apt || '101', valFinal, vencimento),
           pix_emv: generateStaticPix(chavePix, valFinal, condoNome, "BR"),
           _createdAt: new Date().toISOString()
@@ -609,6 +623,37 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
               <label className="label text-xs font-black">Data de Vencimento *</label>
               <input type="date" className="input text-xs font-bold w-full" value={vencimento} onChange={e => setVencimento(e.target.value)} />
             </div>
+          </div>
+
+          {/* Opção de Taxa Discriminada */}
+          <div className="p-3.5 bg-brand-50/70 border border-brand-200 rounded-2xl flex flex-col gap-2">
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={discriminarTaxa}
+                onChange={e => setDiscriminarTaxa(e.target.checked)}
+                className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer shrink-0"
+              />
+              <span className="text-xs font-black text-brand-950">
+                Discriminar Taxa de Processamento Digital / Sistema no Boleto (R$ {taxaStr})
+              </span>
+            </label>
+            <p className="text-[11px] text-gray-500 ml-6 leading-relaxed">
+              Ao marcar, o boleto dividirá o valor entre Cota Ordinária e a Taxa Digital. Se desmarcado, sai como valor único normal.
+            </p>
+
+            {discriminarTaxa && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 ml-6 bg-white p-3 rounded-xl border border-brand-200">
+                <div>
+                  <label className="label text-[10px] font-bold">Valor da Taxa por Boleto (R$)</label>
+                  <input className="input text-xs font-bold text-emerald-700" value={taxaStr} onChange={e => setTaxaStr(e.target.value)} placeholder="3,50" />
+                </div>
+                <div>
+                  <label className="label text-[10px] font-bold">Descrição da Taxa no Boleto</label>
+                  <input className="input text-xs text-gray-800" value={nomeTaxa} onChange={e => setNomeTaxa(e.target.value)} placeholder="Tarifa de Processamento Digital e Sistema" />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Lista de Moradores com Checkboxes e Edição de Valor Individual */}
@@ -816,10 +861,11 @@ export default function Boletos() {
               <div style="background: #f1f5f9; padding: 8px 12px; font-weight: bold; font-size: 11px; color: #475569; text-transform: uppercase;">Composição da Taxa Condominial</div>
               <div style="padding: 10px 14px; font-size: 12px;">
                 ${(() => {
-                  const taxaEmissao = (condoDoc?.discriminarTaxa && Number(condoDoc?.taxaEmissao || 0) > 0) ? Number(condoDoc.taxaEmissao) : 0
+                  const deveDiscriminar = b.discriminarTaxa !== undefined ? b.discriminarTaxa : (condoDoc?.discriminarTaxa || false)
+                  const taxaEmissao = deveDiscriminar ? Number(b.taxaEmissao || condoDoc?.taxaEmissao || 3.50) : 0
                   const valCheio = Number(b.valor || 0)
                   const cotaBase = Math.max(0, valCheio - taxaEmissao)
-                  const nomeTaxa = condoDoc?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema'
+                  const nomeTaxa = b.nomeTaxa || condoDoc?.nomeTaxa || 'Tarifa de Processamento Digital e Sistema'
 
                   if (taxaEmissao > 0) {
                     return `
