@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { Shield, User, Lock, Mail, ArrowRight, CheckCircle, Phone, Building, DoorOpen, Layers, Check } from 'lucide-react'
-import { collection, addDoc, serverTimestamp, getDocs, query, where } from 'firebase/firestore'
-import { db } from '../firebase'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { db, secondaryAuth } from '../firebase'
+import { createUserWithEmailAndPassword, signOut } from 'firebase/auth'
 import { sindicoPerms, porteiroPerms, moradorPerms, conselhoPerms } from '../context/AuthContext'
 
 const rolesOptions = [
@@ -51,48 +52,89 @@ export default function Cadastro() {
 
     setLoading(true)
     try {
-      const q = query(collection(db,'usuarios'),where('email','==',form.email.toLowerCase().trim()))
-      const snap = await getDocs(q)
-      if (!snap.empty) { setError('Este e-mail já está cadastrado.'); setLoading(false); return }
+      const emailClean = form.email.toLowerCase().trim()
+
+      // 1. Cria conta no Firebase Authentication
+      try {
+        await createUserWithEmailAndPassword(secondaryAuth, emailClean, form.senha)
+        await signOut(secondaryAuth)
+      } catch (authErr) {
+        if (authErr.code === 'auth/email-already-in-use') {
+          setError('Este e-mail já possui uma conta no sistema. Faça login ou solicite recuperação de senha.')
+          setLoading(false)
+          return
+        } else if (authErr.code === 'auth/weak-password') {
+          setError('A senha deve ter pelo menos 6 caracteres.')
+          setLoading(false)
+          return
+        } else if (authErr.code === 'auth/invalid-email') {
+          setError('O endereço de e-mail informado é inválido.')
+          setLoading(false)
+          return
+        } else {
+          console.warn('Aviso Auth:', authErr)
+        }
+      }
 
       const localInfo = requiresLocation
-        ? { condominio:form.condominio.trim().toUpperCase(), bloco:form.bloco.trim(), unidade:form.unidade.trim() }
-        : { condominio:'', bloco:'', unidade:'' }
+        ? { condominio: form.condominio.trim().toUpperCase(), bloco: form.bloco.trim(), unidade: form.unidade.trim() }
+        : { condominio: '', bloco: '', unidade: '' }
 
       const rolePerms = form.role === 'Síndico' || form.role === 'Subsíndico' ? sindicoPerms : 
                         form.role === 'Conselheiro' || form.role === 'Conselho' ? conselhoPerms :
                         form.role === 'Porteiro' ? porteiroPerms : moradorPerms
 
-      await addDoc(collection(db,'usuarios'),{
-        nome:form.nome.trim(), email:form.email.toLowerCase().trim(),
-        telefone:form.telefone.trim(),
-        senha: form.senha, // Salva temporariamente para migração na primeira vez que logar
-        ...localInfo, role:form.role,
+      // 2. Registra na coleção de usuários
+      await addDoc(collection(db, 'usuarios'), {
+        nome: form.nome.trim(),
+        email: emailClean,
+        telefone: form.telefone.trim(),
+        cpf: form.cpf.replace(/\D/g, ''),
+        senha: form.senha,
+        ...localInfo,
+        role: form.role,
         permissoes: rolePerms,
-        ativo:true, _createdAt:serverTimestamp()
+        ativo: true,
+        origem: 'auto-cadastro',
+        _createdAt: serverTimestamp()
       })
 
+      // 3. Registra na coleção de moradores
       if (addToMoradores.includes(form.role)) {
-        await addDoc(collection(db,'moradores'),{
-          nome:form.nome.trim(), email:form.email.toLowerCase().trim(),
-          tel:form.telefone.trim(), condominio:localInfo.condominio,
-          bloco:localInfo.bloco, apt:localInfo.unidade, cpf:form.cpf.replace(/\D/g,''),
-          status:form.role==='Morador'?'Proprietário':form.role,
-          origem:'auto-cadastro', _createdAt:serverTimestamp()
+        await addDoc(collection(db, 'moradores'), {
+          nome: form.nome.trim(),
+          email: emailClean,
+          tel: form.telefone.trim(),
+          condominio: localInfo.condominio,
+          bloco: localInfo.bloco,
+          apt: localInfo.unidade,
+          cpf: form.cpf.replace(/\D/g, ''),
+          status: form.role === 'Morador' ? 'Proprietário' : form.role,
+          origem: 'auto-cadastro',
+          _createdAt: serverTimestamp()
         })
       }
 
+      // 4. Notifica administração
       const aptLabel = localInfo.unidade
-        ? ` – ${localInfo.condominio}${localInfo.bloco?` Bl.${localInfo.bloco}`:''} Apt ${localInfo.unidade}` : ''
+        ? ` – ${localInfo.condominio}${localInfo.bloco ? ` Bl.${localInfo.bloco}` : ''} Apt ${localInfo.unidade}` : ''
 
-      await addDoc(collection(db,'notificacoes'),{
-        text:`Novo ${form.role} cadastrado no sistema – ${form.nome.trim()}${aptLabel}`,
-        time:new Date().toISOString(), tipo:'morador', lida:false, _createdAt:serverTimestamp()
+      await addDoc(collection(db, 'notificacoes'), {
+        text: `Novo ${form.role} cadastrado no sistema – ${form.nome.trim()}${aptLabel}`,
+        time: new Date().toISOString(),
+        tipo: 'morador',
+        lida: false,
+        condominio: localInfo.condominio,
+        _createdAt: serverTimestamp()
       })
 
       setSuccess(true)
-    } catch { setError('Erro ao cadastrar. Tente novamente.') }
-    setLoading(false)
+    } catch (err) {
+      console.error('Erro no cadastro:', err)
+      setError(err.message || 'Erro ao cadastrar. Tente novamente.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (success) return (
