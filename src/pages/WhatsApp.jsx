@@ -70,7 +70,8 @@ export default function WhatsApp() {
     setMoradorId(id)
     const m = moradores.find(x => x.id === id)
     if (m) {
-      const tel = m.telefone || m.whatsapp || m.celular || m.fone || ''
+      const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || ''
+      const tel = String(rawTel).replace(/\D/g, '')
       setTelefoneLivre(tel)
       setNomeDestino(m.nome || '')
       setCondoDestino(m.condominio || m.condominioNome || '')
@@ -156,7 +157,7 @@ export default function WhatsApp() {
 
   const handleSendLote = async () => {
     const listaAlvo = moradores.filter(m => {
-      const temTel = Boolean(m.telefone || m.whatsapp || m.celular || m.fone)
+      const temTel = Boolean(m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero)
       const matchCondo = condoLote === 'Todos' || m.condominio === condoLote || m.condominioNome === condoLote
       return temTel && matchCondo
     })
@@ -178,7 +179,8 @@ export default function WhatsApp() {
     setSending(true)
     let enviados = 0
     for (const m of listaAlvo) {
-      const tel = (m.telefone || m.whatsapp || m.celular || m.fone).replace(/\D/g, '')
+      const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || ''
+      const tel = String(rawTel).replace(/\D/g, '')
       let msgPersonalizada = mensagem
         .replace(/{nome}/g, m.nome || 'Morador(a)')
         .replace(/{condominio}/g, m.condominio || condoLote)
