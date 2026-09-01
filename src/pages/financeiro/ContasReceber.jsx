@@ -119,13 +119,23 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
                       <td className="table-cell font-medium text-gray-800">{t.descricao}</td>
                       <td className="table-cell text-gray-500 text-sm">{t.categoria}</td>
                       <td className="table-cell font-bold text-emerald-500">R$ {fmt(t.valor)}</td>
-                      <td className="table-cell"><span className="badge-yellow">Pendente</span></td>
+                      <td className="table-cell">
+                        <span className={t.status === 'Recebido' ? 'badge-green font-bold' : 'badge-yellow font-bold'}>
+                          {t.status || 'Pendente'}
+                        </span>
+                      </td>
                       <td className="table-cell">
                         <div className="flex gap-2">
                           {t.arquivoUrl && <a href={t.arquivoUrl} target="_blank" rel="noreferrer" title="Ver Anexo" className="p-1.5 rounded-lg bg-cream-100 hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-all">📄</a>}
-                          <button onClick={() => marcarComoRecebido(t)} title="Marcar como Recebido" className="p-1.5 rounded-lg bg-green-100 hover:bg-green-200 text-green-600 transition-all"><CheckCircle size={14} /></button>
-                          <button onClick={() => setModalLanc(t)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={14} /></button>
-                          <button onClick={() => deleteLancamento(t.id)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={14} /></button>
+                          <button 
+                            onClick={() => marcarComoRecebido(t)} 
+                            title={t.status === 'Recebido' ? 'Marcar como Pendente' : 'Confirmar Recebimento'} 
+                            className={`p-1.5 rounded-lg transition-all ${t.status === 'Recebido' ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700 font-bold' : 'bg-cream-100 hover:bg-green-100 text-gray-400 hover:text-green-600'}`}
+                          >
+                            <CheckCircle size={14} />
+                          </button>
+                          <button onClick={() => setModalLanc(t)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all" title="Editar"><Edit2 size={14} /></button>
+                          <button onClick={() => deleteLancamento(t.id)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all" title="Excluir"><Trash2 size={14} /></button>
                         </div>
                       </td>
                     </tr>
