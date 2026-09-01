@@ -4,6 +4,7 @@ import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import RepassesAlphaModal from '../components/RepassesAlphaModal'
 import { CurrencyInput } from '../utils/currency'
+import { registrarLogAuditoria } from '../utils/audit'
 
 // Importando as novas abas
 import DashboardFinanceiro from './financeiro/DashboardFinanceiro'
@@ -220,6 +221,7 @@ export default function Financeiro() {
       delete clean.recorrente
       delete clean.qtdMeses
       await updateLancamento(form.id, clean)
+      await registrarLogAuditoria(user, 'EDITOU', `Editou o lançamento "${clean.descricao}" (R$ ${clean.valor}) no condomínio "${clean.condominio || 'Geral'}"`, 'Financeiro')
     } else {
       if (form.recorrente && form.qtdMeses && Number(form.qtdMeses) > 1) {
         const baseDate = new Date(form.data + 'T12:00:00Z') // T12 to avoid timezone shift
@@ -236,19 +238,33 @@ export default function Financeiro() {
           
           await addLancamento(parcelaClean)
         }
+        await registrarLogAuditoria(user, 'CRIOU', `Criou lançamento recorrente (${qtd} parcelas) "${clean.descricao}" (R$ ${clean.valor})`, 'Financeiro')
       } else {
         delete clean.recorrente
         delete clean.qtdMeses
         await addLancamento(clean)
+        await registrarLogAuditoria(user, 'CRIOU', `Criou novo lançamento "${clean.descricao}" (R$ ${clean.valor}) no condomínio "${clean.condominio || 'Geral'}"`, 'Financeiro')
       }
     }
     setModalLanc(null)
   }
 
+  const handleDeleteLanc = async (id, item) => {
+    if (window.confirm(`Deseja realmente excluir o lançamento "${item?.descricao || 'selecionado'}"?`)) {
+      await deleteLancamento(id)
+      await registrarLogAuditoria(user, 'EXCLUIU', `Excluiu o lançamento "${item?.descricao || id}" (R$ ${item?.valor || 0})`, 'Financeiro')
+    }
+  }
+
   const handleSaveConta = async (form) => {
     const clean = { ...form, saldo: Number(form.saldo) }
-    if (form.id) await updateConta(form.id, clean)
-    else await addConta(clean)
+    if (form.id) {
+      await updateConta(form.id, clean)
+      await registrarLogAuditoria(user, 'EDITOU', `Atualizou saldo da conta bancária "${clean.nome}" para R$ ${clean.saldo}`, 'Financeiro')
+    } else {
+      await addConta(clean)
+      await registrarLogAuditoria(user, 'CRIOU', `Cadastrou nova conta bancária "${clean.nome}"`, 'Financeiro')
+    }
     setModalConta(null)
   }
 

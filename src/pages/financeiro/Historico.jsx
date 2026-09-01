@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 import { Search, Edit2, Trash2, Download } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import MonthRangeFilter from '../../components/MonthRangeFilter'
 
 export default function Historico({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
   const { user } = useAuth()
@@ -10,23 +11,31 @@ export default function Historico({ lancamentos, setModalLanc, deleteLancamento,
   const searchParams = new URLSearchParams(window.location.search)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState(searchParams.get('tipo') || 'Todos')
-  const [mesFiltro, setMesFiltro] = useState(searchParams.get('mes') || '')
+  const [mesDe, setMesDe] = useState(searchParams.get('mes') || '')
+  const [mesAte, setMesAte] = useState('')
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const statusBadge = (s) => ({ Recebido: 'badge-green', Pago: 'badge-blue', Pendente: 'badge-yellow', 'Aguardando Aprovação': 'bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-[10px] font-bold border border-orange-200' }[s] || 'badge-blue')
 
   const filtered = lancamentos.filter(t => {
-    const matchSearch = (t.descricao || '').toLowerCase().includes(search.toLowerCase())
+    const matchSearch = (t.descricao || '').toLowerCase().includes(search.toLowerCase()) || (t.categoria || '').toLowerCase().includes(search.toLowerCase())
     const matchFilter = filter === 'Todos' || t.tipo === filter
-    const matchMes = mesFiltro === '' || t.data?.startsWith(mesFiltro)
-    return matchSearch && matchFilter && matchMes
+    let matchPeriodo = true
+    const mes = t.data?.substring(0, 7)
+    if (mesDe && mesAte) {
+      matchPeriodo = mes >= mesDe && mes <= mesAte
+    } else if (mesDe) {
+      matchPeriodo = mes >= mesDe
+    } else if (mesAte) {
+      matchPeriodo = mes <= mesAte
+    }
+    return matchSearch && matchFilter && matchPeriodo
   }).sort((a, b) => new Date(b.data) - new Date(a.data)) // Ordenar do mais recente para o mais antigo
 
   const totalReceitas = filtered.filter(t => t.tipo === 'Receita').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
   const totalDespesas = filtered.filter(t => t.tipo === 'Despesa').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
   const saldoTotal = totalReceitas - totalDespesas
 
-  
   const gerarBalancete = () => {
     const doc = new jsPDF()
     const pageWidth = doc.internal.pageSize.width
@@ -35,15 +44,15 @@ export default function Historico({ lancamentos, setModalLanc, deleteLancamento,
     doc.setTextColor(3, 22, 56)
     doc.text('Balancete Discriminado de Transparencia', pageWidth / 2, 20, { align: 'center' })
     
+    const periodoTexto = (mesDe && mesAte) ? `${mesDe.split('-').reverse().join('/')} até ${mesAte.split('-').reverse().join('/')}` : (mesDe ? `A partir de ${mesDe.split('-').reverse().join('/')}` : 'Historico Geral')
     doc.setFontSize(14)
     doc.setTextColor(100)
-    doc.text(`Mes de Referencia: ${mesFiltro ? mesFiltro.split('-').reverse().join('/') : 'Historico Geral'}`, pageWidth / 2, 30, { align: 'center' })
+    doc.text(`Periodo: ${periodoTexto}`, pageWidth / 2, 30, { align: 'center' })
     
     doc.setFontSize(12)
     doc.setTextColor(50)
     doc.text(`Total Arrecadado (Receitas): R$ ${fmt(totalReceitas)}`, 14, 50)
     doc.text(`Total Gasto (Despesas): R$ ${fmt(totalDespesas)}`, 14, 60)
-    // PROPOSITALMENTE NÃO MOSTRAR SALDO FINAL AQUI
     
     const tableData = filtered.map(t => [
       t.data ? t.data.split('-').reverse().join('/') : '-',
@@ -67,7 +76,7 @@ export default function Historico({ lancamentos, setModalLanc, deleteLancamento,
       }
     })
     
-    doc.save(`Balancete_Transparencia_${mesFiltro || 'Geral'}.pdf`)
+    doc.save(`Balancete_Transparencia_${mesDe || 'Geral'}.pdf`)
   }
 
   return (
@@ -79,30 +88,31 @@ export default function Historico({ lancamentos, setModalLanc, deleteLancamento,
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 mt-2">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input className="input pl-9" placeholder="Buscar lançamento..." value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <div className="flex gap-2 items-center flex-wrap">
-          <input type="month" className="input py-2 w-auto" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} />
-          <button onClick={() => setMesFiltro('')} className="text-xs text-brand-600 hover:underline mr-2 hidden sm:block">Mês Atual</button>
+      <div className="flex flex-col gap-2 mt-2">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input pl-9" placeholder="Buscar lançamento por descrição ou categoria..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <div className="flex gap-2 items-center flex-wrap">
+            {['Todos', 'Receita', 'Despesa'].map(f => (
+              <button 
+                key={f} 
+                onClick={() => setFilter(f)} 
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === f ? 'bg-brand-600 text-white' : 'bg-white border border-cream-400 text-gray-500 hover:text-brand-600'}`}
+              >
+                {f}
+              </button>
+            ))}
           
-          {['Todos', 'Receita', 'Despesa'].map(f => (
-            <button 
-              key={f} 
-              onClick={() => setFilter(f)} 
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${filter === f ? 'bg-brand-600 text-white' : 'bg-white border border-cream-400 text-gray-500 hover:text-brand-600'}`}
-            >
-              {f}
+            <button onClick={gerarBalancete} className="px-4 py-2 rounded-xl text-sm font-medium bg-emerald-600 text-white flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-sm">
+              <Download size={16} /> Balancete PDF
             </button>
-          ))}
-        
-          <button onClick={gerarBalancete} className="px-4 py-2 rounded-xl text-sm font-medium bg-brand-600 text-white flex items-center gap-2 hover:bg-brand-700 transition-all ml-4">
-            <Download size={16} /> Balancete PDF
-          </button>
+          </div>
         </div>
 
+        {/* Filtro De ... Até ... */}
+        <MonthRangeFilter mesDe={mesDe} setMesDe={setMesDe} mesAte={mesAte} setMesAte={setMesAte} />
       </div>
 
       <div className="card p-0 overflow-hidden mt-2">

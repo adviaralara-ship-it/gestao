@@ -1,8 +1,14 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { Wallet, TrendingUp, TrendingDown, DollarSign, Activity, AlertTriangle, ShieldCheck } from 'lucide-react'
+import MonthRangeFilter from '../../components/MonthRangeFilter'
 
 export default function DashboardFinanceiro({ lancamentos, contas }) {
+  const hoje = new Date()
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`
+  const [mesDe, setMesDe] = useState(mesAtual)
+  const [mesAte, setMesAte] = useState(mesAtual)
+
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   // 1. Saldo em Caixa (Soma das contas correntes/poupança)
@@ -15,36 +21,41 @@ export default function DashboardFinanceiro({ lancamentos, contas }) {
   // 3. Capital de Giro = Ativo Circulante (Caixa + Receber) - Passivo Circulante (Pagar)
   const capitalDeGiro = saldoCaixa + receberPendente - pagarPendente
 
-  // 4. Lançamentos Realizados (Recebidos/Pagos) do mês atual para Margens
-  const hoje = new Date()
-  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`
-  const lancamentosMes = lancamentos.filter(t => t.data?.startsWith(mesAtual))
+  // 4. Lançamentos Realizados no período selecionado (De ... Até ...)
+  const lancamentosPeriodo = lancamentos.filter(t => {
+    if (!t.data) return false
+    const mes = t.data.substring(0, 7)
+    if (mesDe && mesAte) return mes >= mesDe && mes <= mesAte
+    if (mesDe) return mes >= mesDe
+    if (mesAte) return mes <= mesAte
+    return true
+  })
   
-  const receitasMes = lancamentosMes.filter(t => t.tipo === 'Receita' && t.status === 'Recebido').reduce((acc, c) => acc + Number(c.valor || 0), 0)
-  const despesasMes = lancamentosMes.filter(t => t.tipo === 'Despesa' && t.status === 'Pago').reduce((acc, c) => acc + Number(c.valor || 0), 0)
+  const receitasMes = lancamentosPeriodo.filter(t => t.tipo === 'Receita' && t.status === 'Recebido').reduce((acc, c) => acc + Number(c.valor || 0), 0)
+  const despesasMes = lancamentosPeriodo.filter(t => t.tipo === 'Despesa' && t.status === 'Pago').reduce((acc, c) => acc + Number(c.valor || 0), 0)
   const lucroMes = receitasMes - despesasMes
 
   // Margem de Lucro = (Lucro Líquido / Receitas) * 100
   const margemLucro = receitasMes > 0 ? (lucroMes / receitasMes) * 100 : 0
-  // Margem de Contribuição: Em condomínios, podemos simplificar como (Receitas - Despesas Variáveis). Como não temos variável/fixo explícito, vamos exibir a proporção da sobra sobre a receita.
   const margemContribuicao = receitasMes > 0 ? ((receitasMes - despesasMes) / receitasMes) * 100 : 0
 
   // Gráfico de Despesas (Pie)
-  const despesasPorCategoria = lancamentosMes.filter(t => t.tipo === 'Despesa').reduce((acc, t) => {
+  const despesasPorCategoria = lancamentosPeriodo.filter(t => t.tipo === 'Despesa').reduce((acc, t) => {
     acc[t.categoria || 'Outros'] = (acc[t.categoria || 'Outros'] || 0) + Number(t.valor || 0)
     return acc
   }, {})
   const chartDataDespesas = Object.entries(despesasPorCategoria).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value)
   const COLORS = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef', '#f43f5e']
 
-  // Gráfico de Inadimplência (Bar)
-  // Mostrar Recebido vs Pendente no mês
+  // Gráfico de Inadimplência / Arrecadação
   const inadimplenciaData = [
-    { name: 'Recebimentos do Mês', Recebido: receitasMes, Pendente: lancamentosMes.filter(t => t.tipo === 'Receita' && t.status === 'Pendente').reduce((acc, c) => acc + Number(c.valor || 0), 0) }
+    { name: 'Recebimentos', Recebido: receitasMes, Pendente: lancamentosPeriodo.filter(t => t.tipo === 'Receita' && t.status === 'Pendente').reduce((acc, c) => acc + Number(c.valor || 0), 0) }
   ]
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
+      <MonthRangeFilter mesDe={mesDe} setMesDe={setMesDe} mesAte={mesAte} setMesAte={setMesAte} />
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Saldo em Caixa */}
         <div className="card border-l-4 border-l-blue-500">

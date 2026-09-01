@@ -3,17 +3,28 @@ import { FileText, Download, PieChart as PieChartIcon, BarChart3 } from 'lucide-
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Legend } from 'recharts'
+import MonthRangeFilter from '../../components/MonthRangeFilter'
 
 export default function DRE({ lancamentos, condoFilter }) {
   const hoje = new Date()
-  const [mesFiltro, setMesFiltro] = useState(`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`)
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`
+  const [mesDe, setMesDe] = useState(mesAtual)
+  const [mesAte, setMesAte] = useState(mesAtual)
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-  // Filtrar apenas recebidos e pagos do mês para o DRE efetivo
-  const lancamentosMes = lancamentos.filter(t => t.data?.startsWith(mesFiltro))
-  const receitas = lancamentosMes.filter(t => t.tipo === 'Receita' && t.status === 'Recebido')
-  const despesas = lancamentosMes.filter(t => t.tipo === 'Despesa' && t.status === 'Pago')
+  // Filtrar apenas recebidos e pagos do período para o DRE efetivo
+  const lancamentosPeriodo = lancamentos.filter(t => {
+    if (!t.data) return false
+    const mes = t.data.substring(0, 7)
+    if (mesDe && mesAte) return mes >= mesDe && mes <= mesAte
+    if (mesDe) return mes >= mesDe
+    if (mesAte) return mes <= mesAte
+    return true
+  })
+
+  const receitas = lancamentosPeriodo.filter(t => t.tipo === 'Receita' && t.status === 'Recebido')
+  const despesas = lancamentosPeriodo.filter(t => t.tipo === 'Despesa' && t.status === 'Pago')
 
   const totalReceitas = receitas.reduce((acc, c) => acc + Number(c.valor || 0), 0)
   const totalDespesas = despesas.reduce((acc, c) => acc + Number(c.valor || 0), 0)
@@ -38,16 +49,18 @@ export default function DRE({ lancamentos, condoFilter }) {
     Valor: d[1]
   }))
 
+  const periodoTexto = (mesDe && mesAte) ? (mesDe === mesAte ? mesDe.split('-').reverse().join('/') : `${mesDe.split('-').reverse().join('/')} a ${mesAte.split('-').reverse().join('/')}`) : 'Histórico Consolidado'
+
   const exportPDF = () => {
     const doc = new jsPDF()
     doc.setFontSize(16)
     doc.text(`Demonstrativo de Resultado do Exercício (DRE)`, 14, 20)
     doc.setFontSize(12)
-    doc.text(`Período: ${mesFiltro}`, 14, 28)
+    doc.text(`Período: ${periodoTexto}`, 14, 28)
     doc.text(`Condomínio: ${condoFilter}`, 14, 34)
 
     autoTable(doc, {
-      startY: 35,
+      startY: 38,
       head: [['Descrição', 'Valor (R$)']],
       body: [
         ['RECEITA OPERACIONAL BRUTA', fmt(totalReceitas)],
@@ -58,31 +71,30 @@ export default function DRE({ lancamentos, condoFilter }) {
         ['', ''],
         ['RESULTADO OPERACIONAL LÍQUIDO', fmt(resultadoOperacional)]
       ],
-      theme: 'grid',
-      headStyles: { fillColor: [45, 48, 69] },
+      headStyles: { fillColor: [30, 41, 59] },
       columnStyles: { 1: { halign: 'right' } }
     })
-    doc.save(`DRE_${mesFiltro}.pdf`)
+
+    doc.save(`DRE_${mesDe || 'Geral'}.pdf`)
   }
 
   return (
     <div className="flex flex-col gap-4 animate-fade-in">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <div>
           <h3 className="text-xl font-bold text-gray-800">DRE - Demonstrativo de Resultado</h3>
-          <p className="text-sm text-gray-500">Resumo financeiro consolidado do mês</p>
+          <p className="text-sm text-gray-500">Resumo financeiro consolidado por período</p>
         </div>
-        <div className="flex gap-2">
-          <input type="month" className="input" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} />
-          <button onClick={exportPDF} className="btn-secondary flex items-center gap-2"><Download size={16}/> Exportar PDF</button>
-        </div>
+        <button onClick={exportPDF} className="btn-secondary flex items-center gap-2 shrink-0"><Download size={16}/> Exportar DRE em PDF</button>
       </div>
+
+      <MonthRangeFilter mesDe={mesDe} setMesDe={setMesDe} mesAte={mesAte} setMesAte={setMesAte} />
 
       <div className="card max-w-4xl mx-auto w-full bg-white shadow-sm border border-cream-300 p-8">
         <div className="border-b-2 border-gray-800 pb-4 mb-6">
           <h1 className="text-2xl font-black text-center text-gray-800 uppercase tracking-widest">DRE</h1>
           <p className="text-center text-brand-600 uppercase font-bold mt-1">{condoFilter === 'Todos' ? 'Consolidado (Todos os Condomínios)' : condoFilter}</p>
-          <p className="text-center text-gray-500 uppercase font-semibold mt-1">Competência: {mesFiltro.split('-').reverse().join('/')}</p>
+          <p className="text-center text-gray-500 uppercase font-semibold mt-1">Competência: {periodoTexto}</p>
         </div>
 
         {/* Gráficos */}

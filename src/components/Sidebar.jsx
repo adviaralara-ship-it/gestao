@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { ChevronDown, ChevronRight, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, X, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getFilteredNavGroups } from '../utils/navData'
+import LGPDModal from './LGPDModal'
 
 function NavGroup({ group, collapsed }) {
   const [open, setOpen] = useState(group.isConfig ? false : true)
@@ -60,6 +61,7 @@ function NavGroup({ group, collapsed }) {
 
 export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }) {
   const { user } = useAuth()
+  const [showLgpd, setShowLgpd] = useState(false)
   const filteredNavGroups = getFilteredNavGroups(user)
 
   const mainGroups   = filteredNavGroups.filter(g => !g.isConfig)
@@ -114,6 +116,19 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }) 
           </div>
         )}
 
+        {/* Link de Privacidade LGPD */}
+        {!collapsed && (
+          <div className="px-4 py-2 border-t border-pale-300 text-center">
+            <button
+              onClick={() => setShowLgpd(true)}
+              className="text-[11px] text-gray-500 hover:text-brand-600 flex items-center justify-center gap-1.5 mx-auto font-medium transition-colors"
+            >
+              <ShieldCheck size={13} className="text-emerald-600" />
+              <span>Privacidade & LGPD</span>
+            </button>
+          </div>
+        )}
+
         {/* Collapse toggle */}
         <div className="hidden lg:flex border-t border-pale-300 p-3 bg-pale-100">
           <button
@@ -125,6 +140,8 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }) 
           </button>
         </div>
       </aside>
+
+      <LGPDModal isOpen={showLgpd} onClose={() => setShowLgpd(false)} />
     </>
   )
 }

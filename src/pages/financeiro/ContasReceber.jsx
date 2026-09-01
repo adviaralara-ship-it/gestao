@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
 import { Plus, Edit2, Trash2, Search, CheckCircle, AlertTriangle } from 'lucide-react'
+import MonthRangeFilter from '../../components/MonthRangeFilter'
 
 export default function ContasReceber({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
   const [search, setSearch] = useState('')
-  const [filterMes, setFilterMes] = useState('')
+  const [mesDe, setMesDe] = useState('')
+  const [mesAte, setMesAte] = useState('')
   const [statusFilter, setStatusFilter] = useState('Todas')
 
   // Filtrar Receitas
@@ -12,8 +14,15 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
   if (statusFilter !== 'Todas') {
     contasReceber = contasReceber.filter(t => t.status === statusFilter)
   }
-  if (filterMes) {
-    contasReceber = contasReceber.filter(t => t.data?.startsWith(filterMes))
+  if (mesDe && mesAte) {
+    contasReceber = contasReceber.filter(t => {
+      const m = t.data?.substring(0, 7)
+      return m >= mesDe && m <= mesAte
+    })
+  } else if (mesDe) {
+    contasReceber = contasReceber.filter(t => t.data?.substring(0, 7) >= mesDe)
+  } else if (mesAte) {
+    contasReceber = contasReceber.filter(t => t.data?.substring(0, 7) <= mesAte)
   }
   if (search) {
     contasReceber = contasReceber.filter(t => (t.descricao || '').toLowerCase().includes(search.toLowerCase()) || (t.categoria || '').toLowerCase().includes(search.toLowerCase()))
@@ -52,30 +61,29 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input className="input pl-9 text-xs" placeholder="Buscar receita ou morador..." value={search} onChange={e => setSearch(e.target.value)} />
+      {/* Filtros de Busca, Período De...Até e Status */}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input pl-9 text-xs" placeholder="Buscar receita ou morador..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+
+          <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 text-xs">
+            {['Todas', 'Pendente', 'Recebido'].map(st => (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${statusFilter === st ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
+              >
+                {st === 'Todas' ? 'Todas as Receitas' : st === 'Pendente' ? 'Pendentes' : 'Recebidas'}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 text-xs">
-          {['Todas', 'Pendente', 'Recebido'].map(st => (
-            <button
-              key={st}
-              onClick={() => setStatusFilter(st)}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${statusFilter === st ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}
-            >
-              {st === 'Todas' ? 'Todas as Receitas' : st === 'Pendente' ? 'Pendentes' : 'Recebidas'}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <input type="month" className="input text-xs w-auto py-1.5" value={filterMes} onChange={e => setFilterMes(e.target.value)} />
-          {filterMes && (
-            <button onClick={() => setFilterMes('')} className="text-xs text-brand-600 font-bold hover:underline">Ver Histórico Todo</button>
-          )}
-        </div>
+        {/* Filtro De ... Até ... */}
+        <MonthRangeFilter mesDe={mesDe} setMesDe={setMesDe} mesAte={mesAte} setMesAte={setMesAte} />
       </div>
 
       <div className="card p-0 overflow-hidden mt-2">
