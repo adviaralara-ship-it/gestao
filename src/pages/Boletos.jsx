@@ -606,8 +606,14 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
   }, [condoNome, condominios])
 
   // Moradores filtrados por condomínio (Apenas Titulares/Responsáveis: Proprietário ou Inquilino, excluindo Dependentes)
+  const normalizeCondo = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+
   const moradoresDoCondo = moradores.filter(m => {
-    const matchCondo = !condoNome || m.condominio === condoNome || m.condominioNome === condoNome
+    const cM = normalizeCondo(m.condominio)
+    const cMN = normalizeCondo(m.condominioNome)
+    const cTarget = normalizeCondo(condoNome)
+
+    const matchCondo = !condoNome || cM === cTarget || cMN === cTarget || (cM && cTarget && (cM.includes(cTarget) || cTarget.includes(cM)))
     const isDependente = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente' || (m.parentesco && m.parentesco !== 'Titular')
     return matchCondo && !isDependente
   })
@@ -615,7 +621,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
 
   useEffect(() => {
     setSelecionados(moradoresDoCondo.map(m => m.id))
-  }, [condoNome, moradores.length])
+  }, [condoNome, moradores.length, moradoresDoCondo.length])
 
   const toggleMorador = (id) => {
     setSelecionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])

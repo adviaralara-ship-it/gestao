@@ -4,6 +4,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db, secondaryAuth } from '../firebase'
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth'
 import { sindicoPerms, porteiroPerms, moradorPerms, conselhoPerms } from '../context/AuthContext'
+import { useFirestore } from '../hooks/useFirestore'
 
 const rolesOptions = [
   { value: 'Morador',     label: 'Morador' },
@@ -33,6 +34,7 @@ const modulosMorador = [
 ]
 
 export default function Cadastro() {
+  const { items: condominiosList } = useFirestore('condominios')
   const [form, setForm] = useState({ nome:'', email:'', telefone:'', cpf:'', senha:'', confirmar:'', condominio:'', bloco:'', unidade:'', role:'Morador' })
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -76,8 +78,12 @@ export default function Cadastro() {
         }
       }
 
+      const normalizeStr = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+      const foundCondo = condominiosList.find(c => normalizeStr(c.nome) === normalizeStr(form.condominio) || (c.nome && form.condominio && normalizeStr(c.nome).includes(normalizeStr(form.condominio))))
+      const finalCondoNome = foundCondo ? foundCondo.nome : form.condominio.trim().toUpperCase()
+
       const localInfo = requiresLocation
-        ? { condominio: form.condominio.trim().toUpperCase(), bloco: form.bloco.trim(), unidade: form.unidade.trim() }
+        ? { condominio: finalCondoNome, bloco: form.bloco.trim(), unidade: form.unidade.trim() }
         : { condominio: '', bloco: '', unidade: '' }
 
       const rolePerms = form.role === 'Síndico' || form.role === 'Subsíndico' ? sindicoPerms : 
@@ -218,7 +224,12 @@ export default function Cadastro() {
               <p className="text-xs font-bold text-brand-700 flex items-center gap-1"><Building size={12}/> Dados do Condomínio</p>
               <div><label className="label">Nome do Condomínio *</label>
                 <div className="relative"><Building size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-                  <input className="input pl-9" value={form.condominio} onChange={e=>set('condominio',e.target.value)} placeholder="Ex: Residencial das Flores"/>
+                  <input list="condominios-sugestoes" className="input pl-9" value={form.condominio} onChange={e=>set('condominio',e.target.value)} placeholder="Selecione ou digite o condomínio..."/>
+                  <datalist id="condominios-sugestoes">
+                    {condominiosList.map(c => (
+                      <option key={c.id || c.nome} value={c.nome} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
               {form.role !== 'Porteiro' && (
