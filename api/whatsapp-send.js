@@ -1,4 +1,12 @@
-﻿export default async function handler(req, res) {
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
+
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -24,17 +32,22 @@
 
     if (mediaBase64 || mediaUrl) {
       endpoint = `${EVOLUTION_URL}/message/sendMedia/${instance}`;
-      let mediaData = mediaBase64 || mediaUrl;
-      // Se for base64 puro sem prefixo data:, adicionar prefixo
-      if (mediaBase64 && !mediaBase64.startsWith('data:')) {
-        mediaData = `data:application/pdf;base64,${mediaBase64}`;
+      let mediaData = mediaUrl;
+
+      if (mediaBase64) {
+        // Se vier com prefixo data:application/pdf;base64, extrair apenas a string base64 pura
+        if (mediaBase64.includes(',')) {
+          mediaData = mediaBase64.split(',')[1];
+        } else {
+          mediaData = mediaBase64;
+        }
       }
 
       payload = {
         number: finalNumber,
         mediatype: 'document',
         mimetype: 'application/pdf',
-        caption: text || caption || 'Segue documento em anexo.',
+        caption: text || caption || '',
         media: mediaData,
         fileName: fileName || 'Boleto_Condominial.pdf'
       };
@@ -50,9 +63,14 @@
     });
 
     const data = await response.json();
+    if (!response.ok) {
+      console.error('Erro retornado pela Evolution API:', data);
+      return res.status(response.status).json({ success: false, error: data?.response?.message || data?.message || 'Erro no envio pela Evolution API' });
+    }
+
     return res.status(200).json({ success: true, data });
   } catch (error) {
     console.error('Erro ao enviar WhatsApp Evolution:', error);
-    return res.status(500).json({ error: 'Falha ao enviar mensagem via WhatsApp' });
+    return res.status(500).json({ success: false, error: error.message || 'Falha de comunicação com o servidor' });
   }
 }

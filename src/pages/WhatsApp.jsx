@@ -129,13 +129,13 @@ export default function WhatsApp() {
           number: tel,
           text: mensagem,
           mediaBase64: arquivoPdfBase64,
-          fileName: arquivoPdfNome || 'Documento_Condominio.pdf',
+          fileName: arquivoPdfNome || 'Boleto_Condominial.pdf',
           instance: instance
         })
       })
       const data = await res.json()
       if (data.success) {
-        alert(`🎉 Mensagem ${arquivoPdfBase64 ? 'e PDF ' : ''}enviada com sucesso para ${nomeDestino || tel}!`)
+        alert(`🎉 Mensagem ${arquivoPdfBase64 ? 'com o Boleto em PDF ' : ''}enviada com sucesso para ${nomeDestino || tel}!`)
         setLogsEnvio(prev => [{
           hora: new Date().toLocaleTimeString('pt-BR'),
           destinatario: nomeDestino ? `${nomeDestino} (${tel})` : tel,
@@ -146,11 +146,11 @@ export default function WhatsApp() {
         setArquivoPdfBase64(null)
         setArquivoPdfNome('')
       } else {
-        alert(`Erro ao enviar: ${data.error || 'Verifique a conexão da instância'}`)
+        alert(`Erro ao enviar: ${data.error || 'Verifique se o WhatsApp está conectado na instância.'}`)
       }
     } catch (err) {
       console.error(err)
-      alert('Erro de comunicação com a Evolution API.')
+      alert(`Falha ao conectar com o serviço de WhatsApp: ${err.message || 'Tente novamente em instantes.'}`)
     }
     setSending(false)
   }
