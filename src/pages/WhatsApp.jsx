@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { storage } from '../firebase'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -126,6 +126,7 @@ export default function WhatsApp() {
     }
 
     setSending(true)
+    let uploadedFileRef = null
     try {
       let mediaUrl = null
 
@@ -133,8 +134,8 @@ export default function WhatsApp() {
       if (arquivoPdfFile) {
         try {
           const cleanName = (arquivoPdfNome || 'documento.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')
-          const fileRef = ref(storage, `whatsapp_docs/${Date.now()}_${cleanName}`)
-          const snap = await uploadBytes(fileRef, arquivoPdfFile)
+          uploadedFileRef = ref(storage, `whatsapp_docs/${Date.now()}_${cleanName}`)
+          const snap = await uploadBytes(uploadedFileRef, arquivoPdfFile)
           mediaUrl = await getDownloadURL(snap.ref)
         } catch (storageErr) {
           console.warn('Upload direto no Storage falhou, usando base64:', storageErr)
@@ -170,6 +171,20 @@ export default function WhatsApp() {
           status: 'Sucesso',
           texto: (mensagem || arquivoPdfNome) + (arquivoPdfFile || arquivoPdfBase64 ? ' 📄 [PDF Anexo]' : '')
         }, ...prev])
+        
+        // Limpeza automática da nuvem: apaga o arquivo temporário após 20 segundos do envio para não ocupar espaço
+        if (uploadedFileRef) {
+          const refToDelete = uploadedFileRef
+          setTimeout(async () => {
+            try {
+              await deleteObject(refToDelete)
+              console.log('Documento temporário de WhatsApp excluído da nuvem com sucesso.')
+            } catch(delErr) {
+              console.warn('Auto-limpeza:', delErr)
+            }
+          }, 20000)
+        }
+
         // Limpar anexo após envio
         setArquivoPdfFile(null)
         setArquivoPdfBase64(null)
