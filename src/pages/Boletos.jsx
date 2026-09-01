@@ -45,7 +45,7 @@ function generateStaticPix(chavePix, valor, nome = "Condominio", cidade = "Sao P
   return payload + (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
 }
 
-function BoletoPrintModal({ boleto, condominio, onClose }) {
+function BoletoPrintModal({ boleto, condominio, moradores = [], onClose }) {
   const [copied, setCopied] = useState(false)
   const chavePixFinal = boleto.chave_pix || condominio?.chave_pix || 'alpha.solucoes@condominios.com.br'
   const nomeCondo = condominio?.nome || boleto.condominio || "Condominio Residencial"
@@ -256,14 +256,17 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
   const shareWhatsAppDirect = async () => {
     setEnviandoDirectWhats(true)
     try {
-      const res = await enviarBoletoWhatsAppAuto(boleto, { nome: boleto.morador, tel: boleto.telefone || boleto.tel || '' }, condominio)
+      const moradorDoc = (boleto.moradorId && moradores.find(m => m.id === boleto.moradorId))
+        || moradores.find(m => (m.nome && boleto.morador && m.nome.trim().toLowerCase() === boleto.morador.trim().toLowerCase()) || (m.apt && boleto.apt && String(m.apt).trim() === String(boleto.apt).trim()))
+        || { nome: boleto.morador, tel: boleto.telefone || boleto.tel || '' }
+
+      const res = await enviarBoletoWhatsAppAuto(boleto, moradorDoc, condominio)
       if (res.success) {
         alert(`🎉 Boleto em PDF enviado com sucesso diretamente no WhatsApp de ${boleto.morador}!`)
       } else {
         // Se falhar por falta de telefone ou conexão, oferece abrir via WhatsApp Web
         if (window.confirm(`Envio direto automático: ${res.error}.\n\nDeseja abrir o WhatsApp Web para enviar manualmente?`)) {
-          const msg = `*Alpha Soluções Condominiais*\nOlá *${boleto.morador}* (Apt ${boleto.apt}), segue sua fatura condominial referente a *${boleto.competencia || 'Mês Atual'}*:\n\n💰 *Valor:* R$ ${valorFormatado}\n📅 *Vencimento:* ${dataVencFormatada}\n\n💠 *PIX Copia e Cola:*\n\`\`\`${pixFinal}\`\`\`\n\nAbra o aplicativo do seu banco, escolha *PIX Copia e Cola* e cole o código acima para efetuar o pagamento instantâneo.`
-          window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+          shareWhatsAppWeb()
         }
       }
     } catch(e) {
@@ -652,9 +655,13 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
       .map(m => {
         const valMoradorRaw = valoresCustom[m.id] !== undefined ? valoresCustom[m.id] : valorStr
         const valFinal = typeof valMoradorRaw === 'number' ? valMoradorRaw : (parseFloat(String(valMoradorRaw || '').replace(/\./g, '').replace(',', '.')) || valorPadraoNum)
+        const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || ''
 
         return {
+          moradorId: m.id,
           morador: m.nome,
+          telefone: rawTel,
+          email: m.email || '',
           apt: m.apt || m.unidade || '',
           condominio: condoNome,
           competencia,
@@ -903,19 +910,21 @@ export default function Boletos() {
 
         if (dispararWhatsApp) {
           setProgressoLote({ total: lista.length, atual: i + 1, morador: b.morador })
-          const moradorDoc = moradores.find(m => m.nome === b.morador || (m.apt && m.apt === b.apt && m.condominio === b.condominio))
+          const moradorDoc = (b.moradorId && moradores.find(m => m.id === b.moradorId))
+            || moradores.find(m => (m.nome && b.morador && m.nome.trim().toLowerCase() === b.morador.trim().toLowerCase()) || (m.apt && b.apt && String(m.apt).trim() === String(b.apt).trim()))
+            || { nome: b.morador, tel: b.telefone, apt: b.apt, condominio: b.condominio }
           const condoDoc = allCondominios.find(c => c.nome === b.condominio)
           
-          if (moradorDoc) {
-            try {
-              const res = await enviarBoletoWhatsAppAuto(novoBoleto, moradorDoc, condoDoc)
-              if (res.success) enviadosWhats++
-              else falhasWhats++
-            } catch (err) {
-              console.error('Erro individual WhatsApp:', err)
+          try {
+            const res = await enviarBoletoWhatsAppAuto(novoBoleto, moradorDoc, condoDoc)
+            if (res.success) {
+              enviadosWhats++
+            } else {
+              console.warn('Falha envio WhatsApp:', b.morador, res.error)
               falhasWhats++
             }
-          } else {
+          } catch (err) {
+            console.error('Erro individual WhatsApp:', err)
             falhasWhats++
           }
         }
@@ -1970,7 +1979,7 @@ export default function Boletos() {
         </div>
       )}
 
-      {viewing && <BoletoPrintModal boleto={viewing} condominio={allCondominios.find(c=>c.nome===(viewing.condominio || moradores.find(m=>m.nome===viewing.morador)?.condominio))} onClose={()=>setViewing(null)}/>}
+      {viewing && <BoletoPrintModal boleto={viewing} condominio={allCondominios.find(c=>c.nome===(viewing.condominio || moradores.find(m=>m.nome===viewing.morador)?.condominio))} moradores={moradores} onClose={()=>setViewing(null)}/>}
       {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores}/>}
       {modalLote&&<ModalGerarLote condominios={allCondominios} moradores={moradores} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
       {condoFundoEdit&&<ModalFundo condo={condoFundoEdit} onClose={()=>setCondoFundoEdit(null)} onSave={handleSaveFundo}/>}

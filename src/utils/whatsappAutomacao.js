@@ -8,11 +8,11 @@ import { gerarBoletoPdfBase64 } from './boletoPdf'
  * @param {string} customMsg - Mensagem personalizada (opcional)
  */
 export async function enviarBoletoWhatsAppAuto(boleto, morador, condoDoc, customMsg = null) {
-  const rawTel = morador?.tel || morador?.telefone || morador?.whatsapp || morador?.celular || morador?.fone || morador?.contato || morador?.numero || ''
+  const rawTel = morador?.tel || morador?.telefone || morador?.whatsapp || morador?.celular || morador?.fone || morador?.contato || morador?.numero || boleto?.telefone || boleto?.tel || boleto?.whatsapp || boleto?.celular || ''
   const tel = String(rawTel).replace(/\D/g, '')
 
   if (!tel || tel.length < 8) {
-    return { success: false, error: 'Morador não possui telefone/WhatsApp válido cadastrado' }
+    return { success: false, error: 'Morador não possui telefone/WhatsApp válido cadastrado no sistema.' }
   }
 
   try {
