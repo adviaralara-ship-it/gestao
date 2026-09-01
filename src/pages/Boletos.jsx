@@ -10,6 +10,7 @@ import { db } from '../firebase'
 import { notificarAdm, enviarEmail } from '../emailjs.config'
 import RepassesAlphaModal from '../components/RepassesAlphaModal'
 import { CurrencyInput, maskCurrency, parseCurrency } from '../utils/currency'
+import { enviarBoletoWhatsAppAuto } from '../utils/whatsappAutomacao'
 
 function gerarLinhaDigitavel(apt, valor, venc) {
   const r = () => Math.floor(Math.random() * 9)
@@ -250,7 +251,29 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
     }
   }
 
-  const shareWhatsApp = () => {
+  const [enviandoDirectWhats, setEnviandoDirectWhats] = useState(false)
+
+  const shareWhatsAppDirect = async () => {
+    setEnviandoDirectWhats(true)
+    try {
+      const res = await enviarBoletoWhatsAppAuto(boleto, { nome: boleto.morador, tel: boleto.telefone || boleto.tel || '' }, condominio)
+      if (res.success) {
+        alert(`🎉 Boleto em PDF enviado com sucesso diretamente no WhatsApp de ${boleto.morador}!`)
+      } else {
+        // Se falhar por falta de telefone ou conexão, oferece abrir via WhatsApp Web
+        if (window.confirm(`Envio direto automático: ${res.error}.\n\nDeseja abrir o WhatsApp Web para enviar manualmente?`)) {
+          const msg = `*Alpha Soluções Condominiais*\nOlá *${boleto.morador}* (Apt ${boleto.apt}), segue sua fatura condominial referente a *${boleto.competencia || 'Mês Atual'}*:\n\n💰 *Valor:* R$ ${valorFormatado}\n📅 *Vencimento:* ${dataVencFormatada}\n\n💠 *PIX Copia e Cola:*\n\`\`\`${pixFinal}\`\`\`\n\nAbra o aplicativo do seu banco, escolha *PIX Copia e Cola* e cole o código acima para efetuar o pagamento instantâneo.`
+          window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+        }
+      }
+    } catch(e) {
+      console.error(e)
+      alert('Erro ao processar envio de WhatsApp.')
+    }
+    setEnviandoDirectWhats(false)
+  }
+
+  const shareWhatsAppWeb = () => {
     const msg = `*Alpha Soluções Condominiais*\nOlá *${boleto.morador}* (Apt ${boleto.apt}), segue sua fatura condominial referente a *${boleto.competencia || 'Mês Atual'}*:\n\n💰 *Valor:* R$ ${valorFormatado}\n📅 *Vencimento:* ${dataVencFormatada}\n\n💠 *PIX Copia e Cola:*\n\`\`\`${pixFinal}\`\`\`\n\nAbra o aplicativo do seu banco, escolha *PIX Copia e Cola* e cole o código acima para efetuar o pagamento instantâneo.`
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }
@@ -266,8 +289,13 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
             <span className="text-xs text-gray-400 truncate max-w-[140px] sm:max-w-none">• {condominio?.nome || 'Condomínio'}</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={shareWhatsApp} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm">
-              <Share2 size={14} /> WhatsApp
+            <button 
+              onClick={shareWhatsAppDirect} 
+              disabled={enviandoDirectWhats} 
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all"
+              title="Disparar PDF e Mensagem automaticamente pelo WhatsApp da Alpha"
+            >
+              <Share2 size={14} /> {enviandoDirectWhats ? 'Disparando...' : 'Enviar WhatsApp'}
             </button>
             <button onClick={handleDownloadPDF} disabled={downloading} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm">
               <Download size={14} /> {downloading ? 'Gerando...' : 'Baixar PDF'}
@@ -559,6 +587,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
   const [taxaStr, setTaxaStr] = useState(condoSelecionado?.taxaEmissao !== undefined ? String(condoSelecionado.taxaEmissao).replace('.', ',') : '3,50')
   const [nomeTaxa, setNomeTaxa] = useState(condoSelecionado?.nomeTaxa || 'Serviço de Cobrança Digital')
   const [valoresCustom, setValoresCustom] = useState({})
+  const [enviarWhatsAppAuto, setEnviarWhatsAppAuto] = useState(true)
 
   useEffect(() => {
     const c = condominios.find(c => c.nome === condoNome)
@@ -643,7 +672,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
         }
       })
 
-    onSave(listaParaCriar)
+    onSave(listaParaCriar, enviarWhatsAppAuto)
   }
 
   return (
@@ -721,6 +750,24 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
             )}
           </div>
 
+          {/* Opção de Disparo Automático por WhatsApp */}
+          <div className="p-3.5 bg-emerald-50 border-2 border-emerald-300 rounded-2xl flex flex-col gap-1.5 shadow-sm">
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={enviarWhatsAppAuto}
+                onChange={e => setEnviarWhatsAppAuto(e.target.checked)}
+                className="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer shrink-0"
+              />
+              <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                🚀 Disparar boletos automaticamente via WhatsApp ao gerar
+              </span>
+            </label>
+            <p className="text-[11px] text-emerald-800 ml-7 leading-relaxed">
+              O sistema gera o <b>PDF oficial</b> e entrega instantaneamente no WhatsApp de cada morador selecionado com a mensagem e o QR Code PIX para pagamento!
+            </p>
+          </div>
+
           {/* Lista de Moradores com Checkboxes e Edição de Valor Individual */}
           <div className="border border-gray-200 rounded-2xl overflow-hidden mt-1">
             <div className="p-3 bg-slate-100 border-b border-gray-200 flex items-center justify-between">
@@ -773,7 +820,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
         <div className="p-4 sm:p-5 bg-slate-50 border-t border-gray-200 flex items-center justify-between shrink-0">
           <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
           <button onClick={handleGerar} className="btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1.5 sm:gap-2 shadow-md">
-            <CheckCircle2 size={16} /> Gerar {selecionados.length} Boletos PIX
+            <CheckCircle2 size={16} /> Gerar {selecionados.length} Boletos {enviarWhatsAppAuto ? 'e Enviar WhatsApp' : ''}
           </button>
         </div>
       </div>
@@ -836,15 +883,46 @@ export default function Boletos() {
   const [selectedIds, setSelectedIds] = useState([])
   const [downloadingLote, setDownloadingLote] = useState(false)
   const [showRepasses, setShowRepasses] = useState(false)
+  const [progressoLote, setProgressoLote] = useState(null)
 
-  const handleSaveLote = async (lista) => {
+  const handleSaveLote = async (lista, dispararWhatsApp = false) => {
     let criados = 0
-    for (const b of lista) {
-      await addItem(b)
-      criados++
+    let enviadosWhats = 0
+    let falhasWhats = 0
+
+    if (dispararWhatsApp) {
+      setProgressoLote({ total: lista.length, atual: 0, morador: 'Iniciando gravação no sistema...' })
     }
+
+    for (let i = 0; i < lista.length; i++) {
+      const b = lista[i]
+      const docRef = await addItem(b)
+      const novoBoleto = { ...b, id: docRef?.id || b.id }
+      criados++
+
+      if (dispararWhatsApp) {
+        setProgressoLote({ total: lista.length, atual: i + 1, morador: b.morador })
+        const moradorDoc = moradores.find(m => m.nome === b.morador || (m.apt && m.apt === b.apt && m.condominio === b.condominio))
+        const condoDoc = allCondominios.find(c => c.nome === b.condominio)
+        
+        if (moradorDoc) {
+          const res = await enviarBoletoWhatsAppAuto(novoBoleto, moradorDoc, condoDoc)
+          if (res.success) enviadosWhats++
+          else falhasWhats++
+        } else {
+          falhasWhats++
+        }
+      }
+    }
+
+    setProgressoLote(null)
     setModalLote(false)
-    alert(`🎉 Sucesso! ${criados} boletos PIX foram gerados com sucesso para os moradores selecionados!`)
+    
+    if (dispararWhatsApp) {
+      alert(`🎉 Geração & Disparo Concluídos!\n\n📄 ${criados} boletos gerados no sistema.\n📲 ${enviadosWhats} boletos em PDF enviados com sucesso pelo WhatsApp!\n${falhasWhats > 0 ? `⚠️ ${falhasWhats} moradores sem telefone/WhatsApp cadastrado.` : ''}`)
+    } else {
+      alert(`🎉 Sucesso! ${criados} boletos PIX foram gerados com sucesso para os moradores selecionados!`)
+    }
   }
 
   const handleDownloadPDFLote = async (boletosParaBaixar) => {
@@ -1837,6 +1915,33 @@ export default function Boletos() {
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {progressoLote && (
+        <div className="modal-overlay z-50">
+          <div className="modal-content max-w-md w-full bg-white p-6 rounded-3xl shadow-2xl border border-emerald-200 text-center flex flex-col items-center gap-4">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center animate-bounce">
+              <MessageSquare size={32} />
+            </div>
+            <div>
+              <h3 className="font-black text-lg text-slate-900">Disparando Boletos via WhatsApp</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Processando e entregando o PDF oficial para <b>{progressoLote.morador}</b>...
+              </p>
+            </div>
+            
+            <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden border border-slate-200">
+              <div 
+                className="h-full bg-emerald-600 transition-all duration-300"
+                style={{ width: `${(progressoLote.atual / progressoLote.total) * 100}%` }}
+              />
+            </div>
+            
+            <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+              {progressoLote.atual} de {progressoLote.total} boletos enviados
+            </span>
           </div>
         </div>
       )}

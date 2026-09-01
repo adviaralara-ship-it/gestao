@@ -52,8 +52,21 @@ export default function RepassesAlphaModal({ isOpen, onClose, condominios = [], 
   const boletosPagos = boletosDoCondoMes.filter(b => b.status === 'Pago').length
 
   const honorarios = Number(currentCondo.honorariosAdm || 0)
-  const taxaUnit = Number(currentCondo.taxaEmissao !== undefined ? currentCondo.taxaEmissao : 3.50)
-  const totalTaxas = totalBoletos * taxaUnit
+  
+  // Calcula o total exato das taxas com base no valor real discriminado em cada boleto
+  const totalTaxas = boletosDoCondoMes.reduce((acc, b) => {
+    const deveDiscriminar = b.discriminarTaxa !== undefined ? b.discriminarTaxa : (currentCondo?.discriminarTaxa || false)
+    if (!deveDiscriminar) return acc
+    const taxaBoleto = Number(b.taxaEmissao !== undefined ? b.taxaEmissao : (currentCondo?.taxaEmissao || 0))
+    return acc + taxaBoleto
+  }, 0)
+
+  // Taxa unitária real (média das cotas discriminadas ou padrão do condomínio)
+  const boletosComTaxa = boletosDoCondoMes.filter(b => (b.discriminarTaxa !== false && Number(b.taxaEmissao || currentCondo?.taxaEmissao || 0) > 0))
+  const taxaUnit = boletosComTaxa.length > 0 
+    ? (totalTaxas / boletosComTaxa.length) 
+    : Number(currentCondo?.taxaEmissao !== undefined ? currentCondo.taxaEmissao : 0)
+
   const totalGeral = honorarios + totalTaxas
 
   const chavePixAlpha = currentCondo.chavePixAlpha || '66.643.272/0001-18'

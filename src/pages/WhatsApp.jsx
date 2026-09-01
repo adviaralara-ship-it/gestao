@@ -11,12 +11,13 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { storage } from '../firebase'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { enviarBoletoWhatsAppAuto } from '../utils/whatsappAutomacao'
 
 export default function WhatsApp() {
   const { user } = useAuth()
   const { items: moradores } = useFirestore('moradores')
   const { items: condominios } = useFirestore('condominios')
-  const { items: boletos } = useFirestore('boletos')
+  const { items: boletos, updateItem: updateBoleto } = useFirestore('boletos')
 
   const [instance, setInstance] = useState('InstanciaAlpha')
   const [instancesInfo, setInstancesInfo] = useState([])
@@ -260,6 +261,131 @@ export default function WhatsApp() {
     }, ...prev])
   }
 
+  // ─── Cálculos da Régua de Cobrança em Tempo Real ─────────────────────────
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0)
+
+  const boletosPendentes = boletos.filter(b => b.status !== 'Pago' && b.vencimento)
+
+  const boletos5Dias = boletosPendentes.filter(b => {
+    const venc = new Date(b.vencimento + 'T12:00:00')
+    const diff = Math.round((venc - hoje) / 86400000)
+    return diff === 5 || diff === 4 || diff === 6
+  })
+
+  const boletos1Dia = boletosPendentes.filter(b => {
+    const venc = new Date(b.vencimento + 'T12:00:00')
+    const diff = Math.round((venc - hoje) / 86400000)
+    return diff === 1
+  })
+
+  const boletosHoje = boletosPendentes.filter(b => {
+    const venc = new Date(b.vencimento + 'T12:00:00')
+    const diff = Math.round((venc - hoje) / 86400000)
+    return diff === 0
+  })
+
+  const boletosVencidos = boletosPendentes.filter(b => {
+    const venc = new Date(b.vencimento + 'T12:00:00')
+    const diff = Math.round((venc - hoje) / 86400000)
+    return diff < 0 || b.status === 'Vencido'
+  })
+
+  const [executandoRegua, setExecutandoRegua] = useState(false)
+  const [statusReguaMsg, setStatusReguaMsg] = useState('')
+
+  const handleDispararReguaGrupo = async (tipo, lista) => {
+    if (!lista || lista.length === 0) {
+      alert('Nenhum boleto elegível encontrado para esta categoria da régua.')
+      return
+    }
+
+    const tipoNome = {
+      '5dias': 'Lembrete de 5 Dias Antes',
+      '1dia': 'Lembrete de Vencimento Amanhã',
+      'hoje': 'Aviso de Vencimento Hoje',
+      'vencido': 'Cobrança de Boleto Vencido / Em Atraso'
+    }[tipo] || 'Lembrete de Boleto'
+
+    if (!window.confirm(`Deseja disparar ${tipoNome} para ${lista.length} moradores com boleto em anexo pelo WhatsApp oficial?`)) {
+      return
+    }
+
+    setExecutandoRegua(true)
+    let enviados = 0
+    let falhas = 0
+
+    for (let i = 0; i < lista.length; i++) {
+      const b = lista[i]
+      setStatusReguaMsg(`Enviando ${i + 1} de ${lista.length}: ${b.morador}...`)
+      
+      const moradorDoc = moradores.find(m => m.nome === b.morador || (m.apt && m.apt === b.apt && m.condominio === b.condominio))
+      const condoDoc = condominios.find(c => c.nome === b.condominio)
+      const valorFmt = Number(b.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+      const vencFmt = b.vencimento ? (b.vencimento.includes('-') ? b.vencimento.split('-').reverse().join('/') : b.vencimento) : '—'
+
+      let msg = ''
+      if (tipo === '5dias') {
+        msg = `Olá *${b.morador}* (Apt *${b.apt || '—'}*)!\n\nPassando para lembrar que o seu *Boleto Condominial* referente a *${b.competencia || 'Mês Vigente'}* do *${condoDoc?.nome || b.condominio}* vence em *5 dias* (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nSegue o boleto oficial em anexo com o QR Code PIX para sua comodidade. Evite multas pagando em dia!\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+      } else if (tipo === '1dia') {
+        msg = `⚠️ *Lembrete de Vencimento Amanhã*\n\nOlá *${b.morador}* (Apt *${b.apt || '—'}*)!\n\nO seu *Boleto Condominial* do *${condoDoc?.nome || b.condominio}* vence *amanhã* (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nSegue em anexo a 2ª via com o QR Code PIX para pagamento rápido pelo celular.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+      } else if (tipo === 'hoje') {
+        msg = `🔴 *Seu Boleto Vence HOJE*\n\nOlá *${b.morador}* (Apt *${b.apt || '—'}*)!\n\nLembramos que o seu boleto do *${condoDoc?.nome || b.condominio}* vence *hoje* (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nEfetue o pagamento via PIX no anexo para evitar a cobrança de juros e encargos.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+      } else if (tipo === 'vencido') {
+        msg = `Prezado(a) *${b.morador}* (Apt *${b.apt || '—'}*),\n\nIdentificamos que a taxa condominial referente a *${b.competencia || 'Mês Anterior'}* do *${condoDoc?.nome || b.condominio}* encontra-se em aberto (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nPara facilitar a regularização, segue em anexo o documento atualizado com o *QR Code PIX*. Caso já tenha efetuado o pagamento, por favor desconsidere esta mensagem.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+      }
+
+      if (moradorDoc) {
+        const res = await enviarBoletoWhatsAppAuto(b, moradorDoc, condoDoc, msg)
+        if (res.success) {
+          enviados++
+          // Atualiza flag no Firestore
+          if (tipo === '5dias') await updateBoleto(b.id, { notif5d: true })
+          if (tipo === '1dia') await updateBoleto(b.id, { notif1d: true })
+          if (tipo === 'hoje') await updateBoleto(b.id, { notif0d: true })
+          if (tipo === 'vencido') await updateBoleto(b.id, { notifAtraso: true })
+        } else {
+          falhas++
+        }
+      } else {
+        falhas++
+      }
+
+      // Intervalo de segurança anti-bloqueio
+      await new Promise(r => setTimeout(r, 1500))
+    }
+
+    setExecutandoRegua(false)
+    setStatusReguaMsg('')
+
+    alert(`🎉 Disparo da Régua Concluído!\n\n📲 ${enviados} moradores notificados com sucesso via WhatsApp com PDF!\n${falhas > 0 ? `⚠️ ${falhas} moradores sem telefone/WhatsApp válido cadastrado.` : ''}`)
+    
+    setLogsEnvio(prev => [{
+      hora: new Date().toLocaleTimeString('pt-BR'),
+      destinatario: `Régua: ${tipoNome} (${enviados} enviados)`,
+      status: 'Sucesso',
+      texto: `Disparo automático com boleto em anexo para ${enviados} unidades.`
+    }, ...prev])
+  }
+
+  // Executar toda a régua de uma só vez (5 dias + 1 dia + hoje + vencidos)
+  const handleExecutarReguaCompleta = async () => {
+    const total = boletos5Dias.length + boletos1Dia.length + boletosHoje.length + boletosVencidos.length
+    if (total === 0) {
+      alert('Nenhum boleto pendente necessita de lembrete ou cobrança no momento.')
+      return
+    }
+
+    if (!window.confirm(`⚡ Deseja executar a Régua Automática Completa?\n\n⏳ 5 Dias Antes: ${boletos5Dias.length}\n⚠️ 1 Dia Antes: ${boletos1Dia.length}\n🔴 Vencem Hoje: ${boletosHoje.length}\n⛔ Vencidos: ${boletosVencidos.length}\n\nTotal de ${total} disparos com PDF.`)) {
+      return
+    }
+
+    if (boletos5Dias.length > 0) await handleDispararReguaGrupo('5dias', boletos5Dias)
+    if (boletos1Dia.length > 0) await handleDispararReguaGrupo('1dia', boletos1Dia)
+    if (boletosHoje.length > 0) await handleDispararReguaGrupo('hoje', boletosHoje)
+    if (boletosVencidos.length > 0) await handleDispararReguaGrupo('vencido', boletosVencidos)
+  }
+
   // Gerador de Cartaz do Elevador em PDF para engajar moradores
   const gerarCartazElevador = (nomeCondo) => {
     const doc = new jsPDF()
@@ -404,17 +530,28 @@ export default function WhatsApp() {
         </div>
       </div>
 
-      {/* Abas Principais: Central de Envios vs Campanha de Adesão */}
+      {/* Abas Principais: Central de Envios vs Régua de Cobrança vs Campanha de Adesão */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setAbaAtiva('mensagens')}
           className={`px-5 py-3 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 ${abaAtiva === 'mensagens' ? 'bg-slate-900 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
         >
-          <MessageSquare size={18} /> Envio de Mensagens & Boletos
+          <MessageSquare size={18} /> Envio Manual de Mensagens & Boletos
+        </button>
+        <button
+          onClick={() => setAbaAtiva('regua')}
+          className={`px-5 py-3 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 ${abaAtiva === 'regua' ? 'bg-emerald-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-800'}`}
+        >
+          <Calendar size={18} /> 🤖 Régua de Cobrança Automática
+          {(boletos5Dias.length + boletos1Dia.length + boletosHoje.length + boletosVencidos.length) > 0 && (
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${abaAtiva === 'regua' ? 'bg-white text-emerald-800' : 'bg-emerald-100 text-emerald-800'}`}>
+              {boletos5Dias.length + boletos1Dia.length + boletosHoje.length + boletosVencidos.length}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setAbaAtiva('campanha')}
-          className={`px-5 py-3 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 ${abaAtiva === 'campanha' ? 'bg-emerald-700 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-800'}`}
+          className={`px-5 py-3 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 ${abaAtiva === 'campanha' ? 'bg-slate-900 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-800'}`}
         >
           <Sparkles size={18} className="text-amber-300" /> 🎁 Incentivar Moradores a Usar o Sistema
         </button>
@@ -874,6 +1011,206 @@ export default function WhatsApp() {
                 </p>
               </div>
             </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ABA 3: RÉGUA DE COBRANÇA AUTOMÁTICA & LEMBRETES DE VENCIMENTO */}
+      {abaAtiva === 'regua' && (
+        <div className="flex flex-col gap-6 animate-fade-in">
+          
+          {/* Banner Principal da Régua com Ação Rápida */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white p-6 sm:p-8 rounded-3xl shadow-xl border border-emerald-800/60 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div className="max-w-2xl">
+              <span className="px-3 py-1 bg-emerald-400/20 border border-emerald-400/40 rounded-full text-xs font-black uppercase text-emerald-300 tracking-wider">
+                Automação Inteligente de WhatsApp
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-black mt-2 tracking-tight">
+                Régua de Cobrança & Lembretes
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
+                Envio automático do <b>boleto em PDF</b> e mensagem personalizada no WhatsApp do morador 5 dias antes, 1 dia antes, no dia do vencimento e em caso de atraso.
+              </p>
+            </div>
+
+            <button
+              onClick={handleExecutarReguaCompleta}
+              disabled={executandoRegua || (boletos5Dias.length + boletos1Dia.length + boletosHoje.length + boletosVencidos.length) === 0}
+              className="btn-primary py-3.5 px-6 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm rounded-2xl shadow-lg flex items-center gap-2 shrink-0 disabled:opacity-50"
+            >
+              <Sparkles size={18} />
+              <span>{executandoRegua ? 'Disparando Régua...' : '⚡ Executar Toda a Régua do Dia'}</span>
+            </button>
+          </div>
+
+          {/* Feedback de Progresso da Régua */}
+          {executandoRegua && (
+            <div className="p-4 bg-emerald-50 border-2 border-emerald-400 rounded-2xl flex items-center gap-3 animate-pulse">
+              <RefreshCw size={20} className="animate-spin text-emerald-700" />
+              <span className="text-sm font-bold text-emerald-950">{statusReguaMsg || 'Disparando lembretes automáticos...'}</span>
+            </div>
+          )}
+
+          {/* Grid com os 4 Estágios da Régua */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            
+            {/* 1. Lembrete 5 Dias Antes */}
+            <div className="card p-6 bg-white border border-slate-200 rounded-3xl shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl text-xl font-bold">⏳</div>
+                    <div>
+                      <h3 className="font-black text-base text-slate-900">1. Lembrete de 5 Dias Antes</h3>
+                      <p className="text-xs text-slate-500">Aviso preventivo e envio do PDF com antecedência</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 bg-blue-100 text-blue-900 font-black text-xs rounded-xl">
+                    {boletos5Dias.length} {boletos5Dias.length === 1 ? 'boleto' : 'boletos'}
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs text-slate-600 mb-4 divide-y divide-slate-200 max-h-36 overflow-y-auto">
+                  {boletos5Dias.length === 0 ? (
+                    <p className="text-center py-3 text-gray-400">Nenhum boleto vencendo em 5 dias.</p>
+                  ) : (
+                    boletos5Dias.map(b => (
+                      <div key={b.id} className="py-1.5 flex justify-between items-center">
+                        <span className="font-bold text-slate-900">{b.morador} (Apt {b.apt || '—'})</span>
+                        <span className="font-mono text-emerald-700 font-bold">R$ {Number(b.valor || 0).toFixed(2).replace('.', ',')} • Venc. {b.vencimento}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={() => handleDispararReguaGrupo('5dias', boletos5Dias)}
+                disabled={executandoRegua || boletos5Dias.length === 0}
+                className="btn-primary w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Send size={14} /> Disparar Lembretes de 5 Dias ({boletos5Dias.length})
+              </button>
+            </div>
+
+            {/* 2. Lembrete 1 Dia Antes (Vence Amanhã) */}
+            <div className="card p-6 bg-white border border-slate-200 rounded-3xl shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl text-xl font-bold">⚠️</div>
+                    <div>
+                      <h3 className="font-black text-base text-slate-900">2. Lembrete de Vencimento Amanhã</h3>
+                      <p className="text-xs text-slate-500">Aviso amigável de vencimento no dia seguinte</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 bg-amber-100 text-amber-900 font-black text-xs rounded-xl">
+                    {boletos1Dia.length} {boletos1Dia.length === 1 ? 'boleto' : 'boletos'}
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs text-slate-600 mb-4 divide-y divide-slate-200 max-h-36 overflow-y-auto">
+                  {boletos1Dia.length === 0 ? (
+                    <p className="text-center py-3 text-gray-400">Nenhum boleto vencendo amanhã.</p>
+                  ) : (
+                    boletos1Dia.map(b => (
+                      <div key={b.id} className="py-1.5 flex justify-between items-center">
+                        <span className="font-bold text-slate-900">{b.morador} (Apt {b.apt || '—'})</span>
+                        <span className="font-mono text-emerald-700 font-bold">R$ {Number(b.valor || 0).toFixed(2).replace('.', ',')} • Venc. {b.vencimento}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={() => handleDispararReguaGrupo('1dia', boletos1Dia)}
+                disabled={executandoRegua || boletos1Dia.length === 0}
+                className="btn-primary w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Send size={14} /> Disparar Avisos de Vencimento Amanhã ({boletos1Dia.length})
+              </button>
+            </div>
+
+            {/* 3. Vence Hoje */}
+            <div className="card p-6 bg-white border border-slate-200 rounded-3xl shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl text-xl font-bold">🔴</div>
+                    <div>
+                      <h3 className="font-black text-base text-slate-900">3. Vencimento HOJE</h3>
+                      <p className="text-xs text-slate-500">Alerta de vencimento na data limite</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 bg-rose-100 text-rose-900 font-black text-xs rounded-xl">
+                    {boletosHoje.length} {boletosHoje.length === 1 ? 'boleto' : 'boletos'}
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs text-slate-600 mb-4 divide-y divide-slate-200 max-h-36 overflow-y-auto">
+                  {boletosHoje.length === 0 ? (
+                    <p className="text-center py-3 text-gray-400">Nenhum boleto vencendo hoje.</p>
+                  ) : (
+                    boletosHoje.map(b => (
+                      <div key={b.id} className="py-1.5 flex justify-between items-center">
+                        <span className="font-bold text-slate-900">{b.morador} (Apt {b.apt || '—'})</span>
+                        <span className="font-mono text-emerald-700 font-bold">R$ {Number(b.valor || 0).toFixed(2).replace('.', ',')}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={() => handleDispararReguaGrupo('hoje', boletosHoje)}
+                disabled={executandoRegua || boletosHoje.length === 0}
+                className="btn-primary w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Send size={14} /> Disparar Avisos de Vencimento Hoje ({boletosHoje.length})
+              </button>
+            </div>
+
+            {/* 4. Cobrança de Boletos em Atraso */}
+            <div className="card p-6 bg-white border border-slate-200 rounded-3xl shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-red-50 text-red-600 rounded-2xl text-xl font-bold">⛔</div>
+                    <div>
+                      <h3 className="font-black text-base text-slate-900">4. Cobrança Amigável (Vencidos)</h3>
+                      <p className="text-xs text-slate-500">Envio de 2ª via e incentivo para regularização</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 bg-red-100 text-red-900 font-black text-xs rounded-xl">
+                    {boletosVencidos.length} {boletosVencidos.length === 1 ? 'boleto' : 'boletos'}
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs text-slate-600 mb-4 divide-y divide-slate-200 max-h-36 overflow-y-auto">
+                  {boletosVencidos.length === 0 ? (
+                    <p className="text-center py-3 text-gray-400">Nenhum boleto em atraso pendente de cobrança.</p>
+                  ) : (
+                    boletosVencidos.map(b => (
+                      <div key={b.id} className="py-1.5 flex justify-between items-center">
+                        <span className="font-bold text-slate-900">{b.morador} (Apt {b.apt || '—'})</span>
+                        <span className="font-mono text-red-600 font-bold">R$ {Number(b.valor || 0).toFixed(2).replace('.', ',')} • Venc. {b.vencimento}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={() => handleDispararReguaGrupo('vencido', boletosVencidos)}
+                disabled={executandoRegua || boletosVencidos.length === 0}
+                className="btn-primary w-full py-2.5 bg-red-600 hover:bg-red-500 text-xs font-black rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Send size={14} /> Disparar Cobrança Amigável ({boletosVencidos.length})
+              </button>
+            </div>
+
           </div>
 
         </div>
