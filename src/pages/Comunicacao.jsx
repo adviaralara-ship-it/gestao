@@ -171,7 +171,7 @@ export default function Comunicacao() {
   const dispararWppWeb = () => {
     if(!msgWpp||selecionadosWpp.length===0) return
     const primeiro = moradores.find(m=>m.id===selecionadosWpp[0])
-    const tel = primeiro?.tel?.replace(/\D/g,'')||'5511999999999'
+    const tel = primeiro?.telefone?.replace(/\D/g,'') || primeiro?.tel?.replace(/\D/g,'') || '558396885931'
     window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msgWpp)}`,'_blank')
     setStatusWpp(`✅ Link aberto para ${primeiro?.nome}. Para envio em lote, use a API.`)
     setTimeout(()=>setStatusWpp(''),5000)

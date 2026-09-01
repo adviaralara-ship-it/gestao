@@ -3,10 +3,10 @@
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { number, text, instance = 'InstanciaAlpha', mediaUrl, fileName, caption } = req.body;
+  const { number, text, instance = 'InstanciaAlpha', mediaBase64, mediaUrl, fileName, caption } = req.body;
 
-  if (!number || (!text && !mediaUrl)) {
-    return res.status(400).json({ error: 'Número e mensagem/mídia são obrigatórios.' });
+  if (!number || (!text && !mediaBase64 && !mediaUrl)) {
+    return res.status(400).json({ error: 'Número e mensagem ou documento PDF são obrigatórios.' });
   }
 
   const cleanNumber = String(number).replace(/\D/g, '');
@@ -22,15 +22,21 @@
       text: text || caption || ''
     };
 
-    if (mediaUrl) {
+    if (mediaBase64 || mediaUrl) {
       endpoint = `${EVOLUTION_URL}/message/sendMedia/${instance}`;
+      let mediaData = mediaBase64 || mediaUrl;
+      // Se for base64 puro sem prefixo data:, adicionar prefixo
+      if (mediaBase64 && !mediaBase64.startsWith('data:')) {
+        mediaData = `data:application/pdf;base64,${mediaBase64}`;
+      }
+
       payload = {
         number: finalNumber,
         mediatype: 'document',
         mimetype: 'application/pdf',
-        caption: text || caption || '',
-        media: mediaUrl,
-        fileName: fileName || 'documento.pdf'
+        caption: text || caption || 'Segue documento em anexo.',
+        media: mediaData,
+        fileName: fileName || 'Boleto_Condominial.pdf'
       };
     }
 

@@ -107,7 +107,7 @@ function AuthorizedRoute({ module, children }) {
 }
 
 // ─── Botão WhatsApp flutuante ───────────────────────────────────────────────
-const WHATSAPP_NUMBER = '5511999999999' // ⬅️ Troque pelo número do síndico (com DDI+DDD)
+const WHATSAPP_NUMBER = '558396885931' // WhatsApp Oficial Alpha Soluções
 function WhatsAppButton() {
   const [tooltip, setTooltip] = useState(false)
   return (

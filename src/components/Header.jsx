@@ -19,7 +19,7 @@ const tipoIcon = t=>({reserva:'📅',boleto:'💰',ocorrencia:'⚠️',assemblei
 
 const ROLES_COM_NOTIF = ['Administrador','Síndico']
 
-const WHATSAPP_NUMBER = '5511999999999'
+const WHATSAPP_NUMBER = '558396885931'
 
 function WhatsAppHeaderButton() {
   return (
