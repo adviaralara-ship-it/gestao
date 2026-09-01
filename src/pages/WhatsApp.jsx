@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { storage } from '../firebase'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -30,6 +32,7 @@ export default function WhatsApp() {
   const [condoDestino, setCondoDestino] = useState('')
   const [aptDestino, setAptDestino] = useState('')
   const [mensagem, setMensagem] = useState('')
+  const [arquivoPdfFile, setArquivoPdfFile] = useState(null)
   const [arquivoPdfBase64, setArquivoPdfBase64] = useState(null)
   const [arquivoPdfNome, setArquivoPdfNome] = useState('')
 
@@ -40,6 +43,7 @@ export default function WhatsApp() {
   const [sending, setSending] = useState(false)
   const [logsEnvio, setLogsEnvio] = useState([])
 
+  // Buscar status das instâncias na Evolution API
   const fetchStatus = async () => {
     setLoadingStatus(true)
     try {
@@ -64,9 +68,9 @@ export default function WhatsApp() {
     return m.condominio === condoFiltro || m.condominioNome === condoFiltro
   })
 
-  // Quando o morador é selecionado
-  const handleSelectMorador = (e) => {
-    const id = e.target.value
+  // Atualiza os dados quando o morador é selecionado
+  const handleSelectMorador = (eOrId) => {
+    const id = (eOrId && typeof eOrId === 'object' && eOrId.target) ? eOrId.target.value : eOrId
     setMoradorId(id)
     const m = moradores.find(x => x.id === id)
     if (m) {
@@ -88,14 +92,15 @@ export default function WhatsApp() {
   const handleFileUpload = (e) => {
     const file = e.target.files[0]
     if (!file) return
-    if (file.type !== 'application/pdf') {
+    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
       alert('Por favor, selecione um arquivo em formato PDF.')
       return
     }
+    setArquivoPdfFile(file)
+    setArquivoPdfNome(file.name)
     const reader = new FileReader()
     reader.onload = (ev) => {
       setArquivoPdfBase64(ev.target.result)
-      setArquivoPdfNome(file.name)
     }
     reader.readAsDataURL(file)
   }
@@ -115,34 +120,58 @@ export default function WhatsApp() {
       alert('Por favor, selecione um morador com telefone ou digite um número de WhatsApp válido com DDD.')
       return
     }
-    if (!mensagem.trim() && !arquivoPdfBase64) {
+    if (!mensagem.trim() && !arquivoPdfFile && !arquivoPdfBase64) {
       alert('Digite o conteúdo da mensagem ou anexe um PDF para envio.')
       return
     }
 
     setSending(true)
     try {
+      let mediaUrl = null
+
+      // Fazer upload rápido do PDF para o Firebase Storage para contornar limites de tamanho
+      if (arquivoPdfFile) {
+        try {
+          const cleanName = (arquivoPdfNome || 'documento.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')
+          const fileRef = ref(storage, `whatsapp_docs/${Date.now()}_${cleanName}`)
+          const snap = await uploadBytes(fileRef, arquivoPdfFile)
+          mediaUrl = await getDownloadURL(snap.ref)
+        } catch (storageErr) {
+          console.warn('Upload direto no Storage falhou, usando base64:', storageErr)
+        }
+      }
+
       const res = await fetch('/api/whatsapp-send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           number: tel,
           text: mensagem,
-          mediaBase64: arquivoPdfBase64,
+          mediaUrl: mediaUrl,
+          mediaBase64: !mediaUrl ? arquivoPdfBase64 : undefined,
           fileName: arquivoPdfNome || 'Boleto_Condominial.pdf',
           instance: instance
         })
       })
-      const data = await res.json()
+
+      const rawText = await res.text()
+      let data
+      try {
+        data = JSON.parse(rawText)
+      } catch(parseErr) {
+        throw new Error(rawText || 'Resposta inválida do servidor')
+      }
+
       if (data.success) {
-        alert(`🎉 Mensagem ${arquivoPdfBase64 ? 'com o Boleto em PDF ' : ''}enviada com sucesso para ${nomeDestino || tel}!`)
+        alert(`🎉 Mensagem ${arquivoPdfFile || arquivoPdfBase64 ? 'com o Boleto em PDF ' : ''}enviada com sucesso para ${nomeDestino || tel}!`)
         setLogsEnvio(prev => [{
           hora: new Date().toLocaleTimeString('pt-BR'),
           destinatario: nomeDestino ? `${nomeDestino} (${tel})` : tel,
           status: 'Sucesso',
-          texto: (mensagem || arquivoPdfNome) + (arquivoPdfBase64 ? ' 📄 [PDF Anexo]' : '')
+          texto: (mensagem || arquivoPdfNome) + (arquivoPdfFile || arquivoPdfBase64 ? ' 📄 [PDF Anexo]' : '')
         }, ...prev])
         // Limpar anexo após envio
+        setArquivoPdfFile(null)
         setArquivoPdfBase64(null)
         setArquivoPdfNome('')
       } else {
