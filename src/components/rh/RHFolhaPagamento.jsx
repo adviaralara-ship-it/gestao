@@ -467,7 +467,7 @@ export default function RHFolhaPagamento() {
                   </div>
                 </div>
               ))}
-              <div className="flex gap-2 mt-3">
+              <div className="flex gap-2 mt-3 items-center">
                 <select className="input flex-1" value={novoProvento.desc} onChange={e => setNovoProvento({...novoProvento, desc: e.target.value})}>
                   <option>Horas Extras</option>
                   <option>Adicional Noturno</option>
@@ -477,7 +477,9 @@ export default function RHFolhaPagamento() {
                   <option>Bonificação</option>
                   <option>DSR</option>
                 </select>
-                <input type="number" placeholder="Valor (R$)" className="input w-32" value={novoProvento.valor} onChange={e => setNovoProvento({...novoProvento, valor: e.target.value})} />
+                <div className="w-36">
+                  <CurrencyInput placeholder="0,00" value={novoProvento.valor} onChange={v => setNovoProvento({...novoProvento, valor: v})} />
+                </div>
                 <button onClick={addProvento} className="btn-secondary bg-cream-200"><Plus size={16}/></button>
               </div>
             </div>
@@ -499,7 +501,7 @@ export default function RHFolhaPagamento() {
                   </div>
                 </div>
               ))}
-              <div className="flex gap-2 mt-3">
+              <div className="flex gap-2 mt-3 items-center">
                 <select className="input flex-1" value={novoDesconto.desc} onChange={e => setNovoDesconto({...novoDesconto, desc: e.target.value})}>
                   <option>Plano de Saúde</option>
                   <option>Vale Alimentação</option>
@@ -508,7 +510,9 @@ export default function RHFolhaPagamento() {
                   <option>Pensão Alimentícia</option>
                   <option>Empréstimo Consignado</option>
                 </select>
-                <input type="number" placeholder="Valor (R$)" className="input w-32" value={novoDesconto.valor} onChange={e => setNovoDesconto({...novoDesconto, valor: e.target.value})} />
+                <div className="w-36">
+                  <CurrencyInput placeholder="0,00" value={novoDesconto.valor} onChange={v => setNovoDesconto({...novoDesconto, valor: v})} />
+                </div>
                 <button onClick={addDesconto} className="btn-secondary bg-cream-200"><Plus size={16}/></button>
               </div>
             </div>

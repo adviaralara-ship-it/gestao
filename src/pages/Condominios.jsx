@@ -1,26 +1,20 @@
 import React, { useState } from 'react'
 import { Building2, Plus, Search, Edit2, Trash2, Home, DollarSign, TrendingUp } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
+import { CurrencyInput } from '../utils/currency'
 
-const parseBR = v => parseFloat((v||'').toString().replace(/\./g,'').replace(',','.')) || 0
+const parseBR = v => typeof v === 'number' ? v : (parseFloat((v||'').toString().replace(/\./g,'').replace(',','.')) || 0)
 const fmtBR   = v => Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})
-
-function fmtInput(v, setter) {
-  const nums = v.replace(/\D/g,'')
-  if (!nums) { setter(''); return }
-  const n = parseInt(nums,10)/100
-  setter(n.toLocaleString('pt-BR',{minimumFractionDigits:2}))
-}
 
 function CondoModal({ data, onClose, onSave }) {
   const [form, setForm] = useState(data || {
     nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
     honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital'
   })
-  const [fundoStr, setFundoStr] = useState(data?.fundoReserva ? fmtBR(data.fundoReserva) : '')
-  const [metaStr,  setMetaStr]  = useState(data?.fundoMeta    ? fmtBR(data.fundoMeta)    : '')
-  const [honorariosStr, setHonorariosStr] = useState(data?.honorariosAdm ? fmtBR(data.honorariosAdm) : '')
-  const [taxaStr, setTaxaStr] = useState(data?.taxaEmissao !== undefined ? fmtBR(data.taxaEmissao) : '3,50')
+  const [fundoStr, setFundoStr] = useState(data?.fundoReserva || '')
+  const [metaStr,  setMetaStr]  = useState(data?.fundoMeta || '')
+  const [honorariosStr, setHonorariosStr] = useState(data?.honorariosAdm || '')
+  const [taxaStr, setTaxaStr] = useState(data?.taxaEmissao !== undefined ? data.taxaEmissao : 3.50)
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
 
   return (
@@ -52,8 +46,7 @@ function CondoModal({ data, onClose, onSave }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="label">Honorários de Administração (R$)</label>
-                <input className="input font-bold text-gray-800" value={honorariosStr} inputMode="numeric" placeholder="Ex: 900,00"
-                  onChange={e=>fmtInput(e.target.value,setHonorariosStr)}/>
+                <CurrencyInput value={honorariosStr} onChange={v => setHonorariosStr(v)} placeholder="Ex: 900,00" />
               </div>
               <div>
                 <label className="label">Chave PIX da Alpha (Para receber)</label>
@@ -82,8 +75,7 @@ function CondoModal({ data, onClose, onSave }) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 ml-6.5 bg-white p-3 rounded-xl border border-brand-200">
                   <div>
                     <label className="label">Valor do Serviço por Unidade (R$)</label>
-                    <input className="input font-bold text-emerald-700" value={taxaStr} inputMode="numeric" placeholder="3,50"
-                      onChange={e=>fmtInput(e.target.value,setTaxaStr)}/>
+                    <CurrencyInput value={taxaStr} onChange={v => setTaxaStr(v)} placeholder="3,50" />
                   </div>
                   <div>
                     <label className="label">Descrição no Boleto</label>
@@ -99,12 +91,10 @@ function CondoModal({ data, onClose, onSave }) {
             <p className="text-xs font-bold text-emerald-800 flex items-center gap-1.5"><DollarSign size={13}/>Fundo de Reserva</p>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="label">Saldo Atual (R$)</label>
-                <input className="input" value={fundoStr} inputMode="numeric" placeholder="0,00"
-                  onChange={e=>fmtInput(e.target.value,setFundoStr)}/>
+                <CurrencyInput value={fundoStr} onChange={v => setFundoStr(v)} placeholder="0,00" />
               </div>
               <div><label className="label">Meta Anual (R$)</label>
-                <input className="input" value={metaStr} inputMode="numeric" placeholder="0,00"
-                  onChange={e=>fmtInput(e.target.value,setMetaStr)}/>
+                <CurrencyInput value={metaStr} onChange={v => setMetaStr(v)} placeholder="0,00" />
               </div>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { Plus, Wallet, FileText, CreditCard, LayoutDashboard, Calendar, ShieldAl
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import RepassesAlphaModal from '../components/RepassesAlphaModal'
+import { CurrencyInput } from '../utils/currency'
 
 // Importando as novas abas
 import DashboardFinanceiro from './financeiro/DashboardFinanceiro'
@@ -102,8 +103,8 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
             <input className="input" value={form.categoria} onChange={e => set('categoria', e.target.value)} placeholder="Ex: Manutenção, Taxa..." />
           </div>
           <div>
-            <label className="label">Valor (R$)</label>
-            <input type="number" min="0" step="0.01" className="input" value={form.valor} onChange={e => set('valor', e.target.value)} placeholder="0,00" />
+            <label className="label">Valor</label>
+            <CurrencyInput value={form.valor} onChange={v => set('valor', v)} placeholder="0,00" />
           </div>
           <div>
             <label className="label">Data</label>

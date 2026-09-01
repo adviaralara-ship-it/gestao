@@ -9,6 +9,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { notificarAdm, enviarEmail } from '../emailjs.config'
 import RepassesAlphaModal from '../components/RepassesAlphaModal'
+import { CurrencyInput, maskCurrency, parseCurrency } from '../utils/currency'
 
 function gerarLinhaDigitavel(apt, valor, venc) {
   const r = () => Math.floor(Math.random() * 9)
@@ -75,14 +76,42 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
         return
       }
 
-      await new Promise(r => setTimeout(r, 150))
-      const canvas = await html2canvas(printEl, { 
+      // Cria um container off-screen fixo de 760px para renderizar exatamente no formato A4 independente do dispositivo (mobile/desktop)
+      const wrapper = document.createElement('div')
+      wrapper.style.position = 'fixed'
+      wrapper.style.left = '-9999px'
+      wrapper.style.top = '0'
+      wrapper.style.width = '760px'
+      wrapper.style.backgroundColor = '#ffffff'
+      wrapper.style.zIndex = '-9999'
+
+      const clone = printEl.cloneNode(true)
+      clone.style.width = '760px'
+      clone.style.maxWidth = '760px'
+      clone.style.padding = '24px'
+      clone.style.backgroundColor = '#ffffff'
+      
+      // Oculta botões de tela dentro do clone
+      const hideEls = clone.querySelectorAll('.print\\:hidden')
+      hideEls.forEach(el => el.style.display = 'none')
+
+      wrapper.appendChild(clone)
+      document.body.appendChild(wrapper)
+
+      await new Promise(r => setTimeout(r, 200))
+
+      const canvas = await html2canvas(clone, { 
         scale: 2, 
         useCORS: true, 
         allowTaint: true,
         backgroundColor: '#ffffff',
-        logging: false
+        logging: false,
+        width: 760,
+        windowWidth: 760
       })
+
+      document.body.removeChild(wrapper)
+
       const imgData = canvas.toDataURL('image/png')
       const pdf = new jsPDF('p', 'mm', 'a4')
       const pdfWidth = 210
@@ -91,8 +120,8 @@ function BoletoPrintModal({ boleto, condominio, onClose }) {
       const printWidth = pdfWidth - (margin * 2) // 194mm
       const imgHeight = (canvas.height * printWidth) / canvas.width
       
-      // Ajuste proporcional para caber com folga em 1 página A4
-      const maxAllowedHeight = 278
+      // Ajuste proporcional para caber 100% em 1 página A4
+      const maxAllowedHeight = 280
       const finalH = imgHeight > maxAllowedHeight ? maxAllowedHeight : imgHeight
       const finalW = imgHeight > maxAllowedHeight ? (canvas.width * finalH) / canvas.height : printWidth
       const finalMarginX = (pdfWidth - finalW) / 2
@@ -359,7 +388,7 @@ function ModalBoleto({ data, onClose, onSave, moradores = [] }) {
           <div><label className="label">Unidade / Apt.</label><input className="input" value={form.apt} onChange={e=>set('apt',e.target.value)} placeholder="Ex: 101-A"/></div>
           <div><label className="label">Competência</label><input className="input" value={form.competencia} onChange={e=>set('competencia',e.target.value)} placeholder="Ex: Mar/2025"/></div>
           <div><label className="label">Vencimento</label><input type="date" className="input" value={form.vencimento} onChange={e=>set('vencimento',e.target.value)}/></div>
-          <div><label className="label">Valor (R$)</label><input type="number" min="0" step="0.01" className="input" value={form.valor} onChange={e=>set('valor',e.target.value)} placeholder="0,00"/></div>
+          <div><label className="label">Valor</label><CurrencyInput value={form.valor} onChange={v=>set('valor',v)} placeholder="0,00"/></div>
           <div className="col-span-2"><label className="label">Status</label>
             <select className="input" value={form.status} onChange={e=>set('status',e.target.value)}>
               <option>Pendente</option><option>Pago</option><option>Vencido</option>
@@ -541,7 +570,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="label text-xs font-black">Valor Padrão da Cota (R$) *</label>
-              <input className="input text-sm font-bold text-emerald-700 w-full" value={valorStr} onChange={e => setValorStr(e.target.value)} placeholder="Ex: 450,00" />
+              <CurrencyInput value={valorStr} onChange={v => setValorStr(v)} placeholder="0,00" />
             </div>
             <div>
               <label className="label text-xs font-black">Competência *</label>
@@ -563,7 +592,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
                 className="w-5 h-5 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer shrink-0"
               />
               <span className="text-xs font-black text-brand-950">
-                Serviço de Cobrança Digital (R$ {taxaStr})
+                Serviço de Cobrança Digital (R$ {maskCurrency(taxaStr)})
               </span>
             </label>
             <p className="text-[11px] text-gray-600 ml-7 leading-relaxed">
@@ -574,7 +603,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 ml-7 bg-white p-3 rounded-xl border border-brand-200">
                 <div>
                   <label className="label text-[10px] font-bold">Valor do Serviço por Boleto (R$)</label>
-                  <input className="input text-xs font-bold text-emerald-700" value={taxaStr} onChange={e => setTaxaStr(e.target.value)} placeholder="3,50" />
+                  <CurrencyInput value={taxaStr} onChange={v => setTaxaStr(v)} placeholder="3,50" />
                 </div>
                 <div>
                   <label className="label text-[10px] font-bold">Descrição no Boleto</label>
@@ -607,10 +636,10 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
                     <div key={m.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl gap-2 sm:gap-3">
                       <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
                         <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleMorador(m.id)}
-                          className="w-4 h-4 rounded text-brand-600 border-gray-300 focus:ring-brand-500 shrink-0"
+                           type="checkbox"
+                           checked={isChecked}
+                           onChange={() => toggleMorador(m.id)}
+                           className="w-4 h-4 rounded text-brand-600 border-gray-300 focus:ring-brand-500 shrink-0"
                         />
                         <div className="truncate">
                           <p className="font-bold text-gray-900 text-xs truncate">{m.nome}</p>
@@ -618,13 +647,10 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
                         </div>
                       </label>
 
-                      <div className="flex items-center gap-1 shrink-0">
-                        <span className="text-[11px] font-bold text-gray-400">R$</span>
-                        <input
-                          type="text"
+                      <div className="w-28 shrink-0">
+                        <CurrencyInput
                           value={valMorador}
-                          onChange={e => handleCustomValChange(m.id, e.target.value)}
-                          className="w-20 sm:w-24 px-1.5 py-1 border border-gray-300 rounded-lg text-xs font-black text-emerald-700 text-right bg-white focus:ring-1 focus:ring-emerald-500"
+                          onChange={v => handleCustomValChange(m.id, v)}
                           placeholder="0,00"
                         />
                       </div>

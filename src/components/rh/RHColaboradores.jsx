@@ -5,7 +5,7 @@ import { useFirestore } from '../../hooks/useFirestore'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { storage, db } from '../../firebase'
-
+import { CurrencyInput } from '../../utils/currency'
 
 function ColabModal({ data, condominios = [], onClose, onSave }) {
   const [form, setForm] = useState(data || { 
@@ -31,7 +31,7 @@ function ColabModal({ data, condominios = [], onClose, onSave }) {
           </div>
           <div><label className="label">Cargo</label><input className="input" value={form.cargo} onChange={e => set('cargo', e.target.value)} /></div>
           <div><label className="label">Departamento</label><input className="input" value={form.dept} onChange={e => set('dept', e.target.value)} /></div>
-          <div><label className="label">Salário</label><input className="input" value={form.salario} onChange={e => set('salario', e.target.value)} /></div>
+          <div><label className="label">Salário Base</label><CurrencyInput value={form.salario} onChange={v => set('salario', v)} placeholder="0,00" /></div>
           <div><label className="label">Data Admissão</label><input type="date" className="input" value={form.admissao} onChange={e => set('admissao', e.target.value)} /></div>
           <div className="col-span-2"><label className="label">Data de Nascimento</label><input type="date" className="input" value={form.nascimento || ''} onChange={e => set('nascimento', e.target.value)} /></div>
           

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Calculator, CheckCircle2, Droplet, ArrowRight, Save } from 'lucide-react'
 import { useFirestore } from '../../hooks/useFirestore'
+import { CurrencyInput } from '../../utils/currency'
 
 export default function RateioAgua({ lancamentos }) {
   const { addItem: addLancamento } = useFirestore('financeiro_lancamentos')
@@ -15,7 +16,7 @@ export default function RateioAgua({ lancamentos }) {
 
   const handleSimular = () => {
     if (!valorTotal || !quantidadeAptos) return
-    const vTotal = Number(valorTotal.replace(',', '.'))
+    const vTotal = typeof valorTotal === 'number' ? valorTotal : Number(String(valorTotal).replace(/\./g, '').replace(',', '.'))
     const qtd = Number(quantidadeAptos)
     if (qtd <= 0 || vTotal <= 0) return
 
@@ -58,13 +59,10 @@ export default function RateioAgua({ lancamentos }) {
           
           <div>
             <label className="label">Valor Total da Fatura (R$)</label>
-            <input 
-              type="number" 
-              min="0" step="0.01" 
-              className="input w-full text-lg font-semibold" 
+            <CurrencyInput 
               value={valorTotal} 
-              onChange={e => setValorTotal(e.target.value)} 
-              placeholder="Ex: 1500.00" 
+              onChange={v => setValorTotal(v)} 
+              placeholder="0,00" 
             />
           </div>
 

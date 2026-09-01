@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Wrench, Plus, CheckCircle, Clock, Trash2, Calendar, AlertCircle, ShoppingBag, ExternalLink, Briefcase, FileText, Printer } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
+import { CurrencyInput } from '../utils/currency'
 
 function ModalManutencao({ data, condominios, onClose, onSave }) {
   const [form, setForm] = useState(data || {
@@ -38,7 +39,7 @@ function ModalManutencao({ data, condominios, onClose, onSave }) {
           </div>
           <div>
             <label className="label">Custo Estimado (R$)</label>
-            <input type="number" min="0" step="0.01" className="input" value={form.custoEstimado} onChange={e => set('custoEstimado', e.target.value)} placeholder="0.00" />
+            <CurrencyInput value={form.custoEstimado} onChange={v => set('custoEstimado', v)} placeholder="0,00" />
           </div>
           <div>
             <label className="label">Recorrência</label>

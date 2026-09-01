@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Shield, Target, AlertTriangle, Save, Calculator, DollarSign, Wallet, ArrowRight } from 'lucide-react'
 import { useFirestore } from '../../hooks/useFirestore'
+import { CurrencyInput } from '../../utils/currency'
 
 export default function ReservaEmergencia({ lancamentos }) {
   const { items: configs, updateItem, addItem } = useFirestore('financeiro_config')
@@ -29,7 +30,7 @@ export default function ReservaEmergencia({ lancamentos }) {
   const cotaParte = lucroMensal > 0 ? lucroMensal / 4 : 0
 
   const salvarSaldo = async () => {
-    const val = Number(inputSaldo)
+    const val = typeof inputSaldo === 'number' ? inputSaldo : (Number(String(inputSaldo).replace(/\./g, '').replace(',', '.')) || 0)
     if (val >= 0) {
       if (configDoc) {
         await updateItem('caixa_alpha', { saldo_real: val })
@@ -60,7 +61,7 @@ export default function ReservaEmergencia({ lancamentos }) {
           <h4 className="text-brand-100 uppercase tracking-widest text-xs font-bold mb-4 relative z-10">Saldo Real na Conta da Alpha</h4>
           {editando ? (
             <div className="flex justify-center items-center gap-2 max-w-sm mx-auto relative z-10">
-              <input type="number" className="input text-center text-xl font-bold text-gray-800" value={inputSaldo} onChange={e => setInputSaldo(e.target.value)} autoFocus />
+              <CurrencyInput className="text-center text-xl font-bold text-gray-800" value={inputSaldo} onChange={v => setInputSaldo(v)} autoFocus />
               <button onClick={salvarSaldo} className="btn-primary bg-white text-brand-700 hover:bg-cream-100 flex items-center gap-2"><Save size={16}/> Salvar</button>
             </div>
           ) : (
