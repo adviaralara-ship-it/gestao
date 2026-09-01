@@ -96,7 +96,7 @@ function Modal({ data, onClose, onSave }) {
             <h4 className="font-bold text-sm text-brand-700 mb-2 border-b border-cream-300 pb-2">Dados do Usuário</h4>
             <div>
               <label className="label">Nome Completo</label>
-              <input className="input" value={form.nome} onChange={e => set('nome', e.target.value)} placeholder="Nome do usuário" />
+              <input className="input uppercase" value={form.nome} onChange={e => set('nome', e.target.value.toUpperCase())} placeholder="NOME DO USUÁRIO" />
             </div>
             <div>
               <label className="label">E-mail (usado para login)</label>
@@ -178,7 +178,7 @@ function Modal({ data, onClose, onSave }) {
                   <label className="label">Nome do Condomínio</label>
                   <div className="relative">
                     <Building size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input className="input pl-9" value={form.condominio || ''} onChange={e => set('condominio', e.target.value)} placeholder="Ex: Residencial das Flores" />
+                    <input className="input pl-9 uppercase" value={form.condominio || ''} onChange={e => set('condominio', e.target.value.toUpperCase())} placeholder="Ex: RESIDENCIAL DAS FLORES" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -186,14 +186,14 @@ function Modal({ data, onClose, onSave }) {
                     <label className="label">Bloco / Torre</label>
                     <div className="relative">
                       <Layers size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                      <input className="input pl-9" value={form.bloco || ''} onChange={e => set('bloco', e.target.value)} placeholder="Ex: A, B, 1" />
+                      <input className="input pl-9 uppercase" value={form.bloco || ''} onChange={e => set('bloco', e.target.value.toUpperCase())} placeholder="Ex: A, B, 1" />
                     </div>
                   </div>
                   <div>
                     <label className="label">Unidade / Apto</label>
                     <div className="relative">
                       <DoorOpen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                      <input className="input pl-9" value={form.unidade || ''} onChange={e => set('unidade', e.target.value)} placeholder="Ex: 204" />
+                      <input className="input pl-9 uppercase" value={form.unidade || ''} onChange={e => set('unidade', e.target.value.toUpperCase())} placeholder="Ex: 106, 101-A" />
                     </div>
                   </div>
                 </div>

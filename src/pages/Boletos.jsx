@@ -884,7 +884,35 @@ export default function Boletos() {
   const { user } = useAuth()
   const { items: allBoletos, addItem, updateItem, deleteItem } = useFirestore('boletos')
   const { items: allCondominios, updateItem: updateCondominio } = useFirestore('condominios')
-  const { items: moradores } = useFirestore('moradores')
+  const { items: allMoradoresDocs } = useFirestore('moradores')
+  const { items: allUsuariosDocs } = useFirestore('usuarios')
+
+  // Unifica moradores de 'moradores' e 'usuarios' (residentes) sem duplicidade
+  const moradores = React.useMemo(() => {
+    const list = [...allMoradoresDocs]
+    const chavesExistentes = new Set(list.map(m => ((m.email || '') + '_' + (m.nome || '') + '_' + (m.apt || '')).toLowerCase().trim()))
+
+    allUsuariosDocs.forEach(u => {
+      const isResidente = ['Morador', 'Síndico', 'Subsíndico', 'Conselheiro'].includes(u.role)
+      const uKey = ((u.email || '') + '_' + (u.nome || '') + '_' + (u.unidade || u.apt || '')).toLowerCase().trim()
+      if (isResidente && !chavesExistentes.has(uKey)) {
+        list.push({
+          id: u.id,
+          nome: (u.nome || '').toUpperCase().trim(),
+          email: u.email || '',
+          tel: u.telefone || u.tel || '',
+          condominio: (u.condominio || '').toUpperCase().trim(),
+          bloco: u.bloco || '',
+          apt: u.unidade || u.apt || '',
+          cpf: u.cpf || '',
+          status: u.role === 'Morador' ? 'Proprietário' : u.role,
+          origem: 'usuarios'
+        })
+        chavesExistentes.add(uKey)
+      }
+    })
+    return list
+  }, [allMoradoresDocs, allUsuariosDocs])
 
   const [tab, setTab] = useState('boletos')
   const [condoFilter, setCondoFilter] = useState('Todos')

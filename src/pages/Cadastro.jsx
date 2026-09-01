@@ -177,7 +177,7 @@ export default function Cadastro() {
           <div>
             <label className="label">Nome completo *</label>
             <div className="relative"><User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-              <input className="input pl-9" value={form.nome} onChange={e=>set('nome',e.target.value)} placeholder="Seu nome completo"/>
+              <input className="input pl-9 uppercase" value={form.nome} onChange={e=>set('nome',e.target.value.toUpperCase())} placeholder="SEU NOME COMPLETO"/>
             </div>
           </div>
 
@@ -224,7 +224,7 @@ export default function Cadastro() {
               <p className="text-xs font-bold text-brand-700 flex items-center gap-1"><Building size={12}/> Dados do Condomínio</p>
               <div><label className="label">Nome do Condomínio *</label>
                 <div className="relative"><Building size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-                  <input list="condominios-sugestoes" className="input pl-9" value={form.condominio} onChange={e=>set('condominio',e.target.value)} placeholder="Selecione ou digite o condomínio..."/>
+                  <input list="condominios-sugestoes" className="input pl-9 uppercase" value={form.condominio} onChange={e=>set('condominio',e.target.value.toUpperCase())} placeholder="SELECIONE OU DIGITE O CONDOMÍNIO..."/>
                   <datalist id="condominios-sugestoes">
                     {condominiosList.map(c => (
                       <option key={c.id || c.nome} value={c.nome} />
@@ -236,12 +236,12 @@ export default function Cadastro() {
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="label">Bloco / Torre</label>
                     <div className="relative"><Layers size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-                      <input className="input pl-9" value={form.bloco} onChange={e=>set('bloco',e.target.value)} placeholder="Ex: A, B, 1..."/>
+                      <input className="input pl-9 uppercase" value={form.bloco} onChange={e=>set('bloco',e.target.value.toUpperCase())} placeholder="Ex: A, B, 1..."/>
                     </div>
                   </div>
                   <div><label className="label">Unidade / Apto *</label>
                     <div className="relative"><DoorOpen size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-                      <input className="input pl-9" value={form.unidade} onChange={e=>set('unidade',e.target.value)} placeholder="Ex: 204, 101-A"/>
+                      <input className="input pl-9 uppercase" value={form.unidade} onChange={e=>set('unidade',e.target.value.toUpperCase())} placeholder="Ex: 106, 101-A"/>
                     </div>
                   </div>
                 </div>

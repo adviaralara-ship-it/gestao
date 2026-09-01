@@ -26,7 +26,7 @@ function CondoModal({ data, onClose, onSave }) {
         </div>
         <div className="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto">
           {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['mandatoFim','Fim do Mandato (Síndico)'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX do Condomínio (Para onde vão as cotas)']].map(([k,l])=>(
-            <div key={k}><label className="label">{l}</label><input type={k==='mandatoFim'?'date':'text'} className="input" value={form[k]||''} onChange={e=>set(k,e.target.value)} placeholder={l}/></div>
+            <div key={k}><label className="label">{l}</label><input type={k==='mandatoFim'?'date':'text'} className={`input ${k==='nome'?'uppercase':''}`} value={form[k]||''} onChange={e=>set(k, k==='nome'?e.target.value.toUpperCase():e.target.value)} placeholder={l}/></div>
           ))}
           <div><label className="label">Status</label>
             <select className="input" value={form.status} onChange={e=>set('status',e.target.value)}>

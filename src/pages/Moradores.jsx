@@ -49,7 +49,7 @@ function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialAp
         <div className="p-6 grid grid-cols-2 gap-4">
           <div className="col-span-2">
             <label className="label">Nome Completo *</label>
-            <input className="input" value={form.nome} onChange={e => set('nome', e.target.value)} placeholder="Ex: João da Silva" />
+            <input className="input uppercase" value={form.nome} onChange={e => set('nome', e.target.value.toUpperCase())} placeholder="EX: JOÃO DA SILVA" />
           </div>
           <div>
             <label className="label">CPF (Apenas números)</label>
@@ -75,15 +75,15 @@ function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialAp
           </div>
           <div>
             <label className="label">Condomínio</label>
-            <input className="input" value={form.condominio} onChange={e => set('condominio', e.target.value)} disabled={isMorador} placeholder="Nome do Condomínio" />
+            <input className="input uppercase" value={form.condominio} onChange={e => set('condominio', e.target.value.toUpperCase())} disabled={isMorador} placeholder="NOME DO CONDOMÍNIO" />
           </div>
           <div>
             <label className="label">Apartamento / Unidade *</label>
-            <input className="input font-bold" value={form.apt} onChange={e => set('apt', e.target.value)} disabled={isMorador} placeholder="Ex: 101" />
+            <input className="input font-bold uppercase" value={form.apt} onChange={e => set('apt', e.target.value.toUpperCase())} disabled={isMorador} placeholder="Ex: 101" />
           </div>
           <div>
             <label className="label">Bloco</label>
-            <input className="input" value={form.bloco || ''} onChange={e => set('bloco', e.target.value)} disabled={isMorador} placeholder="Ex: A" />
+            <input className="input uppercase" value={form.bloco || ''} onChange={e => set('bloco', e.target.value.toUpperCase())} disabled={isMorador} placeholder="Ex: A" />
           </div>
           <div>
             <label className="label">Telefone / WhatsApp</label>
