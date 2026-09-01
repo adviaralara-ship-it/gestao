@@ -426,7 +426,7 @@ function ModalBoleto({ data, onClose, onSave, moradores = [] }) {
         </div>
         <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
           <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={()=>{if(!form.morador||!form.valor)return;onSave(form)}} className="btn-primary">Salvar</button>
+          <button onClick={()=>{if(!form.morador || form.valor === undefined || form.valor === null || form.valor === '') return; onSave(form)}} className="btn-primary">Salvar</button>
         </div>
       </div>
     </div>
@@ -495,10 +495,11 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
   }
 
   const handleGerar = () => {
-    const valorPadraoNum = parseFloat(valorStr.replace(/\./g, '').replace(',', '.')) || 0
-    const taxaNum = parseFloat(taxaStr.replace(/\./g, '').replace(',', '.')) || 0
-    if (valorPadraoNum <= 0) {
-      alert("Por favor, informe um valor válido para a taxa condominial padrão.")
+    const valorPadraoNum = typeof valorStr === 'number' ? valorStr : (parseFloat(String(valorStr || '').replace(/\./g, '').replace(',', '.')) || 0)
+    const taxaNum = typeof taxaStr === 'number' ? taxaStr : (parseFloat(String(taxaStr || '').replace(/\./g, '').replace(',', '.')) || 0)
+    
+    if (valorPadraoNum < 0) {
+      alert("Por favor, informe um valor válido para a taxa condominial.")
       return
     }
     if (!vencimento) {
@@ -513,8 +514,8 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
     const listaParaCriar = moradoresDoCondo
       .filter(m => selecionados.includes(m.id))
       .map(m => {
-        const valMoradorStr = valoresCustom[m.id] !== undefined ? valoresCustom[m.id] : valorStr
-        const valFinal = parseFloat(String(valMoradorStr).replace(/\./g, '').replace(',', '.')) || valorPadraoNum
+        const valMoradorRaw = valoresCustom[m.id] !== undefined ? valoresCustom[m.id] : valorStr
+        const valFinal = typeof valMoradorRaw === 'number' ? valMoradorRaw : (parseFloat(String(valMoradorRaw || '').replace(/\./g, '').replace(',', '.')) || valorPadraoNum)
 
         return {
           morador: m.nome,
