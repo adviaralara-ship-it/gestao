@@ -7,9 +7,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import QRCode from 'react-qr-code'
 
 // Chave da API e Instância do Gemini
-const API_KEY = "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
-const genAI = new GoogleGenerativeAI(API_KEY)
-const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
+const API_KEYS = [
+  import.meta.env?.VITE_GEMINI_API_KEY,
+  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
+].filter(Boolean)
 
 // Função auxiliar para sanitizar textos corrompidos por encoding UTF-8 antigo
 const fixEncoding = (str) => {
@@ -24,6 +25,95 @@ const fixEncoding = (str) => {
     .replace(/usuÃ¡rio/g, 'usuário')
     .replace(/AÃ‡ÃƒO/g, 'AÇÃO')
     .replace(/CONDOMÃ NIO/g, 'CONDOMÍNIO')
+}
+
+// Resposta inteligente local baseada no contexto do condomínio e nos dados reais do Firestore
+async function generateLocalAIResponse(input, user, knowledgeBase) {
+  const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+  const q = norm(input)
+
+  // 1. Buscar dados do condomínio e do síndico no Firestore
+  let sindicoNome = 'Síndico(a) do Condomínio'
+  let sindicoTel = ''
+  let sindicoEmail = ''
+  let condoNome = user.condominio || 'ALPHA CONDOMINIOS'
+  let chavePix = ''
+
+  try {
+    const condosSnap = await getDocs(collection(db, 'condominios'))
+    const matchCondo = condosSnap.docs.find(d => {
+      const n = norm(d.data().nome)
+      return n === norm(user.condominio) || n.includes(norm(user.condominio)) || norm(user.condominio).includes(n)
+    })
+    if (matchCondo) {
+      const cData = matchCondo.data()
+      if (cData.sindico) sindicoNome = cData.sindico
+      if (cData.chave_pix) chavePix = cData.chave_pix
+    }
+
+    // Buscar telefone do síndico nos usuários
+    const usersSnap = await getDocs(collection(db, 'usuarios'))
+    const sindicoUser = usersSnap.docs.find(d => {
+      const u = d.data()
+      return (u.role === 'Síndico' || u.role === 'Administrador') && 
+        (!u.condominio || norm(u.condominio) === norm(user.condominio) || norm(u.condominio).includes(norm(user.condominio)))
+    })
+    if (sindicoUser) {
+      const uData = sindicoUser.data()
+      if (uData.telefone) sindicoTel = uData.telefone
+      if (uData.email) sindicoEmail = uData.email
+      if (uData.nome && sindicoNome === 'Síndico(a) do Condomínio') sindicoNome = uData.nome
+    }
+  } catch (err) {
+    console.warn("Erro ao buscar dados contextuais:", err)
+  }
+
+  // 2. Dúvidas sobre Síndico / Contato / WhatsApp / Telefone
+  if (q.includes('sindico') || q.includes('whatsapp') || q.includes('telefone') || q.includes('contato') || q.includes('numero') || q.includes('falar com')) {
+    const telFormat = sindicoTel ? `📱 **WhatsApp / Telefone:** ${sindicoTel}` : `📱 **WhatsApp da Administração:** (83) 99846-8997`
+    const emailFormat = sindicoEmail ? `\n✉️ **E-mail:** ${sindicoEmail}` : ''
+    
+    return `Olá, ${user.nome}! Seguem os dados de contato do síndico e da administração do condomínio **${condoNome}**:\n\n👤 **Síndico(a):** ${sindicoNome}\n${telFormat}${emailFormat}\n\nVocê pode entrar em contato para dúvidas administrativas, autorizações ou agendamentos. Se preferir, também posso registrar uma ocorrência ou solicitação direta para você aqui no sistema!`
+  }
+
+  // 3. Dúvidas sobre Boleto / Taxa Condominial / 2ª via / Pagamento
+  if (q.includes('boleto') || q.includes('segunda via') || q.includes('2 via') || q.includes('pagamento') || q.includes('pagar') || q.includes('vencimento') || q.includes('taxa')) {
+    const pixInfo = chavePix ? `\n\n🔑 **Chave PIX do Condomínio:** \`${chavePix}\`` : ''
+    return `Olá, ${user.nome}! Para consultar seus boletos e efetuar o pagamento da cota condominial:\n\n1. Acesse o menu **Boletos & Fundo** no painel lateral.\n2. Lá você encontrará a lista de boletos da sua unidade (${user.unidade ? 'Apt ' + user.unidade : 'sua unidade'}).\n3. Você pode baixar o **PDF oficial**, copiar a **Linha Digitável** ou pagar via **PIX Copia e Cola** instantâneo.${pixInfo}\n\nTodos os boletos são enviados também automaticamente no seu WhatsApp cadastrado!`
+  }
+
+  // 4. Reservas de Áreas Comuns (Salão de Festas, Churrasqueira, Espaço Gourmet)
+  if (q.includes('reserva') || q.includes('salao') || q.includes('churrasqueira') || q.includes('espaco gourmet') || q.includes('agendar') || q.includes('piscina')) {
+    let espacoDetectado = 'Salão de Festas'
+    if (q.includes('churrasqueira')) espacoDetectado = 'Churrasqueira'
+    if (q.includes('gourmet')) espacoDetectado = 'Espaço Gourmet'
+    if (q.includes('jogos')) espacoDetectado = 'Salão de Jogos'
+    
+    return `Olá, ${user.nome}! Você pode solicitar a reserva de áreas comuns diretamente por aqui ou no menu **Reservas**.\n\n📅 **Espaço:** ${espacoDetectado}\n🏢 **Unidade:** ${user.unidade || 'Morador'}\n\nClique no botão abaixo para confirmar o seu pedido de reserva:\n\n[CRIAR_RESERVA: ${espacoDetectado} - ${new Date().toLocaleDateString('pt-BR')} - 18:00]`
+  }
+
+  // 5. Ocorrências / Barulho / Reclamação / Manutenção / Lâmpada / Vazamento
+  if (q.includes('barulho') || q.includes('reclam') || q.includes('vazamento') || q.includes('lampada') || q.includes('quebr') || q.includes('som alto') || q.includes('problema') || q.includes('ocorrencia') || q.includes('sujeira') || q.includes('cachorro') || q.includes('vizinho')) {
+    return `Entendido, ${user.nome}. Sinto muito pelo transtorno. Posso registrar uma ocorrência formal diretamente para a administração e o síndico tomarem as providências necessárias.\n\nClique no botão abaixo para oficializar o registro:\n\n[CRIAR_OCORRENCIA: ${input.trim()}]`
+  }
+
+  // 6. Regras do Condomínio / Horários de Silêncio / Mudanças
+  if (q.includes('regra') || q.includes('horario') || q.includes('silencio') || q.includes('mudanca') || q.includes('lixo') || q.includes('pet') || q.includes('animais')) {
+    return `Olá, ${user.nome}! Aqui estão as diretrizes de convivência do condomínio **${condoNome}**:\n\n🔇 **Horário de Silêncio:** Das 22h00 às 08h00 (em dias de semana) e até 09h00 aos finais de semana.\n📦 **Mudanças e Obras:** De segunda a sexta-feira, das 08h00 às 17h00 (necessário agendamento prévio com a administração).\n🗑️ **Descarte de Lixo:** Todo lixo deve ser ensacado e depositado na lixeira do bloco.\n🐾 **Animais de Estimação (Pets):** Permitidos nas áreas privativas; nas áreas comuns devem circular com coleira/guia.\n\nPara consultar o documento completo, acesse a aba **Regime & Documentos** no menu lateral!`
+  }
+
+  // 7. Visitantes e Portaria
+  if (q.includes('visitante') || q.includes('convidado') || q.includes('portaria') || q.includes('encomenda') || q.includes('entrega') || q.includes('qr code')) {
+    return `Olá, ${user.nome}!\n\n🚪 **Visitantes & Convidados:** Você pode cadastrar e gerar um convite com **QR Code digital** no menu **Eventos & Visitantes** para liberar a entrada rápida na portaria.\n📦 **Encomendas:** Assim que uma encomenda ou entrega chegar para sua unidade, a portaria registrará no sistema e você receberá uma notificação automática no seu WhatsApp!`
+  }
+
+  // 8. Resposta de Boas-Vindas / Saudação
+  if (q.includes('ola') || q.includes('oi') || q.includes('bom dia') || q.includes('boa tarde') || q.includes('boa noite') || q.includes('tudo bem') || q.includes('quem e voce')) {
+    return `Olá, ${user.nome}! Tudo bem? Eu sou o **Alpha AI**, seu Concierge Virtual do condomínio **${condoNome}**.\n\nEstou à sua disposição 24 horas por dia para:\n• Informar dados de contato do síndico e administração;\n• Ajudar na emissão de boletos e 2ª via;\n• Agendar reservas de áreas comuns (salão de festas, churrasqueira);\n• Registrar ocorrências e solicitações de manutenção;\n• Esclarecer regras e horários do condomínio.\n\nComo posso te ajudar agora?`
+  }
+
+  // 9. Resposta Genérica Prestativa
+  return `Olá, ${user.nome}! Compreendi a sua mensagem referente a "${input}".\n\nCaso precise de assistência imediata com o síndico ou a administração do condomínio **${condoNome}**, você pode entrar em contato via WhatsApp no número **${sindicoTel || '(83) 99846-8997'}** (${sindicoNome}).\n\nSe desejar abrir um chamado formal ou reservar um espaço, basta me pedir que registro imediatamente para você!`
 }
 
 // Componente interno para processar e renderizar os "Widgets" de Ação no meio da mensagem
@@ -267,14 +357,17 @@ export default function AlphaAIChat() {
     setLoading(true)
 
     try {
-      await updateDoc(chatDocRef, {
-        messages: arrayUnion(userMsg),
-        lastActivity: serverTimestamp()
-      })
-
-      const systemPrompt = `
-Você é o "Alpha AI", o Concierge Virtual extremamente educado e inteligente do condomínio "${user.condominio}".
-O morador com quem você está falando se chama "${user.nome}" (Apartamento ${user.apt}).
+      let aiResponse = ''
+      
+      // Tenta consultar a API do Gemini se houver chaves
+      for (const key of API_KEYS) {
+        try {
+          const genAI = new GoogleGenerativeAI(key)
+          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+          
+          const systemPrompt = `
+Você é o "Alpha AI", o Concierge Virtual extremamente educado e inteligente do condomínio "${user.condominio || 'ALPHA CONDOMINIOS'}".
+O morador com quem você está falando se chama "${user.nome}" (Apartamento ${user.apt || user.unidade || 'Unidade'}).
 Seja amigável, direto, e use português brasileiro formal e acolhedor.
 
 BASE DE CONHECIMENTO DO CONDOMÍNIO:
@@ -286,19 +379,29 @@ REGRAS ESPECIAIS DE AÇÃO (TOOL CALLING):
 2. Se o morador quiser agendar ou reservar uma área comum (ex: salão de festas, churrasqueira), inclua no final:
 [CRIAR_RESERVA: Espaço - Data - Horário]
 `
-      const chat = model.startChat({
-        history: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: `Olá! Sou o assistente virtual do condomínio ${user.condominio}. Como posso ajudar?` }] },
-          ...messages.slice(-8).map(m => ({
-            role: m.role,
-            parts: [{ text: m.text }]
-          }))
-        ]
-      })
+          const chat = model.startChat({
+            history: [
+              { role: 'user', parts: [{ text: systemPrompt }] },
+              { role: 'model', parts: [{ text: `Olá! Sou o assistente virtual do condomínio ${user.condominio}. Como posso ajudar?` }] },
+              ...messages.slice(-8).map(m => ({
+                role: m.role,
+                parts: [{ text: m.text }]
+              }))
+            ]
+          })
 
-      const result = await chat.sendMessage(input)
-      const aiResponse = result.response.text()
+          const result = await chat.sendMessage(input)
+          aiResponse = result.response.text()
+          if (aiResponse) break
+        } catch (err) {
+          console.warn("Gemini API indisponível, acionando motor inteligente local:", err.message)
+        }
+      }
+
+      // Se a API externa não respondeu, utiliza o motor inteligente local de condomínio
+      if (!aiResponse) {
+        aiResponse = await generateLocalAIResponse(input, user, knowledgeBase)
+      }
 
       const modelMsg = { role: 'model', text: aiResponse }
       setMessages(prev => [...prev, modelMsg])
@@ -308,9 +411,10 @@ REGRAS ESPECIAIS DE AÇÃO (TOOL CALLING):
         lastActivity: serverTimestamp()
       })
     } catch (e) {
-      console.error(e)
-      const errorMsg = { role: 'model', text: "Desculpe, tive uma instabilidade momentânea. Pode repetir a sua mensagem?" }
-      setMessages(prev => [...prev, errorMsg])
+      console.error("Erro geral no Alpha AI:", e)
+      const fallback = await generateLocalAIResponse(input, user, knowledgeBase)
+      const modelMsg = { role: 'model', text: fallback }
+      setMessages(prev => [...prev, modelMsg])
     } finally {
       setLoading(false)
     }
