@@ -302,14 +302,14 @@ export async function gerarBoletoPdfBase64(b, condoDoc) {
   `
 
   await new Promise(r => setTimeout(r, 200))
-  const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
-  const imgData = canvas.toDataURL('image/png')
+  const canvas = await html2canvas(container, { scale: 1.5, useCORS: true, backgroundColor: '#ffffff' })
+  const imgData = canvas.toDataURL('image/jpeg', 0.85)
   document.body.removeChild(container)
 
   const pdf = new jsPDF('p', 'mm', 'a4')
   const pdfWidth = pdf.internal.pageSize.getWidth()
   const imgHeight = (canvas.height * pdfWidth) / canvas.width
-  pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, Math.min(imgHeight, 295))
+  pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, Math.min(imgHeight, 295), undefined, 'FAST')
   
   return pdf.output('datauristring')
 }

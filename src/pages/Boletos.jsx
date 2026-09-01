@@ -937,7 +937,11 @@ export default function Boletos() {
     }
     
     if (dispararWhatsApp) {
-      alert(`🎉 Geração & Disparo Concluídos!\n\n📄 ${criados} boletos gerados no sistema.\n📲 ${enviadosWhats} boletos em PDF entregues via WhatsApp!\n${falhasWhats > 0 ? `⚠️ ${falhasWhats} moradores sem WhatsApp válido cadastrado.` : ''}`)
+      if (enviadosWhats > 0) {
+        alert(`🎉 Geração & Disparo Concluídos!\n\n📄 ${criados} boletos gerados no sistema.\n📲 ${enviadosWhats} boletos em PDF entregues com sucesso via WhatsApp oficial!\n${falhasWhats > 0 ? `⚠️ ${falhasWhats} envios pendentes/sem contato.` : ''}`)
+      } else {
+        alert(`📄 ${criados} boletos gerados com sucesso!\n⚠️ O envio automático via WhatsApp não foi concluído para ${falhasWhats} moradores (verifique se o morador possui DDD e número válido cadastrado).`)
+      }
     } else {
       alert(`🎉 Sucesso! ${criados} boletos PIX foram gerados com sucesso para os moradores selecionados!`)
     }
