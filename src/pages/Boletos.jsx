@@ -890,36 +890,45 @@ export default function Boletos() {
     let enviadosWhats = 0
     let falhasWhats = 0
 
-    if (dispararWhatsApp) {
-      setProgressoLote({ total: lista.length, atual: 0, morador: 'Iniciando gravação no sistema...' })
-    }
-
-    for (let i = 0; i < lista.length; i++) {
-      const b = lista[i]
-      const docRef = await addItem(b)
-      const novoBoleto = { ...b, id: docRef?.id || b.id }
-      criados++
-
+    try {
       if (dispararWhatsApp) {
-        setProgressoLote({ total: lista.length, atual: i + 1, morador: b.morador })
-        const moradorDoc = moradores.find(m => m.nome === b.morador || (m.apt && m.apt === b.apt && m.condominio === b.condominio))
-        const condoDoc = allCondominios.find(c => c.nome === b.condominio)
-        
-        if (moradorDoc) {
-          const res = await enviarBoletoWhatsAppAuto(novoBoleto, moradorDoc, condoDoc)
-          if (res.success) enviadosWhats++
-          else falhasWhats++
-        } else {
-          falhasWhats++
+        setProgressoLote({ total: lista.length, atual: 0, morador: 'Iniciando gravação no sistema...' })
+      }
+
+      for (let i = 0; i < lista.length; i++) {
+        const b = lista[i]
+        const docRef = await addItem(b)
+        const novoBoleto = { ...b, id: docRef?.id || b.id }
+        criados++
+
+        if (dispararWhatsApp) {
+          setProgressoLote({ total: lista.length, atual: i + 1, morador: b.morador })
+          const moradorDoc = moradores.find(m => m.nome === b.morador || (m.apt && m.apt === b.apt && m.condominio === b.condominio))
+          const condoDoc = allCondominios.find(c => c.nome === b.condominio)
+          
+          if (moradorDoc) {
+            try {
+              const res = await enviarBoletoWhatsAppAuto(novoBoleto, moradorDoc, condoDoc)
+              if (res.success) enviadosWhats++
+              else falhasWhats++
+            } catch (err) {
+              console.error('Erro individual WhatsApp:', err)
+              falhasWhats++
+            }
+          } else {
+            falhasWhats++
+          }
         }
       }
+    } catch(err) {
+      console.error('Erro geral ao processar lote:', err)
+    } finally {
+      setProgressoLote(null)
+      setModalLote(false)
     }
-
-    setProgressoLote(null)
-    setModalLote(false)
     
     if (dispararWhatsApp) {
-      alert(`🎉 Geração & Disparo Concluídos!\n\n📄 ${criados} boletos gerados no sistema.\n📲 ${enviadosWhats} boletos em PDF enviados com sucesso pelo WhatsApp!\n${falhasWhats > 0 ? `⚠️ ${falhasWhats} moradores sem telefone/WhatsApp cadastrado.` : ''}`)
+      alert(`🎉 Geração & Disparo Concluídos!\n\n📄 ${criados} boletos gerados no sistema.\n📲 ${enviadosWhats} boletos em PDF entregues via WhatsApp!\n${falhasWhats > 0 ? `⚠️ ${falhasWhats} moradores sem WhatsApp válido cadastrado.` : ''}`)
     } else {
       alert(`🎉 Sucesso! ${criados} boletos PIX foram gerados com sucesso para os moradores selecionados!`)
     }
@@ -1173,17 +1182,32 @@ export default function Boletos() {
         await addDoc(collection(db,'notificacoes'),{text:msg,time:new Date().toISOString(),tipo:'boleto',lida:false,_createdAt:serverTimestamp(), condominio: bCondo, moradorNome: b.morador})
         await updateItem(b.id, { notif5d: true })
         notificarAdm('⚠️ Boleto vencendo em 5 dias',msg)
+        fetch('/api/onesignal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: '⚠️ Boleto Vencendo em 5 Dias', message: msg, targetUrl: '/boletos' })
+        }).catch(() => {})
       } else if (diff === 0 && !b.notif0d) {
         const msg = `🔴 VENCE HOJE – Boleto ${b.morador} (Apt ${b.apt}), R$ ${fmt(b.valor)}`
         await addDoc(collection(db,'notificacoes'),{text:msg,time:new Date().toISOString(),tipo:'boleto',lida:false,_createdAt:serverTimestamp(), condominio: bCondo, moradorNome: b.morador})
         await updateItem(b.id, { notif0d: true })
         notificarAdm('🔴 Boleto vence HOJE',msg)
+        fetch('/api/onesignal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: '🔴 Boleto Vence HOJE', message: msg, targetUrl: '/boletos' })
+        }).catch(() => {})
       } else if (diff < 0 && !b.notifAtraso && b.status !== 'Vencido') {
         // Marca o boleto como vencido automaticamente no sistema também
         const msg = `⛔ BOLETO ATRASADO – Boleto ${b.morador} (Apt ${b.apt}), R$ ${fmt(b.valor)} vencido em ${b.vencimento}`
         await addDoc(collection(db,'notificacoes'),{text:msg,time:new Date().toISOString(),tipo:'boleto',lida:false,_createdAt:serverTimestamp(), condominio: bCondo, moradorNome: b.morador})
         await updateItem(b.id, { status: 'Vencido', notifAtraso: true })
         notificarAdm('⛔ Boleto Atrasado',msg)
+        fetch('/api/onesignal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: '⛔ Boleto em Atraso', message: msg, targetUrl: '/boletos' })
+        }).catch(() => {})
       }
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps

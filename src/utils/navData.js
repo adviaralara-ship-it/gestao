@@ -32,7 +32,6 @@ export const navGroups = [
     items: [
       { to: '/moradores',    label: 'Moradores',             icon: Users },
       { to: '/pets',         label: 'Pets',                  icon: PawPrint },
-      { to: '/condominios',  label: 'Condomínios',           icon: Building2 },
       { to: '/usuarios',     label: 'Usuários & Permissões', icon: Settings },
       { to: '/ocorrencias',  label: 'Solicitações',          icon: AlertTriangle },
       { to: '/conviver',     label: 'Conviver+',             icon: HeartHandshake },
@@ -58,7 +57,7 @@ export const navGroups = [
     label: '🏢 Gestão',
     emoji: '🏢',
     items: [
-      { to: '/condominios',   label: 'Gestão do Condomínio',   icon: Building2 },
+      { to: '/condominios',   label: 'Condomínios & Unidades', icon: Building2 },
       { to: '/documentos',    label: 'Documentos',             icon: FolderOpen },
       { to: '/regime',        label: 'Regimentos',             icon: BookOpen },
       { to: '/contratos',     label: 'Contratos & Documentos', icon: FileSignature },
