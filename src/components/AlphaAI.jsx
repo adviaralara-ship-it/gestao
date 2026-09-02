@@ -52,7 +52,7 @@ async function generateLocalAIResponse(input, user, knowledgeBase) {
   }
 
   if (q.includes('sindico') || q.includes('whatsapp') || q.includes('telefone') || q.includes('contato') || q.includes('numero') || q.includes('falar com')) {
-    return `Olá, ${user.nome}! Seguem os dados de contato do síndico e da administração do condomínio **${condoNome}**:\n\n👤 **Síndico(a):** ${sindicoNome}\n📱 **WhatsApp da Administração:** (83) 9680-6325 | (83) 9688-5931\n✉️ **E-mail:** alphaadmsc@gmail.com\n\nVocê pode entrar em contato para dúvidas administrativas ou agendamentos. Se preferir, posso registrar uma ocorrência ou solicitação direta para você aqui!`
+    return `Olá, ${user.nome}! Seguem os dados de contato do síndico e da administração do condomínio **${condoNome}**:\n\n👤 **Síndico(a):** ${sindicoNome}\n📱 **WhatsApp da Administração:** (83) 9680-6325\n✉️ **E-mail:** alphaadmsc@gmail.com\n\nVocê pode entrar em contato para dúvidas administrativas ou agendamentos. Se preferir, posso registrar uma ocorrência ou solicitação direta para você aqui!`
   }
 
   if (q.includes('boleto') || q.includes('segunda via') || q.includes('2 via') || q.includes('pagamento') || q.includes('pagar') || q.includes('vencimento') || q.includes('taxa')) {
@@ -83,7 +83,7 @@ async function generateLocalAIResponse(input, user, knowledgeBase) {
     return `Olá, ${user.nome}! Tudo bem? Eu sou o **Alpha AI**, seu Concierge Virtual do condomínio **${condoNome}**.\n\nEstou à sua disposição 24 horas por dia para:\n• Informar dados de contato do síndico e administração;\n• Ajudar na emissão de boletos e 2ª via;\n• Agendar reservas de áreas comuns (salão de festas, churrasqueira);\n• Registrar ocorrências e solicitações de manutenção;\n• Esclarecer regras e horários do condomínio.\n\nComo posso te ajudar agora?`
   }
 
-  return `Olá, ${user.nome}! Compreendi a sua mensagem referente a "${input}".\n\nCaso precise de assistência imediata com o síndico ou a administração do condomínio **${condoNome}**, você pode entrar em contato via WhatsApp no número **(83) 9680-6325** ou **(83) 9688-5931**, ou por e-mail no **alphaadmsc@gmail.com** (${sindicoNome}).\n\nSe desejar abrir um chamado formal ou reservar um espaço, basta me pedir que registro imediatamente para você!`
+  return `Olá, ${user.nome}! Compreendi a sua mensagem referente a "${input}".\n\nCaso precise de assistência imediata com o síndico ou a administração do condomínio **${condoNome}**, você pode entrar em contato via WhatsApp no número **(83) 9680-6325**, ou por e-mail no **alphaadmsc@gmail.com** (${sindicoNome}).\n\nSe desejar abrir um chamado formal ou reservar um espaço, basta me pedir que registro imediatamente para você!`
 }
 
 // Componente interno para processar e renderizar os "Widgets" de Ação no meio da mensagem
@@ -331,7 +331,7 @@ O morador com quem você está falando se chama "${user.nome}" (Apartamento ${us
 Seja amigável, direto, e use português brasileiro formal e acolhedor.
 
 DADOS DE CONTATO OFICIAIS DA ADMINISTRAÇÃO ALPHA:
-- WhatsApp da Administração: (83) 9680-6325 | (83) 9688-5931
+- WhatsApp da Administração: (83) 9680-6325
 - E-mail: alphaadmsc@gmail.com
 Sempre que pedirem WhatsApp, telefone ou e-mail da administração ou síndico, forneça estes contatos oficiais acima.
 
