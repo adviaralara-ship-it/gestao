@@ -341,9 +341,34 @@ export default function Usuarios() {
   const [roleFilter, setRoleFilter] = useState('Todos')
   const [search, setSearch] = useState('')
 
+  // Padronização automática: Administradores pertencem à gestão interna 'ALPHA' (sem bloco/apto)
+  React.useEffect(() => {
+    if (!users.length) return
+    users.forEach(async u => {
+      if (u.role === 'Administrador') {
+        const precisaAjuste = u.condominio !== 'ALPHA' || u.bloco || u.unidade
+        if (precisaAjuste) {
+          try {
+            await updateItem(u.id, {
+              ...u,
+              condominio: 'ALPHA',
+              bloco: '',
+              unidade: ''
+            })
+          } catch (e) {
+            console.warn('Ajustando admin:', e)
+          }
+        }
+      }
+    })
+  }, [users])
+
   const handleSave = async (form) => {
+    const isAdm = form.role === 'Administrador'
     const nomeNorm = (form.nome || '').toUpperCase().trim()
-    const condoNorm = (form.condominio || '').toUpperCase().trim()
+    const condoNorm = isAdm ? 'ALPHA' : (form.condominio || '').toUpperCase().trim()
+    const blocoNorm = isAdm ? '' : (form.bloco || '').toUpperCase().trim()
+    const unidadeNorm = isAdm ? '' : (form.unidade || '').toUpperCase().trim()
     const emailClean = (form.email || '').toLowerCase().trim()
 
     if (modal === 'new') {
@@ -361,6 +386,8 @@ export default function Usuarios() {
         ...form,
         nome: nomeNorm,
         condominio: condoNorm,
+        bloco: blocoNorm,
+        unidade: unidadeNorm,
         email: emailClean,
         ativo: form.status === 'Ativo',
         _createdAt: new Date().toISOString()
@@ -395,6 +422,8 @@ export default function Usuarios() {
         ...form,
         nome: nomeNorm,
         condominio: condoNorm,
+        bloco: blocoNorm,
+        unidade: unidadeNorm,
         email: emailClean,
         ativo: form.status === 'Ativo',
       }
@@ -453,10 +482,10 @@ export default function Usuarios() {
     return true
   })
 
-  // Lista única de condomínios presentes em usuários e na coleção condominios
+  // Lista única de condomínios presentes em usuários (residentes) e na coleção condominios
   const uniqueCondoOptions = Array.from(new Set([
     ...allCondominios.map(c => c.nome).filter(Boolean),
-    ...users.map(u => u.condominio).filter(Boolean)
+    ...users.filter(u => u.role !== 'Administrador').map(u => u.condominio).filter(Boolean)
   ])).sort()
 
   return (
@@ -568,7 +597,12 @@ export default function Usuarios() {
                       </span>
                     </td>
                     <td className="table-cell text-gray-700 text-xs font-semibold">
-                      {u.condominio ? (
+                      {u.role === 'Administrador' ? (
+                        <span className="flex items-center gap-1 font-black text-brand-700">
+                          <Building size={12} className="text-brand-500 shrink-0" />
+                          ALPHA
+                        </span>
+                      ) : u.condominio ? (
                         <span className="flex items-center gap-1">
                           <Building size={12} className="text-brand-500 shrink-0" />
                           {u.condominio}
@@ -576,7 +610,9 @@ export default function Usuarios() {
                       ) : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="table-cell text-gray-700 text-xs">
-                      {u.bloco || u.unidade ? (
+                      {u.role === 'Administrador' ? (
+                        <span className="text-gray-300">—</span>
+                      ) : (u.bloco || u.unidade) ? (
                         <span className="font-medium">{u.bloco ? `Bl.${u.bloco} ` : ''}{u.unidade ? `Apt ${u.unidade}` : ''}</span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
