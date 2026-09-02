@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Users, Plus, Shield, Edit2, Trash2, Eye, EyeOff, KeyRound, Building, Layers, DoorOpen, Phone, Search, CheckSquare } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore'
 import { db, secondaryAuth } from '../firebase'
 import { enviarEmail } from '../emailjs.config'
 import { createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth'
@@ -406,9 +406,18 @@ export default function Usuarios() {
     setModal(null)
   }
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Deseja realmente excluir este usuário?')) {
-      await deleteItem(id)
+  const handleDelete = async (u) => {
+    if (!window.confirm(`Deseja realmente excluir o usuário "${u.nome || ''}"?`)) return
+    try {
+      await deleteItem(u.id)
+      // Se for perfil de morador ou tiver e-mail, limpa também em moradores
+      if (u.email) {
+        const qM = query(collection(db, 'moradores'), where('email', '==', u.email.toLowerCase().trim()))
+        const sM = await getDocs(qM)
+        sM.forEach(async d => await deleteDoc(d.ref))
+      }
+    } catch (err) {
+      console.warn('Aviso ao sincronizar exclusão com moradores:', err)
     }
   }
 
@@ -587,7 +596,7 @@ export default function Usuarios() {
                           <Edit2 size={14} />
                         </button>
                         <button
-                          onClick={() => handleDelete(u.id)}
+                          onClick={() => handleDelete(u)}
                           className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 transition-all"
                           title="Excluir usuário"
                         >

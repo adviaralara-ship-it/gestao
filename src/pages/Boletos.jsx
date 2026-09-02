@@ -571,8 +571,12 @@ function ModalBoleto({ data, onClose, onSave, moradores = [] }) {
   )
 }
 
-function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
-  const [condoNome, setCondoNome] = useState(condominios[0]?.nome || '')
+function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, onSave }) {
+  const condominiosValidos = condominios.filter(c => c && c.nome && c.nome.trim())
+  const [condoNome, setCondoNome] = useState(() => {
+    if (initialCondo && condominiosValidos.some(c => c.nome === initialCondo)) return initialCondo
+    return condominiosValidos[0]?.nome || ''
+  })
   const [valorStr, setValorStr] = useState('450,00')
   const [competencia, setCompetencia] = useState(() => {
     const d = new Date()
@@ -584,7 +588,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
     return d.toISOString().split('T')[0]
   })
   
-  const condoSelecionado = condominios.find(c => c.nome === condoNome)
+  const condoSelecionado = condominiosValidos.find(c => c.nome === condoNome)
   const [chavePix, setChavePix] = useState(condoSelecionado?.chave_pix || '')
   const [discriminarTaxa, setDiscriminarTaxa] = useState(condoSelecionado?.discriminarTaxa || false)
   const [taxaStr, setTaxaStr] = useState(condoSelecionado?.taxaEmissao !== undefined ? String(condoSelecionado.taxaEmissao).replace('.', ',') : '3,50')
@@ -593,7 +597,7 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
   const [enviarWhatsAppAuto, setEnviarWhatsAppAuto] = useState(true)
 
   useEffect(() => {
-    const c = condominios.find(c => c.nome === condoNome)
+    const c = condominiosValidos.find(c => c.nome === condoNome)
     if (c) {
       setChavePix(c.chave_pix || '')
       if (c.discriminarTaxa !== undefined) setDiscriminarTaxa(c.discriminarTaxa)
@@ -603,17 +607,18 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
         setNomeTaxa(n)
       }
     }
-  }, [condoNome, condominios])
+  }, [condoNome, condominiosValidos])
 
-  // Moradores filtrados por condomínio (Apenas Titulares/Responsáveis: Proprietário ou Inquilino, excluindo Dependentes)
+  // Moradores filtrados estritamente pelo condomínio selecionado (Apenas Titulares/Responsáveis)
   const normalizeCondo = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 
   const moradoresDoCondo = moradores.filter(m => {
+    if (!condoNome) return false
     const cM = normalizeCondo(m.condominio)
     const cMN = normalizeCondo(m.condominioNome)
     const cTarget = normalizeCondo(condoNome)
 
-    const matchCondo = !condoNome || cM === cTarget || cMN === cTarget || (cM && cTarget && (cM.includes(cTarget) || cTarget.includes(cM)))
+    const matchCondo = cM === cTarget || cMN === cTarget || (cM && cTarget && (cM.includes(cTarget) || cTarget.includes(cM)))
     const isDependente = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente' || (m.parentesco && m.parentesco !== 'Titular')
     return matchCondo && !isDependente
   })
@@ -707,7 +712,8 @@ function ModalGerarLote({ condominios, moradores, onClose, onSave }) {
             <div>
               <label className="label text-xs font-black">Condomínio *</label>
               <select className="input text-xs font-bold w-full bg-white" value={condoNome} onChange={e => setCondoNome(e.target.value)}>
-                {condominios.map(c => <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>)}
+                {condominiosValidos.length === 0 && <option value="">Nenhum condomínio cadastrado</option>}
+                {condominiosValidos.map(c => <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>)}
               </select>
             </div>
             <div>
@@ -887,32 +893,8 @@ export default function Boletos() {
   const { items: allMoradoresDocs } = useFirestore('moradores')
   const { items: allUsuariosDocs } = useFirestore('usuarios')
 
-  // Unifica moradores de 'moradores' e 'usuarios' (residentes) sem duplicidade
-  const moradores = React.useMemo(() => {
-    const list = [...allMoradoresDocs]
-    const chavesExistentes = new Set(list.map(m => ((m.email || '') + '_' + (m.nome || '') + '_' + (m.apt || '')).toLowerCase().trim()))
-
-    allUsuariosDocs.forEach(u => {
-      const isResidente = ['Morador', 'Síndico', 'Subsíndico', 'Conselheiro'].includes(u.role)
-      const uKey = ((u.email || '') + '_' + (u.nome || '') + '_' + (u.unidade || u.apt || '')).toLowerCase().trim()
-      if (isResidente && !chavesExistentes.has(uKey)) {
-        list.push({
-          id: u.id,
-          nome: (u.nome || '').toUpperCase().trim(),
-          email: u.email || '',
-          tel: u.telefone || u.tel || '',
-          condominio: (u.condominio || '').toUpperCase().trim(),
-          bloco: u.bloco || '',
-          apt: u.unidade || u.apt || '',
-          cpf: u.cpf || '',
-          status: u.role === 'Morador' ? 'Proprietário' : u.role,
-          origem: 'usuarios'
-        })
-        chavesExistentes.add(uKey)
-      }
-    })
-    return list
-  }, [allMoradoresDocs, allUsuariosDocs])
+  // Fonte oficial de moradores do condomínio para emissão de boletos: coleção 'moradores'
+  const moradores = allMoradoresDocs
 
   const [tab, setTab] = useState('boletos')
   const [condoFilter, setCondoFilter] = useState('Todos')
@@ -2019,7 +2001,7 @@ export default function Boletos() {
 
       {viewing && <BoletoPrintModal boleto={viewing} condominio={allCondominios.find(c=>c.nome===(viewing.condominio || moradores.find(m=>m.nome===viewing.morador)?.condominio))} moradores={moradores} onClose={()=>setViewing(null)}/>}
       {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores}/>}
-      {modalLote&&<ModalGerarLote condominios={allCondominios} moradores={moradores} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
+      {modalLote&&<ModalGerarLote condominios={allCondominios} moradores={moradores} initialCondo={condoFilter !== 'Todos' ? condoFilter : ''} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
       {condoFundoEdit&&<ModalFundo condo={condoFundoEdit} onClose={()=>setCondoFundoEdit(null)} onSave={handleSaveFundo}/>}
       <RepassesAlphaModal
         isOpen={showRepasses}

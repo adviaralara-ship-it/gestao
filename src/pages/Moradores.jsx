@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { Users, Plus, Search, Edit2, Trash2, Phone, Mail, Filter, PawPrint, Home, UserCheck, LayoutGrid, Table as TableIcon, X } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
+import { collection, query, where, getDocs, deleteDoc } from 'firebase/firestore'
+import { db } from '../firebase'
 
 function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialApt, initialBloco, initialCondo }) {
   const [form, setForm] = useState(data || {
@@ -261,6 +263,21 @@ export default function Moradores() {
     setModalPet(null)
   }
 
+  const handleDeleteMorador = async (m) => {
+    if (!window.confirm(`Deseja realmente remover o morador "${m.nome}"?`)) return
+    try {
+      await deleteItem(m.id)
+      // Sincroniza e remove usuário vinculado se houver, evitando resquícios
+      if (m.email) {
+        const qU = query(collection(db, 'usuarios'), where('email', '==', m.email.toLowerCase().trim()))
+        const sU = await getDocs(qU)
+        sU.forEach(async d => await deleteDoc(d.ref))
+      }
+    } catch (err) {
+      console.warn('Aviso ao sincronizar exclusão com usuários:', err)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -433,7 +450,7 @@ export default function Moradores() {
                           <div className="flex items-center gap-1 shrink-0">
                             <button onClick={() => setModal(m)} className="p-1.5 rounded-lg bg-white hover:bg-brand-100 text-gray-400 hover:text-brand-700 border border-gray-200 shadow-sm" title="Editar"><Edit2 size={12} /></button>
                             {(!isMorador || m.status !== 'Proprietário') && (
-                              <button onClick={() => { if (window.confirm(`Deseja remover ${m.nome}?`)) deleteItem(m.id) }} className="p-1.5 rounded-lg bg-white hover:bg-red-100 text-gray-400 hover:text-red-500 border border-gray-200 shadow-sm" title="Remover"><Trash2 size={12} /></button>
+                              <button onClick={() => handleDeleteMorador(m)} className="p-1.5 rounded-lg bg-white hover:bg-red-100 text-gray-400 hover:text-red-500 border border-gray-200 shadow-sm" title="Remover"><Trash2 size={12} /></button>
                             )}
                           </div>
                         </div>
@@ -510,7 +527,7 @@ export default function Moradores() {
                       <td className="table-cell">
                         <div className="flex gap-2">
                           <button onClick={() => setModal(m)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-brand-100 text-gray-400 hover:text-brand-700 transition-all"><Edit2 size={12} /></button>
-                          <button onClick={() => { if (window.confirm(`Deseja remover ${m.nome}?`)) deleteItem(m.id) }} className="p-1.5 rounded-lg bg-cream-200 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={12} /></button>
+                          <button onClick={() => handleDeleteMorador(m)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all" title="Remover"><Trash2 size={12} /></button>
                         </div>
                       </td>
                     </tr>
