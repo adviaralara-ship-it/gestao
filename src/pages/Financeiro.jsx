@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Wallet, FileText, CreditCard, LayoutDashboard, Calendar, ShieldAlert, Calculator, FileCheck, DollarSign, Upload, Eye, Download, Copy, Check, Sparkles, Loader2, Repeat, ExternalLink, Crown, Building2 } from 'lucide-react'
+import { Plus, Wallet, FileText, CreditCard, LayoutDashboard, Calendar, ShieldAlert, Calculator, FileCheck, DollarSign, Upload, Eye, Download, Copy, Check, Sparkles, Loader2, Repeat, ExternalLink, Crown, Building2, Droplet, Shield, Landmark } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import RepassesAlphaModal from '../components/RepassesAlphaModal'
@@ -12,12 +12,12 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import DashboardFinanceiro from './financeiro/DashboardFinanceiro'
 import ContasPagar from './financeiro/ContasPagar'
 import ContasReceber from './financeiro/ContasReceber'
-import FluxoCaixa from './financeiro/FluxoCaixa'
-import DRE from './financeiro/DRE'
-import ReservaEmergencia from './financeiro/ReservaEmergencia'
-import Historico from './financeiro/Historico'
-import Conciliacao from './financeiro/Conciliacao'
 import RateioAgua from './financeiro/RateioAgua'
+import FluxoCaixa from './financeiro/FluxoCaixa'
+import Conciliacao from './financeiro/Conciliacao'
+import ReservaEmergencia from './financeiro/ReservaEmergencia'
+import DRE from './financeiro/DRE'
+import Historico from './financeiro/Historico'
 import EFDReinf from './financeiro/EFDReinf'
 
 // Helper para identificar se o lançamento pertence ao financeiro interno da Alpha
@@ -439,9 +439,6 @@ export default function Financeiro() {
     return l.condominio === condoFilter
   })
 
-  // Quantidade de lançamentos da Alpha Interno
-  const countAlpha = allLancamentos.filter(l => isAlphaInterno(l.condominio)).length
-
   return (
     <div className="flex flex-col gap-6 animate-fade-in max-w-7xl mx-auto pb-12">
       {/* Top Header */}
@@ -482,33 +479,69 @@ export default function Financeiro() {
         </div>
       </div>
 
-      {/* Abas */}
-      <div className="flex gap-2 p-1 bg-slate-100 border border-slate-200 rounded-2xl w-fit flex-wrap">
+      {/* TODAS AS ABAS VISÍVEIS EM BOTÕES ELEGANTES */}
+      <div className="flex gap-2 p-1.5 bg-slate-100 border border-slate-200 rounded-2xl w-full flex-wrap items-center">
         {!isMorador && (
           <>
-            <button onClick={() => setActiveTab('Dashboard')} className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'Dashboard' ? 'bg-white shadow-sm text-brand-700' : 'text-gray-500 hover:text-brand-600'}`}>
+            <button 
+              onClick={() => setActiveTab('Dashboard')} 
+              className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${activeTab === 'Dashboard' ? 'bg-white shadow-md text-brand-700 ring-1 ring-slate-200' : 'text-gray-600 hover:text-brand-600 hover:bg-white/50'}`}
+            >
               📊 Dashboard
             </button>
-            <button onClick={() => setActiveTab('ContasPagar')} className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'ContasPagar' ? 'bg-white shadow-sm text-brand-700' : 'text-gray-500 hover:text-brand-600'}`}>
+            <button 
+              onClick={() => setActiveTab('ContasPagar')} 
+              className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${activeTab === 'ContasPagar' ? 'bg-white shadow-md text-rose-700 ring-1 ring-slate-200' : 'text-gray-600 hover:text-rose-600 hover:bg-white/50'}`}
+            >
               🔴 Contas a Pagar & Boletos
             </button>
-            <button onClick={() => setActiveTab('ContasReceber')} className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'ContasReceber' ? 'bg-white shadow-sm text-brand-700' : 'text-gray-500 hover:text-brand-600'}`}>
+            <button 
+              onClick={() => setActiveTab('ContasReceber')} 
+              className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${activeTab === 'ContasReceber' ? 'bg-white shadow-md text-emerald-700 ring-1 ring-slate-200' : 'text-gray-600 hover:text-emerald-600 hover:bg-white/50'}`}
+            >
               🟢 Contas a Receber
             </button>
-            <button onClick={() => setActiveTab('FluxoCaixa')} className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'FluxoCaixa' ? 'bg-white shadow-sm text-brand-700' : 'text-gray-500 hover:text-brand-600'}`}>
+            <button 
+              onClick={() => setActiveTab('RateioAgua')} 
+              className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${activeTab === 'RateioAgua' ? 'bg-white shadow-md text-blue-700 ring-1 ring-slate-200' : 'text-gray-600 hover:text-blue-600 hover:bg-white/50'}`}
+            >
+              <Droplet size={14} className="text-blue-500" /> Rateio de Água & Gás
+            </button>
+            <button 
+              onClick={() => setActiveTab('FluxoCaixa')} 
+              className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${activeTab === 'FluxoCaixa' ? 'bg-white shadow-md text-brand-700 ring-1 ring-slate-200' : 'text-gray-600 hover:text-brand-600 hover:bg-white/50'}`}
+            >
               📈 Fluxo de Caixa
             </button>
-            <button onClick={() => setActiveTab('DRE')} className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'DRE' ? 'bg-white shadow-sm text-brand-700' : 'text-gray-500 hover:text-brand-600'}`}>
+            <button 
+              onClick={() => setActiveTab('Conciliacao')} 
+              className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${activeTab === 'Conciliacao' ? 'bg-white shadow-md text-purple-700 ring-1 ring-slate-200' : 'text-gray-600 hover:text-purple-600 hover:bg-white/50'}`}
+            >
+              <Landmark size={14} className="text-purple-500" /> Conciliação OFX
+            </button>
+            <button 
+              onClick={() => setActiveTab('ReservaEmergencia')} 
+              className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${activeTab === 'ReservaEmergencia' ? 'bg-white shadow-md text-indigo-700 ring-1 ring-slate-200' : 'text-gray-600 hover:text-indigo-600 hover:bg-white/50'}`}
+            >
+              <Shield size={14} className="text-indigo-500" /> Fundo / Caixa Alpha
+            </button>
+            <button 
+              onClick={() => setActiveTab('DRE')} 
+              className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${activeTab === 'DRE' ? 'bg-white shadow-md text-brand-700 ring-1 ring-slate-200' : 'text-gray-500 hover:text-brand-600 hover:bg-white/50'}`}
+            >
               📋 DRE
             </button>
           </>
         )}
-        <button onClick={() => setActiveTab('Historico')} className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${activeTab === 'Historico' ? 'bg-white shadow-sm text-brand-700' : 'text-gray-500 hover:text-brand-600'}`}>
+        <button 
+          onClick={() => setActiveTab('Historico')} 
+          className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${activeTab === 'Historico' ? 'bg-white shadow-md text-brand-700 ring-1 ring-slate-200' : 'text-gray-600 hover:text-brand-600 hover:bg-white/50'}`}
+        >
           📜 Histórico Geral
         </button>
       </div>
 
-            {/* Conteúdo das Abas */}
+      {/* Conteúdo Renderizado da Aba Ativa */}
       {activeTab === 'Dashboard' && <DashboardFinanceiro lancamentos={lancamentos} contas={contas} setModalLanc={setModalLanc} />}
       {activeTab === 'ContasPagar' && <ContasPagar lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
       {activeTab === 'ContasReceber' && <ContasReceber lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
