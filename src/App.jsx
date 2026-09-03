@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
+import PWAInstallPrompt from './components/PWAInstallPrompt'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import AlphaAIChat from './pages/AlphaAIChat'
@@ -211,6 +212,7 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <AppRoutes />
+        <PWAInstallPrompt />
       </BrowserRouter>
     </AuthProvider>
   )

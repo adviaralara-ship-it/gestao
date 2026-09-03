@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Shield, User, Lock, Mail, ArrowRight, CheckCircle, Phone, Building, DoorOpen, Layers, Check } from 'lucide-react'
+import { Shield, User, Lock, Mail, ArrowRight, CheckCircle, Phone, Building, DoorOpen, Layers, Check, Smartphone } from 'lucide-react'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db, secondaryAuth } from '../firebase'
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth'
@@ -145,10 +145,19 @@ export default function Cadastro() {
 
   if (success) return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 to-cream-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-xl p-10 max-w-md w-full text-center">
+      <div className="bg-white rounded-3xl shadow-xl p-8 sm:p-10 max-w-md w-full text-center">
         <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCircle size={32} className="text-emerald-500"/></div>
         <h2 className="text-xl font-bold text-gray-800 mb-2">Cadastro concluído!</h2>
-        <p className="text-gray-500 text-sm mb-6">Seu cadastro foi realizado com sucesso. Você já pode fazer login usando seu e-mail e senha.</p>
+        <p className="text-gray-500 text-sm mb-4">Seu cadastro foi realizado com sucesso. Você já pode fazer login usando seu e-mail e senha.</p>
+        
+        <div className="mb-6 p-3.5 bg-brand-50 border border-brand-200 rounded-2xl text-left flex items-start gap-2.5">
+          <Smartphone size={22} className="text-brand-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-brand-900">
+            <p className="font-bold">📱 Acesso direto no seu Celular:</p>
+            <p className="text-[11px] text-brand-800 mt-0.5">Toque no aviso na parte inferior da tela para <b>adicionar à tela inicial</b> e abrir o sistema como um aplicativo!</p>
+          </div>
+        </div>
+
         <a href="/" className="btn-primary w-full justify-center">Ir para o Login</a>
       </div>
     </div>
