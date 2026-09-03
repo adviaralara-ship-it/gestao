@@ -24,8 +24,68 @@ const tipoIcon = t => ({
   manutencao: '🔧',
   encomenda: '📦',
   visitante: '🚪',
-  documento: '📄'
+  documento: '📄',
+  morador: '👤',
+  cadastro: '📝',
+  fornecedor: '🛠️'
 }[t] || '🔔')
+
+// Função para identificar para qual página a notificação deve direcionar
+export function getDestinoNotificacao(n) {
+  if (n.link) return n.link
+  if (n.rota) return n.rota
+  if (n.url && !n.url.startsWith('http')) return n.url
+  if (n.path) return n.path
+  if (n.pathname) return n.pathname
+
+  const t = (n.tipo || '').toLowerCase()
+  const text = (n.text || n.titulo || n.mensagem || '').toLowerCase()
+
+  if (t === 'ocorrencia' || text.includes('ocorrência') || text.includes('ocorrencia') || text.includes('solicitaç') || text.includes('chamado')) {
+    return '/ocorrencias'
+  }
+  if (t === 'reserva' || text.includes('reserva') || text.includes('churrasqueira') || text.includes('salão') || text.includes('salao')) {
+    return '/reservas'
+  }
+  if (t === 'boleto' || text.includes('boleto') || text.includes('fatura') || text.includes('cota') || text.includes('pix')) {
+    return '/boletos'
+  }
+  if (t === 'assembleia' || text.includes('assembleia') || text.includes('votação') || text.includes('votacao') || text.includes('pauta')) {
+    return '/assembleias'
+  }
+  if (t === 'comunicado' || text.includes('comunicado') || text.includes('aviso')) {
+    return '/comunicacao'
+  }
+  if (t === 'encomenda' || text.includes('encomenda') || text.includes('pacote') || text.includes('entrega')) {
+    return '/portaria'
+  }
+  if (t === 'morador' || t === 'cadastro' || text.includes('morador') || text.includes('cadastro') || text.includes('aprov')) {
+    return '/moradores'
+  }
+  if (t === 'documento' || text.includes('documento') || text.includes('contrato')) {
+    return '/documentos'
+  }
+  if (t === 'financeiro' || text.includes('despesa') || text.includes('receita') || text.includes('pagamento') || text.includes('conta a pagar')) {
+    return '/financeiro'
+  }
+  if (t === 'fornecedor' || t === 'prestador' || text.includes('prestador') || text.includes('fornecedor')) {
+    return '/prestadores'
+  }
+  if (t === 'vaga' || text.includes('vaga')) {
+    return '/portal-vagas'
+  }
+  if (t === 'evento' || text.includes('evento')) {
+    return '/eventos'
+  }
+  if (t === 'ponto' || text.includes('ponto')) {
+    return '/ponto'
+  }
+  if (t === 'alpha_ai' || text.includes('alpha ai') || text.includes('concierge')) {
+    return '/alpha-ai'
+  }
+
+  return '/dashboard'
+}
 
 const ROLES_COM_NOTIF = ['Administrador','Síndico','Subsíndico','Conselheiro','Financeiro','Portaria']
 const WHATSAPP_NUMBER = '558396885931'
@@ -74,7 +134,7 @@ export default function Header({ onMenuClick }) {
   // Ordenar por data mais recente
   notifications.sort((a, b) => new Date(b.time || b._createdAt || 0) - new Date(a.time || a._createdAt || 0))
 
-  const preview = notifications.slice(0, 5)
+  const preview = notifications.slice(0, 6)
   const naoLidas = notifications.filter(n => !n.lida).length
   const uniqueCondos = [...new Set(allNotifications.map(n => n.condominio).filter(Boolean))]
 
@@ -90,18 +150,24 @@ export default function Header({ onMenuClick }) {
   }
 
   const handleNotifClick = async (n) => {
-    if (!n.lida) {
-      await updateItem(n.id, { lida: true })
+    try {
+      if (!n.lida) {
+        await updateItem(n.id, { lida: true })
+      }
+    } catch (e) {
+      console.warn("Erro ao marcar lida:", e)
     }
-    if (n.link) {
-      navigate(n.link)
+
+    const destino = getDestinoNotificacao(n)
+    if (destino) {
+      navigate(destino)
       setNotifOpen(false)
       setCentralOpen(false)
     }
   }
 
   const pageName = pageNames[location.pathname] || 'Sistema'
-  const podeVerNotif = true // Permite que todos vejam suas notificações
+  const podeVerNotif = true
 
   // Fecha menus ao clicar fora
   React.useEffect(() => {
@@ -268,7 +334,7 @@ export default function Header({ onMenuClick }) {
           <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-emerald-400 border-2 border-white rounded-full"></span>
         </button>
 
-        {/* SINO DE NOTIFICAÇÕES (RESTAURADO E COMPLETO) */}
+        {/* SINO DE NOTIFICAÇÕES (COM REDIRECIONAMENTO DIRETO) */}
         {podeVerNotif && (
           <div className="relative notif-menu-container">
             <button 
@@ -318,11 +384,12 @@ export default function Header({ onMenuClick }) {
                     <div 
                       key={n.id} 
                       onClick={() => handleNotifClick(n)} 
-                      className={`px-4 py-3 flex items-start gap-2.5 cursor-pointer hover:bg-slate-50 transition-colors ${!n.lida ? 'bg-amber-50/40' : ''}`}
+                      className={`px-4 py-3 flex items-start gap-2.5 cursor-pointer hover:bg-brand-50/70 transition-colors group ${!n.lida ? 'bg-amber-50/40' : ''}`}
+                      title="Clique para ir até a página da notificação"
                     >
                       <span className="text-lg shrink-0 mt-0.5">{tipoIcon(n.tipo)}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs text-gray-800 leading-snug font-medium break-words">
+                        <p className="text-xs text-gray-800 group-hover:text-brand-700 leading-snug font-bold break-words transition-colors">
                           {n.text || n.titulo || n.mensagem || 'Notificação do Sistema'}
                         </p>
                         <div className="flex items-center gap-2 mt-1">
@@ -334,6 +401,9 @@ export default function Header({ onMenuClick }) {
                               {n.condominio}
                             </span>
                           )}
+                          <span className="text-[10px] font-bold text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity ml-auto flex items-center gap-0.5">
+                            Abrir <ArrowRight size={10} />
+                          </span>
                         </div>
                       </div>
                       <button 
@@ -356,9 +426,9 @@ export default function Header({ onMenuClick }) {
                   <div className="p-2.5 text-center border-t border-gray-100 bg-slate-50">
                     <button 
                       onClick={() => { setCentralOpen(true); setNotifOpen(false) }} 
-                      className="text-xs text-brand-600 hover:text-brand-800 font-bold w-full py-1 transition-all cursor-pointer"
+                      className="text-xs text-brand-600 hover:text-brand-800 font-bold w-full py-1 transition-all cursor-pointer flex items-center justify-center gap-1"
                     >
-                      Ver todas na Central de Notificações ({notifications.length})
+                      Ver todas na Central de Notificações ({notifications.length}) <ArrowRight size={12} />
                     </button>
                   </div>
                 )}
@@ -367,7 +437,7 @@ export default function Header({ onMenuClick }) {
           </div>
         )}
 
-        {/* MENU DO USUÁRIO & PERFIL (RESTAURADO) */}
+        {/* MENU DO USUÁRIO & PERFIL */}
         <div className="relative user-menu-container">
           <button 
             onClick={() => { setDropOpen(o => !o); setNotifOpen(false); setSearchOpen(false); }}
@@ -444,12 +514,22 @@ export default function Header({ onMenuClick }) {
                   <div 
                     key={n.id} 
                     onClick={() => handleNotifClick(n)} 
-                    className={`p-3.5 rounded-2xl border flex items-start gap-3 cursor-pointer transition-all hover:border-brand-300 hover:bg-brand-50/50 shadow-sm ${!n.lida ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-gray-200'}`}
+                    className={`p-3.5 rounded-2xl border flex items-start gap-3 cursor-pointer transition-all hover:border-brand-300 hover:bg-brand-50/50 shadow-sm group ${!n.lida ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-gray-200'}`}
+                    title="Clique para ir até a página da notificação"
                   >
                     <span className="text-2xl mt-0.5 shrink-0">{tipoIcon(n.tipo)}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs sm:text-sm text-gray-800 leading-snug font-bold">{n.text || n.titulo || n.mensagem}</p>
-                      <p className="text-[11px] text-gray-400 mt-1">{n.time ? new Date(n.time).toLocaleString('pt-BR') : ''}</p>
+                      <p className="text-xs sm:text-sm text-gray-800 group-hover:text-brand-700 leading-snug font-bold transition-colors">
+                        {n.text || n.titulo || n.mensagem}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[11px] text-gray-400">
+                          {n.time ? new Date(n.time).toLocaleString('pt-BR') : ''}
+                        </span>
+                        <span className="text-[11px] font-bold text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity ml-auto flex items-center gap-1">
+                          Acessar <ArrowRight size={12} />
+                        </span>
+                      </div>
                     </div>
                     <button 
                       onClick={(e) => { e.stopPropagation(); deleteItem(n.id) }} 
