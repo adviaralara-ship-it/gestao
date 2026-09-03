@@ -40,16 +40,19 @@ export default async function handler(req, res) {
         "data": "data de emissão no formato YYYY-MM-DD"
       }`;
     } else {
-      prompt = `Extraia as seguintes informações desta conta, boleto, recibo ou despesa e retorne APENAS um JSON válido, sem formatação markdown extra:
+      prompt = `Extraia as seguintes informações deste boleto bancário, conta de consumo (água/luz/energia/gás/seguro), recibo ou despesa e retorne APENAS um JSON válido, sem formatação markdown extra:
       {
-        "descricao": "descrição curta da despesa/conta/receita",
-        "fornecedor": "nome do fornecedor ou pagador",
-        "valor": "valor total (apenas número, ex: 150.50)",
-        "vencimento": "data de vencimento ou emissão no formato YYYY-MM-DD"
+        "descricao": "nome da empresa ou descrição da conta/despesa (ex: Allianz Seguro SA, Energisa, Cagepa)",
+        "fornecedor": "nome do beneficiário ou fornecedor",
+        "categoria": "categoria sugerida (ex: Seguro Predial, Água & Esgoto, Energia Elétrica, Manutenção, Limpeza, etc.)",
+        "valor": "valor total a pagar (apenas número decimal com ponto, ex: 202.08)",
+        "vencimento": "data de vencimento no formato YYYY-MM-DD",
+        "linhaDigitavel": "código de barras numérico ou linha digitável completa do boleto (apenas números ou com pontos/espaços, ou vazio se não for boleto)",
+        "pix": "chave PIX ou código PIX Copia e Cola (se presente no documento, senão vazio)"
       }`;
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const result = await model.generateContent([
       prompt,

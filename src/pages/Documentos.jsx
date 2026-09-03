@@ -1,13 +1,14 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { 
   FolderOpen, Plus, Download, Trash2, Edit2, FileText, Image, 
   Upload, Search, Lock, Users, Eye, Building2, ExternalLink, 
-  Check, X, AlertCircle, Loader2, Filter
+  Check, X, AlertCircle, Loader2, Filter, Printer, Maximize2
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { storage } from '../firebase'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { converterParaBlobUrl, visualizarDocumento, baixarDocumento } from '../utils/fileViewer'
 
 const categories = [
   'Convenção & Regimento', 
@@ -24,12 +25,88 @@ const fileIcon = (tipo) => tipo === 'img'
   ? <Image size={20} className="text-purple-500" /> 
   : <FileText size={20} className="text-red-500" />
 
+// Modal de Visualização Embutido de Documento (Sem tela em branco!)
+function ModalVisualizador({ doc, onClose }) {
+  const [blobUrl, setBlobUrl] = useState('')
+
+  useEffect(() => {
+    if (doc?.url) {
+      if (doc.url.startsWith('data:')) {
+        setBlobUrl(converterParaBlobUrl(doc.url))
+      } else {
+        setBlobUrl(doc.url)
+      }
+    }
+  }, [doc])
+
+  if (!doc) return null
+
+  return (
+    <div className="modal-overlay z-50" onClick={onClose}>
+      <div className="modal-content max-w-4xl w-full h-[90vh] flex flex-col p-0 overflow-hidden bg-white rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Barra superior do visualizador */}
+        <div className="p-4 border-b border-gray-200 bg-slate-900 text-white flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <FileText size={20} className="text-amber-400 shrink-0" />
+            <div className="truncate">
+              <h3 className="font-bold text-sm sm:text-base truncate">{doc.nome}</h3>
+              <p className="text-[11px] text-gray-400">{doc.categoria} • {doc.condominio || 'Geral'}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => baixarDocumento(doc.url, doc.nome)}
+              className="btn-secondary py-1.5 px-3 text-xs bg-slate-800 hover:bg-slate-700 text-white border-slate-700 flex items-center gap-1.5 cursor-pointer"
+              title="Baixar Documento"
+            >
+              <Download size={14} /> Baixar
+            </button>
+            <button
+              onClick={() => visualizarDocumento(doc.url, doc.nome)}
+              className="btn-primary py-1.5 px-3 text-xs bg-brand-600 hover:bg-brand-500 flex items-center gap-1.5 cursor-pointer"
+              title="Abrir em Nova Aba"
+            >
+              <ExternalLink size={14} /> Nova Aba
+            </button>
+            <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer" title="Fechar">
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Corpo do Documento */}
+        <div className="flex-1 bg-slate-100 relative overflow-hidden flex items-center justify-center">
+          {blobUrl ? (
+            doc.tipo === 'img' || blobUrl.startsWith('data:image') ? (
+              <div className="w-full h-full p-4 flex items-center justify-center overflow-auto">
+                <img src={blobUrl} alt={doc.nome} className="max-w-full max-h-full object-contain rounded-lg shadow-md" />
+              </div>
+            ) : (
+              <iframe 
+                src={blobUrl} 
+                title={doc.nome} 
+                className="w-full h-full border-none"
+              />
+            )
+          ) : (
+            <div className="flex flex-col items-center gap-2 text-gray-400">
+              <Loader2 size={32} className="animate-spin text-brand-600" />
+              <p className="text-xs font-bold">Carregando visualização do documento...</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ModalDocumento({ data, onClose, onSave, condominios }) {
   const [arquivo, setArquivo] = useState(null)
   const [categoria, setCategoria] = useState(data?.categoria || 'Contratos')
   const [morador, setMorador] = useState(data?.morador || 'Condomínio')
   const [condominio, setCondominio] = useState(data?.condominio || 'Todos')
-  const [visibilidade, setVisibilidade] = useState(data?.visibilidade || 'Moradores') // 'Moradores' ou 'Privado'
+  const [visibilidade, setVisibilidade] = useState(data?.visibilidade || 'Moradores')
   const [nome, setNome] = useState(data?.nome || '')
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState('')
@@ -63,7 +140,6 @@ function ModalDocumento({ data, onClose, onSave, condominios }) {
       let fileSize = data?.tamanho || ''
       let fileType = data?.tipo || 'pdf'
 
-      // Se selecionou um novo arquivo, faz o upload no Firebase Storage
       if (arquivo) {
         fileType = arquivo.type.startsWith('image/') ? 'img' : 'pdf'
         fileSize = arquivo.size > 1024 * 1024
@@ -71,7 +147,6 @@ function ModalDocumento({ data, onClose, onSave, condominios }) {
           : `${Math.round(arquivo.size / 1024)} KB`
 
         try {
-          // Upload direto no Firebase Storage para suportar arquivos de qualquer tamanho (sem limite de 1MB)
           const safeName = arquivo.name.replace(/[^a-zA-Z0-9._-]/g, '_')
           const storagePath = `documentos/${Date.now()}_${safeName}`
           const storageRef = ref(storage, storagePath)
@@ -81,8 +156,6 @@ function ModalDocumento({ data, onClose, onSave, condominios }) {
           fileUrl = await getDownloadURL(snapshot.ref)
         } catch (storageErr) {
           console.warn("Storage falhou ou não configurado, tentando fallback:", storageErr)
-          
-          // Se o arquivo for menor que 800KB, tenta salvar via Base64 como contingência
           if (arquivo.size <= 800000) {
             fileUrl = await new Promise((resolve, reject) => {
               const reader = new FileReader()
@@ -137,7 +210,6 @@ function ModalDocumento({ data, onClose, onSave, condominios }) {
         </div>
 
         <div className="p-6 flex flex-col gap-4 text-xs">
-          {/* Upload area */}
           <div
             onClick={() => !uploading && inputRef.current.click()}
             className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all ${
@@ -184,7 +256,6 @@ function ModalDocumento({ data, onClose, onSave, condominios }) {
             )}
           </div>
 
-          {/* Nome do Documento */}
           <div>
             <label className="label font-bold text-gray-700">Nome do Documento / Contrato *</label>
             <input 
@@ -294,7 +365,8 @@ export default function Documentos() {
   const { items: moradores } = useFirestore('moradores')
   const condominios = allCondominios.filter(c => c.status !== 'Inativo')
   
-  const [modal, setModal] = useState(null) // null, 'new' ou objeto do documento para editar
+  const [modal, setModal] = useState(null)
+  const [modalView, setModalView] = useState(null) // Para visualizador de documento integrado
   const [catFilter, setCatFilter] = useState('Todos')
   const [filtroCondo, setFiltroCondo] = useState('Todos')
   const [search, setSearch] = useState('')
@@ -303,7 +375,6 @@ export default function Documentos() {
 
   const filtered = docs
     .filter(d => {
-      // Se for morador, só pode ver documentos do condomínio dele e que NÃO sejam privados
       if (isMorador) {
         if (d.visibilidade === 'Privado') return false
         if (d.condominio && d.condominio !== 'Todos' && user?.condominio && d.condominio !== user.condominio) return false
@@ -329,7 +400,6 @@ export default function Documentos() {
     } else {
       await addDoc(docData)
       
-      // Envio de notificação Push se for Ata ou Convenção
       if (docData.categoria === 'Atas de Assembleia' || docData.categoria === 'Convenção & Regimento') {
         let targetEmails = null
         if (docData.condominio && docData.condominio !== 'Todos') {
@@ -349,11 +419,6 @@ export default function Documentos() {
         }).catch(e => console.error("Push erro", e))
       }
     }
-  }
-
-  const handleVisualizar = (url, nome) => {
-    if (!url) return alert('Link do documento não encontrado.')
-    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -451,7 +516,6 @@ export default function Documentos() {
               className="bg-white p-5 rounded-2xl border border-pale-300 shadow-sm hover:shadow-md hover:border-brand-400 transition-all group flex flex-col justify-between"
             >
               <div>
-                {/* Topo do Card */}
                 <div className="flex items-start gap-3 mb-3">
                   <div className="w-11 h-11 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center shrink-0">
                     {fileIcon(doc.tipo)}
@@ -466,7 +530,6 @@ export default function Documentos() {
                   </div>
                 </div>
 
-                {/* Tags de Condomínio e Visibilidade */}
                 <div className="flex items-center gap-2 flex-wrap mb-3">
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200">
                     <Building2 size={11} className="text-amber-700" />
@@ -487,30 +550,24 @@ export default function Documentos() {
                 </div>
               </div>
 
-              {/* Botões de Ação: VISUALIZAR, BAIXAR, EDITAR, EXCLUIR */}
+              {/* Botões de Ação: VISUALIZAR DIRETO NO MODAL, BAIXAR, EDITAR, EXCLUIR */}
               <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-2">
-                {/* Visualizar */}
                 <button
-                  onClick={() => handleVisualizar(doc.url, doc.nome)}
-                  className="btn-secondary flex-1 justify-center py-2 text-xs font-bold flex items-center gap-1.5 bg-slate-50 hover:bg-brand-50 hover:text-brand-700 hover:border-brand-300 transition-all cursor-pointer"
-                  title="Visualizar documento em nova aba"
+                  onClick={() => setModalView(doc)}
+                  className="btn-secondary flex-1 justify-center py-2 text-xs font-bold flex items-center gap-1.5 bg-brand-50 text-brand-800 hover:bg-brand-600 hover:text-white border-brand-200 transition-all cursor-pointer"
+                  title="Visualizar documento diretamente na tela"
                 >
-                  <Eye size={14} className="text-brand-600" /> Visualizar
+                  <Eye size={14} /> Visualizar
                 </button>
 
-                {/* Baixar */}
-                <a
-                  href={doc.url}
-                  download={doc.nome}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  onClick={() => baixarDocumento(doc.url, doc.nome)}
                   className="p-2 rounded-xl bg-slate-50 hover:bg-emerald-50 text-gray-500 hover:text-emerald-700 border border-gray-200 transition-all flex items-center justify-center cursor-pointer"
                   title="Baixar arquivo"
                 >
                   <Download size={14} />
-                </a>
+                </button>
 
-                {/* Editar (Apenas Síndico / Gestão) */}
                 {!isMorador && (
                   <button
                     onClick={() => setModal(doc)}
@@ -521,7 +578,6 @@ export default function Documentos() {
                   </button>
                 )}
 
-                {/* Excluir (Apenas Síndico / Gestão) */}
                 {!isMorador && (
                   <button
                     onClick={async () => {
@@ -539,6 +595,14 @@ export default function Documentos() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Modal de Visualização Embutido */}
+      {modalView && (
+        <ModalVisualizador
+          doc={modalView}
+          onClose={() => setModalView(null)}
+        />
       )}
 
       {/* Modal de Adicionar / Editar Documento */}
