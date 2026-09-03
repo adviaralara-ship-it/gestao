@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Wallet, FileText, CreditCard, LayoutDashboard, Calendar, ShieldAlert, Calculator, FileCheck, DollarSign, Upload, Eye, Download, Copy, Check, Sparkles, Loader2, Repeat, ExternalLink } from 'lucide-react'
+import { Plus, Wallet, FileText, CreditCard, LayoutDashboard, Calendar, ShieldAlert, Calculator, FileCheck, DollarSign, Upload, Eye, Download, Copy, Check, Sparkles, Loader2, Repeat, ExternalLink, Crown, Building2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import RepassesAlphaModal from '../components/RepassesAlphaModal'
@@ -8,7 +8,7 @@ import { registrarLogAuditoria } from '../utils/audit'
 import { storage } from '../firebase'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 
-// Importando as novas abas
+// Importando as abas
 import DashboardFinanceiro from './financeiro/DashboardFinanceiro'
 import ContasPagar from './financeiro/ContasPagar'
 import ContasReceber from './financeiro/ContasReceber'
@@ -20,9 +20,17 @@ import Conciliacao from './financeiro/Conciliacao'
 import RateioAgua from './financeiro/RateioAgua'
 import EFDReinf from './financeiro/EFDReinf'
 
-// ─── Modal: Lançamento Financeiro com Upload no Storage & Recorrência ──
+// Helper para identificar se o lançamento pertence ao financeiro interno da Alpha
+export const isAlphaInterno = (condo) => {
+  if (!condo) return true
+  const c = condo.toLowerCase().trim()
+  return c.includes('alpha') || c === 'interno' || c === 'administração' || c === 'administracao' || c === 'matriz'
+}
+
+// ─── Modal: Lançamento Financeiro ────────────────────────────────────
 function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onClose, onSave }) {
-  const defaultCondo = filtroAtual && filtroAtual !== 'Todos' ? filtroAtual : (user?.condominio || '');
+  const defaultCondo = filtroAtual && filtroAtual !== 'Todos' ? filtroAtual : (user?.condominio || 'Alpha (Interno)');
+  
   const [form, setForm] = useState(data || {
     descricao: '', 
     tipo: 'Despesa', 
@@ -50,7 +58,6 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
     setUploadingStorage(true)
 
     try {
-      // 1. Upload imediato no Firebase Storage para armazenar o boleto de forma permanente
       try {
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const storageRef = ref(storage, `financeiro/boletos/${Date.now()}_${safeName}`)
@@ -58,10 +65,9 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
         const downloadUrl = await getDownloadURL(snapshot.ref)
         set('arquivoUrl', downloadUrl)
       } catch (stErr) {
-        console.warn("Storage upload falhou, mantendo fluxo OCR:", stErr)
+        console.warn("Storage upload falhou:", stErr)
       }
 
-      // 2. Leitura OCR com IA para preenchimento automático
       const reader = new FileReader()
       reader.onload = async (ev) => {
         const base64Data = ev.target.result
@@ -109,9 +115,9 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
         <div className="p-5 border-b border-cream-300 flex items-center justify-between sticky top-0 bg-white z-10">
           <div>
             <h3 className="font-bold text-gray-900 text-base sm:text-lg">
-              {data ? 'Editar Lançamento / Conta' : 'Novo Lançamento / Conta a Pagar'}
+              {data ? 'Editar Lançamento' : 'Novo Lançamento Financeiro'}
             </h3>
-            <p className="text-xs text-gray-500">Cadastre boletos com código de pagamento e recorrência automática</p>
+            <p className="text-xs text-gray-500">Cadastre despesas/receitas da Alpha ou dos Condomínios</p>
           </div>
           <button onClick={onClose} className="modal-close-btn" title="Fechar">✕</button>
         </div>
@@ -141,7 +147,7 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
             {form.arquivoUrl && (
               <div className="mt-2.5 flex items-center justify-between bg-white p-2 rounded-xl border border-brand-200 text-xs">
                 <span className="text-emerald-700 font-bold flex items-center gap-1 text-[11px]">
-                  ✓ Boleto armazenado em nuvem
+                  ✓ Boleto / Recibo anexado na nuvem
                 </span>
                 <div className="flex items-center gap-2">
                   <a 
@@ -168,28 +174,34 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label className="label">Descrição / Fornecedor *</label>
+              <label className="label">Descrição / Fornecedor / Origem *</label>
               <input 
                 className="input" 
                 value={form.descricao} 
                 onChange={e => set('descricao', e.target.value)} 
-                placeholder="Ex: Allianz Seguro SA / Energisa / Taxa de Manutenção" 
+                placeholder="Ex: Honorários Alpha, Allianz Seguro, Salários, Software" 
                 required
               />
             </div>
 
+            {/* SELEÇÃO DE CENTRO DE CUSTO / CONDOMÍNIO */}
             <div className="sm:col-span-2">
-              <label className="label font-bold text-gray-800">Condomínio *</label>
+              <label className="label font-black text-brand-900 flex items-center gap-1.5">
+                <Building2 size={14} /> Unidade de Custo / Condomínio *
+              </label>
               <select 
-                className="input font-bold bg-amber-50/50 border-amber-300 text-gray-900" 
+                className="input font-bold bg-amber-50/70 border-amber-300 text-gray-900" 
                 value={form.condominio} 
                 onChange={e => set('condominio', e.target.value)} 
                 disabled={user?.role==='Morador'}
               >
-                <option value="">Selecione o Condomínio...</option>
-                <option value="Todos">🌐 Todos os Condomínios (Geral)</option>
+                <option value="Alpha (Interno)">👑 Alpha Soluções (Financeiro Interno / Matriz)</option>
+                <option value="Todos">🌐 Geral (Todos os Condomínios)</option>
                 {condominiosDisponiveis.map(c => <option key={c} value={c}>🏢 {c}</option>)}
               </select>
+              <span className="text-[10px] text-gray-500 mt-0.5 block">
+                Escolha <b>Alpha Soluções (Interno)</b> para gastos e receitas da empresa, ou o condomínio correspondente.
+              </span>
             </div>
 
             <div>
@@ -206,7 +218,7 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
                 className="input" 
                 value={form.categoria} 
                 onChange={e => set('categoria', e.target.value)} 
-                placeholder="Ex: Seguro Predial, Energia, Água..." 
+                placeholder="Ex: Honorários, Seguro, Equipe, Tecnologia..." 
               />
             </div>
 
@@ -216,25 +228,25 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
             </div>
 
             <div>
-              <label className="label">Data de Vencimento *</label>
+              <label className="label">Data de Vencimento / Pagamento *</label>
               <input type="date" className="input" value={form.data} onChange={e => set('data', e.target.value)} />
             </div>
 
             <div className="sm:col-span-2">
-              <label className="label">Status do Pagamento</label>
+              <label className="label">Status</label>
               <select className="input font-bold" value={form.status} onChange={e => set('status', e.target.value)}>
-                <option value="Pendente">⏳ Pendente (A Pagar)</option>
+                <option value="Pendente">⏳ Pendente</option>
                 <option value="Pago">✅ Pago / Liquidado</option>
-                <option value="Aguardando Aprovação">🟠 Aguardando Aprovação do Síndico</option>
                 <option value="Recebido">💵 Recebido</option>
+                <option value="Aguardando Aprovação">🟠 Aguardando Aprovação</option>
               </select>
             </div>
 
-            {/* Linha Digitável / Código de Barras */}
+            {/* Linha Digitável */}
             <div className="sm:col-span-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
               <div className="flex items-center justify-between mb-1">
                 <label className="label text-xs font-bold text-gray-700 m-0">
-                  Linha Digitável / Código de Barras do Boleto
+                  Linha Digitável / Código de Barras
                 </label>
                 {form.linhaDigitavel && (
                   <button
@@ -251,25 +263,25 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
                 className="input font-mono text-xs" 
                 value={form.linhaDigitavel || ''} 
                 onChange={e => set('linhaDigitavel', e.target.value)} 
-                placeholder="Ex: 34191.09008 61071.749021 68000.000000 1 90000000020208" 
+                placeholder="Linha digitável ou código numérico do boleto" 
               />
             </div>
 
-            {/* PIX Copia e Cola / Chave */}
+            {/* PIX */}
             <div className="sm:col-span-2 bg-emerald-50/50 p-3 rounded-xl border border-emerald-200">
               <label className="label text-xs font-bold text-emerald-900 mb-1 block">
-                Chave PIX ou Código PIX Copia e Cola
+                Chave PIX / PIX Copia e Cola
               </label>
               <input 
                 className="input font-mono text-xs bg-white" 
                 value={form.pix || ''} 
                 onChange={e => set('pix', e.target.value)} 
-                placeholder="Cole a chave PIX ou o código Copia e Cola do pagamento aqui" 
+                placeholder="Chave PIX do fornecedor ou código Copia e Cola" 
               />
             </div>
           </div>
 
-          {/* SEÇÃO DE RECORRÊNCIA AUTOMÁTICA (REPETIR PRÓXIMOS MESES) */}
+          {/* RECORRÊNCIA AUTOMÁTICA */}
           {!data && (
             <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl">
               <label className="flex items-center gap-2 text-xs font-black text-amber-950 cursor-pointer mb-2">
@@ -284,7 +296,7 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
               {form.recorrente && (
                 <div className="mt-2 flex items-center gap-3">
                   <div>
-                    <label className="label text-[11px] text-amber-900">Qtd de Meses / Parcelas</label>
+                    <label className="label text-[11px] text-amber-900">Qtd de Meses</label>
                     <select 
                       className="input py-1.5 text-xs font-bold bg-white max-w-[160px]" 
                       value={form.qtdMeses || '12'} 
@@ -298,7 +310,7 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
                     </select>
                   </div>
                   <p className="text-[11px] text-amber-800 font-medium leading-tight">
-                    O sistema agendará automaticamente os lançamentos dos próximos meses com o mesmo valor, categoria e boleto vinculado.
+                    O sistema agendará automaticamente os lançamentos dos próximos meses mantendo o mesmo valor e comprovante.
                   </p>
                 </div>
               )}
@@ -384,11 +396,9 @@ export default function Financeiro() {
   const handleSaveLancamento = async (form) => {
     try {
       if (modalLanc && modalLanc.id) {
-        // Edição simples
         await updateLancamento(modalLanc.id, form)
         await registrarLogAuditoria(user, 'Edição de Lançamento', `Editou o lançamento ${form.descricao}`)
       } else {
-        // Novo Lançamento (com suporte a Recorrência Inteligente nos próximos meses)
         if (form.recorrente && form.qtdMeses && Number(form.qtdMeses) > 1) {
           const totalMeses = Math.min(Number(form.qtdMeses), 60)
           const dataBase = form.data ? new Date(form.data + 'T12:00:00') : new Date()
@@ -403,7 +413,7 @@ export default function Financeiro() {
               ...form,
               descricao: `${form.descricao} ${parcelaLabel}`,
               data: dataStr,
-              recorrente: false, // salva individual
+              recorrente: false,
               origemRecorrente: true
             })
           }
@@ -420,11 +430,17 @@ export default function Financeiro() {
     }
   }
 
-  // Filtrar lançamentos por condomínio
+  // Filtragem Inteligente: Geral, Alpha Interno ou Condomínio Específico
   const lancamentos = allLancamentos.filter(l => {
     if (condoFilter === 'Todos') return true
-    return l.condominio === condoFilter || l.condominio === 'Todos' || !l.condominio
+    if (condoFilter === 'Alpha (Interno)') {
+      return isAlphaInterno(l.condominio)
+    }
+    return l.condominio === condoFilter
   })
+
+  // Quantidade de lançamentos da Alpha Interno
+  const countAlpha = allLancamentos.filter(l => isAlphaInterno(l.condominio)).length
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in max-w-7xl mx-auto pb-12">
@@ -440,19 +456,24 @@ export default function Financeiro() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Seletor de Condomínio */}
-          <select 
-            value={condoFilter} 
-            onChange={e => setCondoFilter(e.target.value)}
-            className="input py-2 text-xs font-bold bg-amber-50/70 border-amber-300 text-gray-800"
-          >
-            <option value="Todos">🏢 Todos os Condomínios</option>
-            {condominiosDisponiveis.map(c => <option key={c} value={c}>🏢 {c}</option>)}
-          </select>
+          {/* Seletor com Alpha Interno em destaque */}
+          <div className="relative">
+            <select 
+              value={condoFilter} 
+              onChange={e => setCondoFilter(e.target.value)}
+              className="input py-2 text-xs font-bold bg-amber-50/80 border-amber-300 text-gray-900 pr-8"
+            >
+              <option value="Todos">🌐 Todos os Condomínios + Alpha (Geral)</option>
+              <option value="Alpha (Interno)">👑 Alpha Soluções (Financeiro Interno / Matriz)</option>
+              <optgroup label="Condomínios Clientes">
+                {condominiosDisponiveis.map(c => <option key={c} value={c}>🏢 {c}</option>)}
+              </optgroup>
+            </select>
+          </div>
 
           {!isMorador && (
             <button
-              onClick={() => setModalLanc({ tipo: 'Despesa', status: 'Pendente', descricao: '', categoria: '', valor: '', data: new Date().toISOString().split('T')[0], condominio: condoFilter !== 'Todos' ? condoFilter : '' })}
+              onClick={() => setModalLanc({ tipo: 'Despesa', status: 'Pendente', descricao: '', categoria: '', valor: '', data: new Date().toISOString().split('T')[0], condominio: condoFilter !== 'Todos' ? condoFilter : 'Alpha (Interno)' })}
               className="btn-primary py-2 px-4 text-xs font-black flex items-center gap-1.5 shadow-md shadow-brand-700/20 bg-emerald-600 hover:bg-emerald-500 uppercase tracking-wider cursor-pointer"
             >
               <Plus size={16} /> + Novo Lançamento

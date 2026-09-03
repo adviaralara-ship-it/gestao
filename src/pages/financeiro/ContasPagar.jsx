@@ -1,12 +1,13 @@
 import React, { useState } from 'react'
-import { Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Eye, Download, Copy, Check, ExternalLink, Sparkles, Building2 } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Eye, Download, Copy, Check, ExternalLink, Sparkles, Building2, Crown } from 'lucide-react'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
+import { isAlphaInterno } from '../Financeiro'
 
 export default function ContasPagar({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
   const [search, setSearch] = useState('')
   const [mesDe, setMesDe] = useState('')
   const [mesAte, setMesAte] = useState('')
-  const [statusFilter, setStatusFilter] = useState('Todas') // 'Todas', 'Pendente', 'Pago'
+  const [statusFilter, setStatusFilter] = useState('Todas')
   const [copiadoId, setCopiadoId] = useState(null)
 
   const handleCopiarCodigo = (id, texto) => {
@@ -16,7 +17,6 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
     setTimeout(() => setCopiadoId(null), 2500)
   }
 
-  // Filtrar Despesas
   let contasPagar = lancamentos.filter(t => t.tipo === 'Despesa')
 
   if (statusFilter !== 'Todas') {
@@ -42,7 +42,6 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
     )
   }
 
-  // Ordenar por data
   contasPagar.sort((a, b) => new Date(b.data) - new Date(a.data))
 
   const totalPendente = lancamentos.filter(t => t.tipo === 'Despesa' && t.status === 'Pendente').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
@@ -107,7 +106,7 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
               <tr>
                 <th className="p-3.5">Vencimento</th>
                 <th className="p-3.5">Descrição / Fornecedor</th>
-                <th className="p-3.5">Condomínio</th>
+                <th className="p-3.5">Origem / Condomínio</th>
                 <th className="p-3.5">Categoria</th>
                 <th className="p-3.5">Valor</th>
                 <th className="p-3.5">Boleto / Pagamento</th>
@@ -127,6 +126,7 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                   const vencimento = new Date(t.data)
                   const atrasado = t.status === 'Pendente' && vencimento < hoje
                   const temCodigo = !!(t.linhaDigitavel || t.pix)
+                  const ehAlpha = isAlphaInterno(t.condominio)
 
                   return (
                     <tr key={t.id} className={`hover:bg-slate-50/80 transition-colors ${atrasado ? 'bg-rose-50/50' : ''}`}>
@@ -146,16 +146,21 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                       </td>
 
                       <td className="p-3.5 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 text-[10px] font-bold">
-                          <Building2 size={10} /> {t.condominio || 'Geral'}
-                        </span>
+                        {ehAlpha ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-900 border border-indigo-200 text-[10px] font-black">
+                            <Crown size={11} className="text-indigo-600" /> Alpha Interno
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 text-[10px] font-bold">
+                            <Building2 size={10} /> {t.condominio || 'Geral'}
+                          </span>
+                        )}
                       </td>
 
                       <td className="p-3.5 text-gray-600 whitespace-nowrap">{t.categoria || '—'}</td>
 
                       <td className="p-3.5 font-black text-rose-600 whitespace-nowrap">R$ {fmt(t.valor)}</td>
 
-                      {/* Boleto Anexado e Botão de Copiar Código de Barras / PIX */}
                       <td className="p-3.5">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {t.arquivoUrl ? (
