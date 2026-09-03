@@ -101,6 +101,7 @@ function Modal({ data, user, condominios = [], onClose, onSave }) {
               className="input font-medium"
               value={form.titulo}
               onChange={e => set('titulo', e.target.value)}
+              disabled={isMorador && data}
               placeholder="Ex: Vazamento no corredor do 3º andar, Lâmpada queimada na garagem..."
             />
           </div>
@@ -108,7 +109,7 @@ function Modal({ data, user, condominios = [], onClose, onSave }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label font-bold text-gray-700">Categoria *</label>
-              <select className="input font-bold" value={form.categoria} onChange={e => set('categoria', e.target.value)}>
+              <select className="input font-bold" value={form.categoria} onChange={e => set('categoria', e.target.value)} disabled={isMorador && data}>
                 {CATEGORIAS_SOLICITACAO.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
@@ -119,6 +120,7 @@ function Modal({ data, user, condominios = [], onClose, onSave }) {
                 className="input font-medium"
                 value={form.local}
                 onChange={e => set('local', e.target.value)}
+                disabled={isMorador && data}
                 placeholder="Ex: Corredor do Bloco B, Garagem vaga 42..."
               />
             </div>
@@ -130,6 +132,7 @@ function Modal({ data, user, condominios = [], onClose, onSave }) {
               className="input resize-none min-h-[90px] font-medium"
               value={form.descricao}
               onChange={e => set('descricao', e.target.value)}
+              disabled={isMorador && data}
               placeholder="Descreva com detalhes a situação observada..."
             />
           </div>
@@ -198,16 +201,22 @@ function Modal({ data, user, condominios = [], onClose, onSave }) {
           </div>
         </div>
         <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
-          <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
-          <button onClick={() => {
-            if (!form.titulo.trim() || !form.descricao.trim()) {
-              alert('Por favor, preencha o assunto e a descrição.')
-              return
-            }
-            onSave(form)
-          }} className="btn-primary text-xs flex items-center gap-1.5 px-5">
-            Salvar Solicitação
-          </button>
+          {isMorador && data ? (
+            <button onClick={onClose} className="btn-primary text-xs px-6">Fechar</button>
+          ) : (
+            <>
+              <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
+              <button onClick={() => {
+                if (!form.titulo.trim() || !form.descricao.trim()) {
+                  alert('Por favor, preencha o assunto e a descrição.')
+                  return
+                }
+                onSave(form)
+              }} className="btn-primary text-xs flex items-center gap-1.5 px-5">
+                {data ? 'Atualizar Solicitação' : 'Salvar Solicitação'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

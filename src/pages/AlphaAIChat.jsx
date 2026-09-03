@@ -27,8 +27,84 @@ const fixEncoding = (str) => {
     .replace(/CONDOMÃ NIO/g, 'CONDOMÍNIO')
 }
 
+// Função auxiliar para registrar ocorrência no Firestore imediatamente
+async function autoCriarOcorrenciaDireta(descricaoTexto, user, tituloCustom = null, categoriaCustom = null) {
+  let titulo = tituloCustom
+  let categoria = categoriaCustom || 'Reclamação'
+  const descLower = (descricaoTexto || '').toLowerCase()
+  
+  if (!titulo) {
+    if (descLower.includes('varal') || descLower.includes('roupa') || descLower.includes('regimento') || descLower.includes('regra') || descLower.includes('inquilin')) {
+      titulo = 'Descumprimento de Regimento / Convivência'
+      categoria = 'Reclamação'
+    } else if (descLower.includes('barulho') || descLower.includes('som') || descLower.includes('festa') || descLower.includes('gritaria')) {
+      titulo = 'Reclamação de Barulho / Som Alto'
+      categoria = 'Barulho'
+    } else if (descLower.includes('vazamento') || descLower.includes('infiltra') || descLower.includes('agua') || descLower.includes('cano') || descLower.includes('hidraul')) {
+      titulo = 'Vazamento / Hidráulica'
+      categoria = 'Vazamento'
+    } else if (descLower.includes('lampada') || descLower.includes('luz') || descLower.includes('eletric') || descLower.includes('fio')) {
+      titulo = 'Problema Elétrico / Iluminação'
+      categoria = 'Elétrica'
+    } else if (descLower.includes('garagem') || descLower.includes('vaga') || descLower.includes('carro') || descLower.includes('veiculo') || descLower.includes('estacion')) {
+      titulo = 'Problema na Garagem / Vaga'
+      categoria = 'Reclamação'
+    } else if (descLower.includes('lixo') || descLower.includes('sujeira') || descLower.includes('limpeza') || descLower.includes('entulho')) {
+      titulo = 'Limpeza / Descarte de Lixo'
+      categoria = 'Limpeza'
+    } else if (descLower.includes('cachorro') || descLower.includes('pet') || descLower.includes('latido') || descLower.includes('animal')) {
+      titulo = 'Ocorrência envolvendo Animais / Pets'
+      categoria = 'Reclamação'
+    } else if (descLower.includes('elevador')) {
+      titulo = 'Problema no Elevador'
+      categoria = 'Elevador'
+    } else {
+      titulo = 'Reclamação / Solicitação de Morador'
+      categoria = 'Reclamação'
+    }
+  }
+
+  const apto = user?.apt || user?.unidade || '—'
+  const condo = user?.condominio || 'Geral'
+  const dataHoje = format(new Date(), 'yyyy-MM-dd')
+
+  try {
+    const docRef = await addDoc(collection(db, 'ocorrencias'), {
+      titulo: titulo,
+      descricao: descricaoTexto,
+      local: `Apt ${apto}`,
+      apt: apto,
+      condominio: condo,
+      categoria: categoria,
+      prioridade: 'Média',
+      status: 'Aberta',
+      responsavel: 'Administração',
+      previsao: '',
+      autor: user?.nome || 'Morador',
+      nome_morador: user?.nome || 'Morador',
+      uid: user?.uid || user?.id || '',
+      data: dataHoje,
+      _createdAt: serverTimestamp()
+    })
+
+    await addDoc(collection(db, 'notificacoes'), {
+      text: `Nova Solicitação via IA: "${titulo}" pelo Apt ${apto} (${condo})`,
+      time: new Date().toISOString(),
+      tipo: 'ocorrencia',
+      lida: false,
+      condominio: condo,
+      _createdAt: serverTimestamp()
+    })
+
+    return { success: true, id: docRef.id, titulo, categoria }
+  } catch (err) {
+    console.error("Erro ao registrar ocorrencia automatica:", err)
+    return { success: false, err: err.message, titulo, categoria }
+  }
+}
+
 // Resposta inteligente local baseada no contexto do condomínio e nos dados reais do Firestore
-async function generateLocalAIResponse(input, user, knowledgeBase) {
+async function generateLocalAIResponse(input, user, knowledgeBase, messagesHistory = []) {
   const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
   const q = norm(input)
 
@@ -89,13 +165,38 @@ async function generateLocalAIResponse(input, user, knowledgeBase) {
     return `Olá, ${user.nome}! Você pode solicitar a reserva de áreas comuns diretamente por aqui ou no menu **Reservas**.\n\n📅 **Espaço:** ${espacoDetectado}\n🏢 **Unidade:** ${user.unidade || 'Morador'}\n\nClique no botão abaixo para confirmar o seu pedido de reserva:\n\n[CRIAR_RESERVA: ${espacoDetectado} - ${new Date().toLocaleDateString('pt-BR')} - 18:00]`
   }
 
-  // 5. Ocorrências / Barulho / Reclamação / Manutenção / Lâmpada / Vazamento
-  if (q.includes('barulho') || q.includes('reclam') || q.includes('vazamento') || q.includes('lampada') || q.includes('quebr') || q.includes('som alto') || q.includes('problema') || q.includes('ocorrencia') || q.includes('sujeira') || q.includes('cachorro') || q.includes('vizinho')) {
-    return `Entendido, ${user.nome}. Sinto muito pelo transtorno. Posso registrar uma ocorrência formal diretamente para a administração e o síndico tomarem as providências necessárias.\n\nClique no botão abaixo para oficializar o registro:\n\n[CRIAR_OCORRENCIA: ${input.trim()}]`
+  // 5. Ocorrências / Barulho / Reclamação / Manutenção / Lâmpada / Vazamento / Regimento / Convivência (REGISTRO DIRETO NO ATO!)
+  const isQueixa = (
+    q.includes('barulho') || q.includes('reclam') || q.includes('vazamento') || q.includes('lampada') ||
+    q.includes('quebr') || q.includes('som alto') || q.includes('problema') || q.includes('ocorrencia') ||
+    q.includes('sujeira') || q.includes('cachorro') || q.includes('vizinho') || q.includes('inquilin') ||
+    q.includes('varal') || q.includes('roupa') || q.includes('regimento') || q.includes('garagem') ||
+    q.includes('vaga') || q.includes('lixo') || q.includes('infiltra') || q.includes('fumaca') ||
+    q.includes('latido') || q.includes('estacion') || q.includes('portao') || q.includes('elevador')
+  )
+
+  const isConfirmacaoRegistro = (
+    (q.includes('regist') || q.includes('abra') || q.includes('abrir') || q.includes('sim') || q.includes('pode')) &&
+    (q.includes('reclam') || q.includes('chamado') || q.includes('ocorrencia') || q.includes('essa') || q.includes('isso') || q.length < 40)
+  )
+
+  if (isQueixa || isConfirmacaoRegistro) {
+    let textoReal = input.trim()
+    if (isConfirmacaoRegistro && Array.isArray(messagesHistory) && messagesHistory.length > 0) {
+      const lastUserMsg = [...messagesHistory].reverse().find(m => m.role === 'user' && m.text !== input)
+      if (lastUserMsg && lastUserMsg.text) {
+        textoReal = lastUserMsg.text
+      }
+    }
+
+    const reg = await autoCriarOcorrenciaDireta(textoReal, user)
+    const apto = user?.apt || user?.unidade || '—'
+    
+    return `✅ **Reclamação/Solicitação Registrada com Sucesso!**\n\n📋 **Assunto:** ${reg.titulo || 'Ocorrência'}\n🏢 **Condomínio:** ${condoNome}\n📍 **Unidade:** Apt ${apto}\n👤 **Solicitante:** ${user.nome}\n\n📝 **Relato registrado no sistema:**\n*"${textoReal}"*\n\nO síndico e a administração já receberam a notificação em tempo real e tomarão as providências necessárias. Você pode acompanhar o andamento a qualquer momento no menu **Solicitações & Ocorrências**!`
   }
 
-  // 6. Regras do Condomínio / Horários de Silêncio / Mudanças
-  if (q.includes('regra') || q.includes('horario') || q.includes('silencio') || q.includes('mudanca') || q.includes('lixo') || q.includes('pet') || q.includes('animais')) {
+  // 6. Regras do Condomínio / Horários de Silêncio / Mudanças (Apenas quando for dúvida informativa genérica)
+  if (q.includes('qual o horario') || q.includes('quais as regras') || q.includes('como funciona o silencio') || q.includes('horario de silencio') || q.includes('horario de mudanca')) {
     return `Olá, ${user.nome}! Aqui estão as diretrizes de convivência do condomínio **${condoNome}**:\n\n🔇 **Horário de Silêncio:** Das 22h00 às 08h00 (em dias de semana) e até 09h00 aos finais de semana.\n📦 **Mudanças e Obras:** De segunda a sexta-feira, das 08h00 às 17h00 (necessário agendamento prévio com a administração).\n🗑️ **Descarte de Lixo:** Todo lixo deve ser ensacado e depositado na lixeira do bloco.\n🐾 **Animais de Estimação (Pets):** Permitidos nas áreas privativas; nas áreas comuns devem circular com coleira/guia.\n\nPara consultar o documento completo, acesse a aba **Regime & Documentos** no menu lateral!`
   }
 
@@ -106,11 +207,11 @@ async function generateLocalAIResponse(input, user, knowledgeBase) {
 
   // 8. Resposta de Boas-Vindas / Saudação
   if (q.includes('ola') || q.includes('oi') || q.includes('bom dia') || q.includes('boa tarde') || q.includes('boa noite') || q.includes('tudo bem') || q.includes('quem e voce')) {
-    return `Olá, ${user.nome}! Tudo bem? Eu sou o **Alpha AI**, seu Concierge Virtual do condomínio **${condoNome}**.\n\nEstou à sua disposição 24 horas por dia para:\n• Informar dados de contato do síndico e administração;\n• Ajudar na emissão de boletos e 2ª via;\n• Agendar reservas de áreas comuns (salão de festas, churrasqueira);\n• Registrar ocorrências e solicitações de manutenção;\n• Esclarecer regras e horários do condomínio.\n\nComo posso te ajudar agora?`
+    return `Olá, ${user.nome}! Tudo bem? Eu sou o **Alpha AI**, seu Concierge Virtual do condomínio **${condoNome}**.\n\nEstou à sua disposição 24 horas por dia para:\n• Registrar ocorrências e reclamações na hora;\n• Informar dados de contato do síndico e administração;\n• Ajudar na emissão de boletos e 2ª via;\n• Agendar reservas de áreas comuns (salão de festas, churrasqueira);\n• Esclarecer regras e horários do condomínio.\n\nComo posso te ajudar agora?`
   }
 
   // 9. Resposta Genérica Prestativa
-  return `Olá, ${user.nome}! Compreendi a sua mensagem referente a "${input}".\n\nCaso precise de assistência imediata com o síndico ou a administração do condomínio **${condoNome}**, você pode entrar em contato via WhatsApp no número **(83) 9680-6325**, ou por e-mail no **alphaadmsc@gmail.com** (${sindicoNome}).\n\nSe desejar abrir um chamado formal ou reservar um espaço, basta me pedir que registro imediatamente para você!`
+  return `Olá, ${user.nome}! Compreendi a sua mensagem referente a "${input}".\n\nCaso precise de assistência imediata com o síndico ou a administração do condomínio **${condoNome}**, você pode entrar em contato via WhatsApp no número **(83) 9680-6325**, ou por e-mail no **alphaadmsc@gmail.com** (${sindicoNome}).\n\nSe desejar abrir um chamado formal ou relatar uma queixa, basta me descrever o que ocorreu que registro imediatamente para você!`
 }
 
 // Componente interno para processar e renderizar os "Widgets" de Ação no meio da mensagem
@@ -400,9 +501,18 @@ REGRAS ESPECIAIS DE AÇÃO (TOOL CALLING):
         }
       }
 
+      // Se a resposta da IA externa contiver tag de criação de ocorrência, já registra no banco na hora
+      if (aiResponse && aiResponse.includes('[CRIAR_OCORRENCIA:')) {
+        const match = aiResponse.match(/\[CRIAR_OCORRENCIA:(.*?)\]/)
+        if (match) {
+          const queixa = match[1].trim() || input.trim()
+          await autoCriarOcorrenciaDireta(queixa, user)
+        }
+      }
+
       // Se a API externa não respondeu, utiliza o motor inteligente local de condomínio
       if (!aiResponse) {
-        aiResponse = await generateLocalAIResponse(input, user, knowledgeBase)
+        aiResponse = await generateLocalAIResponse(input, user, knowledgeBase, messages)
       }
 
       const modelMsg = { role: 'model', text: aiResponse }
@@ -414,7 +524,7 @@ REGRAS ESPECIAIS DE AÇÃO (TOOL CALLING):
       })
     } catch (e) {
       console.error("Erro geral no Alpha AI:", e)
-      const fallback = await generateLocalAIResponse(input, user, knowledgeBase)
+      const fallback = await generateLocalAIResponse(input, user, knowledgeBase, messages)
       const modelMsg = { role: 'model', text: fallback }
       setMessages(prev => [...prev, modelMsg])
     } finally {
