@@ -777,7 +777,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
                   className="w-5 h-5 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer shrink-0"
                 />
                 <span className="text-xs sm:text-sm font-black text-gray-900">
-                  Serviço de Cobrança Digital (R$ {taxaStr && taxaStr !== '0,00' && taxaStr !== '0' ? maskCurrency(taxaStr) : '3,50'})
+                  Serviço de Cobrança Digital (R$ {taxaStr !== '' && taxaStr !== undefined && taxaStr !== null ? maskCurrency(taxaStr) : '3,50'})
                 </span>
               </div>
               <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${discriminarTaxa ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
@@ -796,11 +796,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
               >
                 <div>
                   <label className="label text-[10px] font-black text-brand-950">Valor do Serviço por Boleto (R$)</label>
-                  <CurrencyInput 
-                    value={taxaStr || '3,50'} 
-                    onChange={v => setTaxaStr(v || '3,50')} 
-                    placeholder="3,50" 
-                  />
+                  <CurrencyInput value={taxaStr} onChange={v => setTaxaStr(v)} placeholder="3,50" />
                 </div>
                 <div>
                   <label className="label text-[10px] font-black text-brand-950">Descrição no Boleto</label>

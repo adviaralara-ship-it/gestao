@@ -1,8 +1,7 @@
-﻿import React from 'react'
+import React from 'react'
 
 /**
  * Formata um valor numérico ou string numérica com vírgula e separador de milhar no padrão brasileiro.
- * Exemplo: 1250.5 -> "1.250,50"
  */
 export function formatCurrency(value) {
   if (value === undefined || value === null || value === '') return ''
@@ -16,12 +15,10 @@ export function formatCurrency(value) {
 
 /**
  * Formata entrada em tempo real para máscara de moeda.
- * Digitação progressiva da direita para a esquerda.
  */
 export function maskCurrency(value) {
   if (value === undefined || value === null || value === '') return ''
   
-  // Se for número vindo do banco (ex: 350 ou 3.5), converte para centavos
   let digits = ''
   if (typeof value === 'number') {
     digits = Math.round(value * 100).toString()
@@ -38,7 +35,7 @@ export function maskCurrency(value) {
 }
 
 /**
- * Extrai o valor float numérico a partir da máscara ("1.250,50" -> 1250.50)
+ * Extrai o valor float numérico a partir da máscara
  */
 export function parseCurrency(value) {
   if (typeof value === 'number') return value
@@ -61,12 +58,12 @@ export function CurrencyInput({
   name,
   required = false
 }) {
-  const displayValue = maskCurrency(value)
+  const displayValue = (value === '' || value === undefined || value === null) ? '' : maskCurrency(value)
 
   const handleChange = (e) => {
     const raw = e.target.value.replace(/\D/g, '')
-    if (!raw) {
-      onChange(0)
+    if (!raw || raw === '00' || raw === '0') {
+      onChange('')
     } else {
       const num = Number(raw) / 100
       onChange(num)
@@ -74,7 +71,7 @@ export function CurrencyInput({
   }
 
   return (
-    <div className="relative flex items-center">
+    <div className="relative flex items-center w-full">
       <span className="absolute left-3 text-gray-400 font-bold text-xs select-none pointer-events-none">
         R$
       </span>
@@ -89,7 +86,7 @@ export function CurrencyInput({
         value={displayValue}
         onChange={handleChange}
         placeholder={placeholder}
-        className={`input pl-9 font-mono font-bold ${className}`}
+        className={`input pl-9 font-mono font-bold w-full ${className}`}
       />
     </div>
   )
