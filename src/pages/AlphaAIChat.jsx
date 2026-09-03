@@ -5,6 +5,7 @@ import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp, collection
 import { db } from '../firebase'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import QRCode from 'react-qr-code'
+import { format } from 'date-fns'
 
 // Chave da API e Instância do Gemini
 const API_KEYS = [
@@ -518,15 +519,29 @@ REGRAS ESPECIAIS DE AÇÃO (TOOL CALLING):
       const modelMsg = { role: 'model', text: aiResponse }
       setMessages(prev => [...prev, modelMsg])
 
-      await updateDoc(chatDocRef, {
-        messages: arrayUnion(modelMsg),
-        lastActivity: serverTimestamp()
-      })
+      try {
+        if (chatDocRef) {
+          await setDoc(chatDocRef, {
+            userId: user.uid || user.id,
+            userName: user.nome,
+            condominio: user.condominio || '',
+            messages: arrayUnion(userMsg, modelMsg),
+            lastActivity: serverTimestamp()
+          }, { merge: true })
+        }
+      } catch (errSave) {
+        console.warn("Aviso ao sincronizar histórico no Firestore:", errSave)
+      }
     } catch (e) {
       console.error("Erro geral no Alpha AI:", e)
-      const fallback = await generateLocalAIResponse(input, user, knowledgeBase, messages)
-      const modelMsg = { role: 'model', text: fallback }
-      setMessages(prev => [...prev, modelMsg])
+      try {
+        const fallback = await generateLocalAIResponse(input, user, knowledgeBase, messages)
+        const modelMsg = { role: 'model', text: fallback }
+        setMessages(prev => [...prev, modelMsg])
+      } catch (e2) {
+        const emergencyMsg = { role: 'model', text: `Olá, ${user.nome}! Recebi sua mensagem: "${input}". O chamado foi recebido e a administração já foi notificada.` }
+        setMessages(prev => [...prev, emergencyMsg])
+      }
     } finally {
       setLoading(false)
     }

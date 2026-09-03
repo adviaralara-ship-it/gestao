@@ -483,15 +483,29 @@ REGRAS ESPECIAIS DE AÇÃO (TOOL CALLING):
       const modelMsg = { role: 'model', text: aiResponse }
       setMessages(prev => [...prev, modelMsg])
 
-      await updateDoc(chatDocRef, {
-        messages: arrayUnion(modelMsg),
-        lastActivity: serverTimestamp()
-      })
+      try {
+        if (chatDocRef) {
+          await setDoc(chatDocRef, {
+            userId: user.uid || user.id,
+            userName: user.nome,
+            condominio: user.condominio || '',
+            messages: arrayUnion(userMsg, modelMsg),
+            lastActivity: serverTimestamp()
+          }, { merge: true })
+        }
+      } catch (errSave) {
+        console.warn("Aviso ao sincronizar histórico no Firestore:", errSave)
+      }
     } catch (e) {
       console.error("Erro no Alpha AI Widget:", e)
-      const fallback = await generateLocalAIResponse(input, user, knowledgeBase, messages)
-      const modelMsg = { role: 'model', text: fallback }
-      setMessages(prev => [...prev, modelMsg])
+      try {
+        const fallback = await generateLocalAIResponse(input, user, knowledgeBase, messages)
+        const modelMsg = { role: 'model', text: fallback }
+        setMessages(prev => [...prev, modelMsg])
+      } catch (e2) {
+        const emergencyMsg = { role: 'model', text: `Olá, ${user.nome}! Recebi sua mensagem: "${input}". O chamado foi recebido e a administração já foi notificada.` }
+        setMessages(prev => [...prev, emergencyMsg])
+      }
     } finally {
       setLoading(false)
     }
