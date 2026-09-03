@@ -15,7 +15,19 @@ const pageNames = {
   '/documentos':'Documentos & Contratos','/comunicacao':'Comunicação','/cotacoes':'Cotações & Compras'
 }
 
-const ROLES_COM_NOTIF = ['Administrador','Síndico']
+const tipoIcon = t => ({
+  reserva: '📅',
+  boleto: '💰',
+  ocorrencia: '⚠️',
+  assembleia: '🗳️',
+  comunicado: '📢',
+  manutencao: '🔧',
+  encomenda: '📦',
+  visitante: '🚪',
+  documento: '📄'
+}[t] || '🔔')
+
+const ROLES_COM_NOTIF = ['Administrador','Síndico','Subsíndico','Conselheiro','Financeiro','Portaria']
 const WHATSAPP_NUMBER = '558396885931'
 
 function WhatsAppHeaderButton() {
@@ -24,7 +36,7 @@ function WhatsAppHeaderButton() {
       href={`https://wa.me/${WHATSAPP_NUMBER}?text=Olá!%20Preciso%20de%20suporte%20do%20condomínio.`}
       target="_blank"
       rel="noreferrer"
-      className="relative p-2 rounded-lg text-green-500 hover:text-green-600 hover:bg-green-50 transition-all flex items-center justify-center"
+      className="relative p-2 rounded-xl text-green-600 hover:text-green-700 hover:bg-green-50 transition-all flex items-center justify-center shrink-0"
       title="Suporte via WhatsApp"
     >
       <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
@@ -59,15 +71,49 @@ export default function Header({ onMenuClick }) {
     return false;
   })
 
-  const pageName = pageNames[location.pathname] || 'Sistema'
-  const podeVerNotif = ROLES_COM_NOTIF.includes(user?.role)
-  const naoLidas = notifications.filter(n=>!n.lida).length
+  // Ordenar por data mais recente
+  notifications.sort((a, b) => new Date(b.time || b._createdAt || 0) - new Date(a.time || a._createdAt || 0))
 
-  // Fecha todos os menus ao clicar fora
+  const preview = notifications.slice(0, 5)
+  const naoLidas = notifications.filter(n => !n.lida).length
+  const uniqueCondos = [...new Set(allNotifications.map(n => n.condominio).filter(Boolean))]
+
+  const filteredCentral = notifications.filter(n => {
+    if (condoFilter === 'Todos') return true;
+    return n.condominio === condoFilter;
+  })
+
+  const markAll = async () => {
+    for (const n of notifications.filter(x => !x.lida)) {
+      await updateItem(n.id, { lida: true })
+    }
+  }
+
+  const handleNotifClick = async (n) => {
+    if (!n.lida) {
+      await updateItem(n.id, { lida: true })
+    }
+    if (n.link) {
+      navigate(n.link)
+      setNotifOpen(false)
+      setCentralOpen(false)
+    }
+  }
+
+  const pageName = pageNames[location.pathname] || 'Sistema'
+  const podeVerNotif = true // Permite que todos vejam suas notificações
+
+  // Fecha menus ao clicar fora
   React.useEffect(() => {
     const fecharMenus = (e) => {
       if (!e.target.closest('.search-menu-container')) {
         setSearchOpen(false)
+      }
+      if (!e.target.closest('.notif-menu-container')) {
+        setNotifOpen(false)
+      }
+      if (!e.target.closest('.user-menu-container')) {
+        setDropOpen(false)
       }
     }
     document.addEventListener('click', fecharMenus)
@@ -75,8 +121,8 @@ export default function Header({ onMenuClick }) {
   }, [])
 
   return (
-    <header className="h-16 bg-white/95 backdrop-blur-md border-b border-cream-400 flex items-center justify-between px-4 gap-4 sticky top-0 z-30 shadow-sm">
-      <div className="flex items-center gap-3">
+    <header className="h-16 bg-white/95 backdrop-blur-md border-b border-cream-400 flex items-center justify-between px-3 sm:px-4 gap-2 sm:gap-4 sticky top-0 z-30 shadow-sm">
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <button onClick={onMenuClick} className="lg:hidden p-2 rounded-lg text-gray-500 hover:text-brand-600 hover:bg-pale-100 transition-all"><Menu size={20}/></button>
         <button onClick={() => navigate('/dashboard')} className="lg:hidden flex items-center justify-center p-2 rounded-lg text-[#2E3045] bg-[#D1D3DF] hover:bg-[#A4B6BA] border border-[#2E3045]/10 transition-all" title="Voltar ao Início">
           <Home size={20}/>
@@ -95,23 +141,23 @@ export default function Header({ onMenuClick }) {
               alert("Erro ao ativar Push: " + e.message);
             }
           });
-        }} className="flex items-center gap-2 p-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-all text-xs font-bold" title="Testar Notificações">
-          <Signal size={16}/> ATIVAR PUSH
+        }} className="flex items-center gap-1.5 p-1.5 sm:p-2 rounded-xl text-white bg-blue-600 hover:bg-blue-700 transition-all text-[11px] sm:text-xs font-bold shrink-0 shadow-sm" title="Ativar Notificações Push">
+          <Signal size={14}/> <span className="hidden xs:inline">ATIVAR PUSH</span>
         </button>
-        <h1 className="text-sm font-bold text-gray-800 hidden sm:block">{pageName}</h1>
+        <h1 className="text-xs sm:text-sm font-bold text-gray-800 hidden md:block">{pageName}</h1>
       </div>
 
       {/* BUSCADOR DE MÓDULOS / MENUS AMPLO E LEGÍVEL */}
-      <div className="relative flex-1 max-w-xl w-full search-menu-container">
+      <div className="relative flex-1 max-w-lg w-full search-menu-container mx-1 sm:mx-2">
         <div
           onClick={(e) => { e.stopPropagation(); setSearchOpen(true); setDropOpen(false); setNotifOpen(false) }}
-          className="flex items-center gap-2.5 bg-slate-50 border border-slate-300 hover:border-brand-500 rounded-xl px-3.5 py-2 text-sm text-gray-600 transition-all cursor-text shadow-inner focus-within:ring-2 focus-within:ring-brand-200 focus-within:bg-white"
+          className="flex items-center gap-2 bg-slate-50 border border-slate-300 hover:border-brand-500 rounded-xl px-3 py-1.5 sm:py-2 text-sm text-gray-600 transition-all cursor-text shadow-inner focus-within:ring-2 focus-within:ring-brand-200 focus-within:bg-white"
         >
-          <Search size={17} className="shrink-0 text-brand-600"/>
+          <Search size={16} className="shrink-0 text-brand-600"/>
           <input
             id="quick-search-input"
             type="text"
-            placeholder="Buscar páginas e menus (ex: Gestão, Contratos, Boletos, Moradores...)"
+            placeholder="Buscar páginas e menus..."
             className="bg-transparent border-none outline-none text-xs sm:text-sm font-medium text-gray-800 w-full placeholder:text-gray-400"
             value={searchCategory}
             onChange={e => { setSearchCategory(e.target.value); setSearchOpen(true) }}
@@ -124,16 +170,15 @@ export default function Header({ onMenuClick }) {
               className="text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-200"
               title="Limpar busca"
             >
-              <X size={15}/>
+              <X size={14}/>
             </button>
           )}
         </div>
 
-        {/* JANELA EXPANDIDA DE RESULTADOS DO MENU (SEM CORTES) */}
+        {/* JANELA EXPANDIDA DE RESULTADOS DO MENU */}
         {searchOpen && (() => {
           const query = searchCategory.toLowerCase().trim()
           
-          // Mapeamento plano com rótulo legível
           const allItems = filteredNavGroups.flatMap(g =>
             g.items.map(item => ({ 
               ...item, 
@@ -152,7 +197,7 @@ export default function Header({ onMenuClick }) {
 
           return (
             <div
-              className="absolute top-12 left-0 w-full sm:w-[580px] md:w-[650px] bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in p-3 max-h-[460px] flex flex-col"
+              className="absolute top-12 left-0 w-full sm:w-[540px] md:w-[620px] bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in p-3 max-h-[440px] flex flex-col"
               onClick={e => e.stopPropagation()}
             >
               <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between text-xs text-gray-500 font-bold">
@@ -165,7 +210,7 @@ export default function Header({ onMenuClick }) {
               {results.length === 0 ? (
                 <div className="text-center py-10 px-4 text-gray-400 flex flex-col items-center justify-center">
                   <Search size={32} className="opacity-30 mb-2 text-gray-400" />
-                  <p className="text-sm font-bold text-gray-600">Nenhum menu encontrado para "{searchCategory}"</p>
+                  <p className="text-sm font-bold text-gray-600">Nenhum menu encontrado para "${searchCategory}"</p>
                   <p className="text-xs text-gray-400 mt-1">Tente pesquisar por palavras como: Documentos, Gestão, Boletos, Moradores, etc.</p>
                 </div>
               ) : (
@@ -176,11 +221,10 @@ export default function Header({ onMenuClick }) {
                       onClick={() => { navigate(item.to); setSearchOpen(false); setSearchCategory('') }}
                       className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-brand-50 border border-slate-100 hover:border-brand-300 transition-all text-left group cursor-pointer bg-slate-50/50 hover:shadow-sm"
                     >
-                      <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 group-hover:bg-brand-600 group-hover:text-white flex items-center justify-center text-brand-700 shadow-sm shrink-0 transition-colors">
-                        <item.icon size={18} strokeWidth={2.2} />
+                      <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 group-hover:bg-brand-600 group-hover:text-white flex items-center justify-center text-brand-700 shadow-sm shrink-0 transition-colors">
+                        <item.icon size={17} strokeWidth={2.2} />
                       </div>
                       <div className="flex-1 min-w-0 pr-1">
-                        {/* Nome COMPLETO sem corte nem reticências curtas */}
                         <p className="text-xs sm:text-sm font-bold text-gray-800 group-hover:text-brand-800 transition-colors leading-snug break-words">
                           {item.cleanLabel}
                         </p>
@@ -198,15 +242,16 @@ export default function Header({ onMenuClick }) {
         })()}
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* AÇÕES DA DIREITA */}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* Botão Rápido de Bater Ponto */}
         {user?.role !== 'Morador' && (
           <button
             onClick={() => navigate('/ponto')}
-            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 transition-all hover:scale-105 cursor-pointer"
+            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-[11px] sm:text-xs font-black px-2.5 sm:px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 transition-all hover:scale-105 cursor-pointer"
             title="Registrar Ponto Eletrônico (com foto e GPS)"
           >
-            <Clock size={15} />
+            <Clock size={14} />
             <span className="hidden sm:inline">Bater Ponto</span>
           </button>
         )}
@@ -216,13 +261,215 @@ export default function Header({ onMenuClick }) {
         {/* Botão Alpha AI */}
         <button
           onClick={() => navigate('/alpha-ai')}
-          className="relative p-2 rounded-lg text-brand-600 hover:text-brand-800 hover:bg-pale-100 transition-all flex items-center justify-center cursor-pointer"
+          className="relative p-2 rounded-xl text-brand-600 hover:text-brand-800 hover:bg-pale-100 transition-all flex items-center justify-center cursor-pointer"
           title="Alpha AI — Concierge Virtual"
         >
-          <Bot size={20} />
+          <Bot size={19} />
           <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-emerald-400 border-2 border-white rounded-full"></span>
         </button>
+
+        {/* SINO DE NOTIFICAÇÕES (RESTAURADO E COMPLETO) */}
+        {podeVerNotif && (
+          <div className="relative notif-menu-container">
+            <button 
+              onClick={() => { setNotifOpen(o => !o); setDropOpen(false); setSearchOpen(false); }}
+              className="relative p-2 rounded-xl text-gray-600 hover:text-brand-600 hover:bg-slate-100 transition-all cursor-pointer flex items-center justify-center"
+              title="Notificações e Alertas"
+            >
+              <Bell size={19}/>
+              {naoLidas > 0 && (
+                <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 rounded-full text-[10px] text-white flex items-center justify-center font-black leading-none shadow-sm animate-pulse">
+                  {naoLidas > 9 ? '9+' : naoLidas}
+                </span>
+              )}
+            </button>
+
+            {notifOpen && (
+              <div 
+                className="absolute right-0 top-12 w-80 sm:w-96 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="p-3.5 border-b border-gray-100 flex items-center justify-between bg-slate-50">
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-black text-sm text-gray-900">Notificações</p>
+                    {naoLidas > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700">
+                        {naoLidas} novas
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {naoLidas > 0 && (
+                      <button 
+                        onClick={markAll} 
+                        className="text-[11px] text-brand-600 hover:text-brand-800 font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <CheckCircle2 size={12}/> Marcar lidas
+                      </button>
+                    )}
+                    <button onClick={() => setNotifOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
+                      <X size={14}/>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
+                  {preview.map(n => (
+                    <div 
+                      key={n.id} 
+                      onClick={() => handleNotifClick(n)} 
+                      className={`px-4 py-3 flex items-start gap-2.5 cursor-pointer hover:bg-slate-50 transition-colors ${!n.lida ? 'bg-amber-50/40' : ''}`}
+                    >
+                      <span className="text-lg shrink-0 mt-0.5">{tipoIcon(n.tipo)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-800 leading-snug font-medium break-words">
+                          {n.text || n.titulo || n.mensagem || 'Notificação do Sistema'}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-gray-400">
+                            {n.time ? new Date(n.time).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Agora'}
+                          </span>
+                          {n.condominio && n.condominio !== 'Todos' && (
+                            <span className="text-[9px] font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+                              {n.condominio}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); deleteItem(n.id) }} 
+                        className="p-1 rounded-lg hover:bg-rose-50 text-gray-300 hover:text-rose-500 transition-all shrink-0 cursor-pointer"
+                        title="Excluir notificação"
+                      >
+                        <Trash2 size={12}/>
+                      </button>
+                    </div>
+                  ))}
+                  {notifications.length === 0 && (
+                    <div className="p-8 text-center text-xs text-gray-400">
+                      Nenhuma notificação no momento.
+                    </div>
+                  )}
+                </div>
+
+                {notifications.length > 5 && (
+                  <div className="p-2.5 text-center border-t border-gray-100 bg-slate-50">
+                    <button 
+                      onClick={() => { setCentralOpen(true); setNotifOpen(false) }} 
+                      className="text-xs text-brand-600 hover:text-brand-800 font-bold w-full py-1 transition-all cursor-pointer"
+                    >
+                      Ver todas na Central de Notificações ({notifications.length})
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MENU DO USUÁRIO & PERFIL (RESTAURADO) */}
+        <div className="relative user-menu-container">
+          <button 
+            onClick={() => { setDropOpen(o => !o); setNotifOpen(false); setSearchOpen(false); }}
+            className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-100 transition-all cursor-pointer"
+          >
+            <div className="w-8 h-8 bg-gradient-to-br from-brand-600 to-brand-800 rounded-xl flex items-center justify-center text-xs font-black text-white shadow-sm shrink-0">
+              {user?.nome?.[0] || 'A'}
+            </div>
+            <div className="hidden sm:flex flex-col text-left">
+              <span className="text-xs font-bold text-gray-800 leading-tight max-w-[100px] truncate">{user?.nome || 'Usuário'}</span>
+              <span className="text-[10px] text-gray-500 capitalize leading-none">{user?.role || 'Acesso'}</span>
+            </div>
+            <ChevronDown size={13} className="text-gray-400 hidden sm:block"/>
+          </button>
+
+          {dropOpen && (
+            <div 
+              className="absolute right-0 top-12 w-52 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-3.5 border-b border-gray-100 bg-slate-50">
+                <p className="text-xs font-black text-gray-900">{user?.nome}</p>
+                <p className="text-[10px] font-bold text-brand-600 uppercase mt-0.5">{user?.role}</p>
+                {user?.condominio && (
+                  <p className="text-[10px] text-gray-500 mt-1 truncate">🏢 {user.condominio}</p>
+                )}
+              </div>
+              <div className="p-1">
+                <button 
+                  onClick={() => { navigate('/usuarios'); setDropOpen(false); }} 
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                >
+                  ⚙️ Meu Perfil & Acessos
+                </button>
+                <button 
+                  onClick={logout} 
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+                >
+                  <LogOut size={14}/> Sair da Conta
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* MODAL CENTRAL DE NOTIFICAÇÕES COMPLETO */}
+      {centralOpen && (
+        <div className="modal-overlay" onClick={() => setCentralOpen(false)}>
+          <div className="modal-content max-w-2xl w-full p-0 overflow-hidden rounded-3xl" onClick={e => e.stopPropagation()}>
+            <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between">
+              <div>
+                <h2 className="text-base sm:text-lg font-black">Central de Notificações</h2>
+                <p className="text-xs text-gray-400">Visualize e gerencie todos os alertas do sistema</p>
+              </div>
+              <button onClick={() => setCentralOpen(false)} className="p-2 text-gray-400 hover:text-white rounded-xl transition-all">
+                <X size={18}/>
+              </button>
+            </div>
+            
+            <div className="p-4 sm:p-6 space-y-4">
+              {(user?.role === 'Administrador' || user?.role === 'Financeiro') && uniqueCondos.length > 0 && (
+                <div>
+                  <label className="text-xs font-bold text-gray-600 mb-1 block">Filtrar por Condomínio</label>
+                  <select className="input text-xs font-bold bg-white" value={condoFilter} onChange={e => setCondoFilter(e.target.value)}>
+                    <option value="Todos">🌐 Todos os Condomínios</option>
+                    {uniqueCondos.map(c => <option key={c} value={c}>🏢 {c}</option>)}
+                  </select>
+                </div>
+              )}
+
+              <div className="max-h-[55vh] overflow-y-auto custom-scrollbar flex flex-col gap-2 pr-1 divide-y divide-gray-100">
+                {filteredCentral.map(n => (
+                  <div 
+                    key={n.id} 
+                    onClick={() => handleNotifClick(n)} 
+                    className={`p-3.5 rounded-2xl border flex items-start gap-3 cursor-pointer transition-all hover:border-brand-300 hover:bg-brand-50/50 shadow-sm ${!n.lida ? 'bg-amber-50/60 border-amber-200' : 'bg-white border-gray-200'}`}
+                  >
+                    <span className="text-2xl mt-0.5 shrink-0">{tipoIcon(n.tipo)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm text-gray-800 leading-snug font-bold">{n.text || n.titulo || n.mensagem}</p>
+                      <p className="text-[11px] text-gray-400 mt-1">{n.time ? new Date(n.time).toLocaleString('pt-BR') : ''}</p>
+                    </div>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); deleteItem(n.id) }} 
+                      className="p-1.5 rounded-lg hover:bg-rose-100 text-gray-300 hover:text-rose-600 transition-all shrink-0 cursor-pointer"
+                      title="Excluir"
+                    >
+                      <Trash2 size={15}/>
+                    </button>
+                  </div>
+                ))}
+                {filteredCentral.length === 0 && (
+                  <div className="p-12 text-center text-sm text-gray-400">
+                    Nenhuma notificação encontrada para este filtro.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   )
 }

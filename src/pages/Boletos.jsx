@@ -590,26 +590,32 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
   
   const condoSelecionado = condominiosValidos.find(c => c.nome === condoNome)
   const [chavePix, setChavePix] = useState(condoSelecionado?.chave_pix || '')
-  const [discriminarTaxa, setDiscriminarTaxa] = useState(condoSelecionado?.discriminarTaxa || false)
-  const [taxaStr, setTaxaStr] = useState(condoSelecionado?.taxaEmissao && Number(condoSelecionado.taxaEmissao) > 0 ? String(condoSelecionado.taxaEmissao).replace('.', ',') : '3,50')
-  const [nomeTaxa, setNomeTaxa] = useState(condoSelecionado?.nomeTaxa || 'Serviço de Cobrança Digital')
+  const [discriminarTaxa, setDiscriminarTaxa] = useState(false)
+  const [taxaStr, setTaxaStr] = useState('3,50')
+  const [nomeTaxa, setNomeTaxa] = useState('Serviço de Cobrança Digital')
   const [valoresCustom, setValoresCustom] = useState({})
   const [enviarWhatsAppAuto, setEnviarWhatsAppAuto] = useState(true)
 
+  // Dispara apenas quando o usuário TROCA o condomínio no select
   useEffect(() => {
-    const c = condominiosValidos.find(c => c.nome === condoNome)
+    if (!condoNome) return
+    const c = condominios.find(item => item && item.nome === condoNome)
     if (c) {
-      setChavePix(c.chave_pix || '')
-      if (c.discriminarTaxa !== undefined) setDiscriminarTaxa(c.discriminarTaxa)
-      if (c.taxaEmissao && Number(c.taxaEmissao) > 0) { setTaxaStr(String(c.taxaEmissao).replace('.', ',')) } else { setTaxaStr('3,50') }
+      if (c.chave_pix) setChavePix(c.chave_pix)
+      if (c.discriminarTaxa !== undefined) setDiscriminarTaxa(Boolean(c.discriminarTaxa))
+      if (c.taxaEmissao && Number(c.taxaEmissao) > 0) {
+        setTaxaStr(String(c.taxaEmissao).replace('.', ','))
+      } else {
+        setTaxaStr('3,50')
+      }
       if (c.nomeTaxa) {
         const n = c.nomeTaxa.includes('Processamento') || c.nomeTaxa.includes('Tarifa') ? 'Serviço de Cobrança Digital' : c.nomeTaxa
         setNomeTaxa(n)
       }
     }
-  }, [condoNome, condominiosValidos])
+  }, [condoNome])
 
-  // Moradores filtrados estritamente pelo condomínio selecionado (Apenas Titulares/Responsáveis)
+  // Moradores filtrados estritamente pelo condomínio selecionado
   const normalizeCondo = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 
   const moradoresDoCondo = moradores.filter(m => {
@@ -622,11 +628,12 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     const isDependente = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente' || (m.parentesco && m.parentesco !== 'Titular')
     return matchCondo && !isDependente
   })
+  
   const [selecionados, setSelecionados] = useState(() => moradoresDoCondo.map(m => m.id))
 
   useEffect(() => {
     setSelecionados(moradoresDoCondo.map(m => m.id))
-  }, [condoNome, moradores.length, moradoresDoCondo.length])
+  }, [condoNome, moradores.length])
 
   const toggleMorador = (id) => {
     setSelecionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -642,6 +649,16 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
 
   const handleCustomValChange = (id, val) => {
     setValoresCustom(prev => ({ ...prev, [id]: val }))
+  }
+
+  const handleToggleTaxa = () => {
+    setDiscriminarTaxa(prev => {
+      const next = !prev
+      if (next && (!taxaStr || taxaStr === '0,00' || taxaStr === '0')) {
+        setTaxaStr('3,50')
+      }
+      return next
+    })
   }
 
   const handleGerar = () => {
@@ -740,33 +757,45 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
             </div>
           </div>
 
-          {/* Opção de Taxa Discriminada */}
-          <div className="p-3.5 bg-brand-50/80 border-2 border-brand-300 rounded-2xl flex flex-col gap-2 shadow-sm">
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={discriminarTaxa}
-                onChange={e => {
-                  const check = e.target.checked
-                  setDiscriminarTaxa(check)
-                  if (check && (!taxaStr || taxaStr === '0,00' || taxaStr === '0')) {
-                    setTaxaStr('3,50')
-                  }
-                }}
-                className="w-5 h-5 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer shrink-0"
-              />
-              <span className="text-xs font-black text-brand-950">
-                Serviço de Cobrança Digital (R$ {taxaStr && taxaStr !== '0,00' && taxaStr !== '0' ? maskCurrency(taxaStr) : '3,50'})
+          {/* Opção de Taxa Discriminada (CLICÁVEL EM QUALQUER LUGAR DO CARD) */}
+          <div 
+            onClick={handleToggleTaxa}
+            className={`p-4 rounded-2xl border-2 transition-all cursor-pointer select-none shadow-sm flex flex-col gap-2 ${
+              discriminarTaxa 
+                ? 'bg-brand-50/90 border-brand-500 ring-2 ring-brand-200' 
+                : 'bg-slate-50/90 border-slate-300 hover:border-brand-300 hover:bg-slate-100/80'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="check-taxa-lote"
+                  checked={discriminarTaxa}
+                  onChange={handleToggleTaxa}
+                  onClick={e => e.stopPropagation()}
+                  className="w-5 h-5 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer shrink-0"
+                />
+                <span className="text-xs sm:text-sm font-black text-gray-900">
+                  Serviço de Cobrança Digital (R$ {taxaStr && taxaStr !== '0,00' && taxaStr !== '0' ? maskCurrency(taxaStr) : '3,50'})
+                </span>
+              </div>
+              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${discriminarTaxa ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                {discriminarTaxa ? 'Ativado' : 'Desativado'}
               </span>
-            </label>
-            <p className="text-[11px] text-gray-600 ml-7 leading-relaxed">
-              Marque para discriminar o <b>Serviço de Cobrança Digital</b> no boleto. Se desmarcado, a cota sairá com valor único sem discriminação.
+            </div>
+
+            <p className="text-[11px] text-gray-600 ml-8 leading-relaxed">
+              Marque para discriminar o <b>Serviço de Cobrança Digital</b> no demonstrativo do boleto.
             </p>
 
             {discriminarTaxa && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 ml-7 bg-white p-3 rounded-xl border border-brand-200">
+              <div 
+                onClick={e => e.stopPropagation()} 
+                className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2 ml-0 sm:ml-8 bg-white p-3.5 rounded-xl border border-brand-200 animate-fade-in shadow-inner"
+              >
                 <div>
-                  <label className="label text-[10px] font-bold">Valor do Serviço por Boleto (R$)</label>
+                  <label className="label text-[10px] font-black text-brand-950">Valor do Serviço por Boleto (R$)</label>
                   <CurrencyInput 
                     value={taxaStr || '3,50'} 
                     onChange={v => setTaxaStr(v || '3,50')} 
@@ -774,9 +803,9 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
                   />
                 </div>
                 <div>
-                  <label className="label text-[10px] font-bold">Descrição no Boleto</label>
+                  <label className="label text-[10px] font-black text-brand-950">Descrição no Boleto</label>
                   <input 
-                    className="input text-xs text-gray-800" 
+                    className="input text-xs text-gray-900 font-bold bg-slate-50" 
                     value={nomeTaxa} 
                     onChange={e => setNomeTaxa(e.target.value)} 
                     placeholder="Serviço de Cobrança Digital" 
@@ -787,24 +816,38 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
           </div>
 
           {/* Opção de Disparo Automático por WhatsApp */}
-          <div className="p-3.5 bg-emerald-50 border-2 border-emerald-300 rounded-2xl flex flex-col gap-1.5 shadow-sm">
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={enviarWhatsAppAuto}
-                onChange={e => setEnviarWhatsAppAuto(e.target.checked)}
-                className="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer shrink-0"
-              />
-              <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
-                🚀 Disparar boletos automaticamente via WhatsApp ao gerar
+          <div 
+            onClick={() => setEnviarWhatsAppAuto(p => !p)}
+            className={`p-4 rounded-2xl border-2 transition-all cursor-pointer select-none shadow-sm flex flex-col gap-1.5 ${
+              enviarWhatsAppAuto 
+                ? 'bg-emerald-50/90 border-emerald-500 ring-2 ring-emerald-200' 
+                : 'bg-slate-50 border-slate-300 hover:border-emerald-300'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="check-whatsapp-auto"
+                  checked={enviarWhatsAppAuto}
+                  onChange={() => setEnviarWhatsAppAuto(p => !p)}
+                  onClick={e => e.stopPropagation()}
+                  className="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer shrink-0"
+                />
+                <span className="text-xs sm:text-sm font-black text-emerald-950 flex items-center gap-1.5">
+                  🚀 Disparar boletos automaticamente via WhatsApp ao gerar
+                </span>
+              </div>
+              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${enviarWhatsAppAuto ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                {enviarWhatsAppAuto ? 'Ativado' : 'Desativado'}
               </span>
-            </label>
-            <p className="text-[11px] text-emerald-800 ml-7 leading-relaxed">
-              O sistema gera o <b>PDF oficial</b> e entrega instantaneamente no WhatsApp de cada morador selecionado com a mensagem e o QR Code PIX para pagamento!
+            </div>
+            <p className="text-[11px] text-emerald-800 ml-8 leading-relaxed">
+              O sistema gera o <b>PDF oficial</b> e entrega instantaneamente no WhatsApp de cada morador com QR Code PIX!
             </p>
           </div>
 
-          {/* Lista de Moradores com Checkboxes e Edição de Valor Individual */}
+          {/* Lista de Moradores */}
           <div className="border border-gray-200 rounded-2xl overflow-hidden mt-1">
             <div className="p-3 bg-slate-100 border-b border-gray-200 flex items-center justify-between">
               <span className="text-xs font-black text-gray-800">
@@ -815,35 +858,55 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
               </button>
             </div>
 
-            <div className="max-h-60 overflow-y-auto divide-y divide-gray-100 p-2">
+            <div className="max-h-60 overflow-y-auto divide-y divide-gray-100">
               {moradoresDoCondo.length === 0 ? (
-                <p className="text-xs text-gray-400 p-4 text-center">Nenhum morador cadastrado neste condomínio.</p>
+                <div className="p-6 text-center text-xs text-gray-400">
+                  Nenhum morador titular cadastrado para este condomínio.
+                </div>
               ) : (
                 moradoresDoCondo.map(m => {
-                  const isChecked = selecionados.includes(m.id)
-                  const valMorador = valoresCustom[m.id] !== undefined ? valoresCustom[m.id] : valorStr
+                  const isSel = selecionados.includes(m.id)
+                  const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || m.fone || ''
+                  const temWhats = rawTel && rawTel.replace(/\D/g, '').length >= 10
 
                   return (
-                    <div key={m.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl gap-2 sm:gap-3">
-                      <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
+                    <div 
+                      key={m.id} 
+                      onClick={() => toggleMorador(m.id)}
+                      className={`p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-colors ${isSel ? 'bg-brand-50/30' : 'opacity-60'}`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
                         <input
-                           type="checkbox"
-                           checked={isChecked}
-                           onChange={() => toggleMorador(m.id)}
-                           className="w-4 h-4 rounded text-brand-600 border-gray-300 focus:ring-brand-500 shrink-0"
+                          type="checkbox"
+                          checked={isSel}
+                          onChange={() => {}}
+                          onClick={e => { e.stopPropagation(); toggleMorador(m.id); }}
+                          className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer"
                         />
-                        <div className="truncate">
-                          <p className="font-bold text-gray-900 text-xs truncate">{m.nome}</p>
-                          <p className="text-[10px] text-gray-500">Unidade: <b>{m.apt || m.unidade || '—'}</b> {m.bloco ? `• Bloco ${m.bloco}` : ''}</p>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-gray-900 truncate">
+                            {m.nome} <span className="text-gray-400 font-normal">(Apt {m.apt || m.unidade || '—'})</span>
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-gray-500 font-mono">{rawTel || 'Sem WhatsApp'}</span>
+                            {temWhats ? (
+                              <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">WhatsApp ✓</span>
+                            ) : (
+                              <span className="text-[9px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.2 rounded">Sem número</span>
+                            )}
+                          </div>
                         </div>
-                      </label>
+                      </div>
 
-                      <div className="w-28 shrink-0">
-                        <CurrencyInput
-                          value={valMorador}
-                          onChange={v => handleCustomValChange(m.id, v)}
-                          placeholder="0,00"
-                        />
+                      <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                        <label className="text-[10px] text-gray-500 font-bold hidden sm:inline">Valor (R$):</label>
+                        <div className="w-24">
+                          <CurrencyInput
+                            value={valoresCustom[m.id] !== undefined ? valoresCustom[m.id] : valorStr}
+                            onChange={v => handleCustomValChange(m.id, v)}
+                            placeholder="0,00"
+                          />
+                        </div>
                       </div>
                     </div>
                   )
@@ -853,55 +916,19 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
           </div>
         </div>
 
-        <div className="p-4 sm:p-5 bg-slate-50 border-t border-gray-200 flex items-center justify-between shrink-0">
+        <div className="p-4 sm:p-5 border-t border-gray-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
           <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
-          <button onClick={handleGerar} className="btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1.5 sm:gap-2 shadow-md">
-            <CheckCircle2 size={16} /> Gerar {selecionados.length} Boletos {enviarWhatsAppAuto ? 'e Enviar WhatsApp' : ''}
+          <button
+            onClick={handleGerar}
+            className="btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-700/20 py-2.5 px-5 flex items-center gap-2 cursor-pointer"
+          >
+            <CheckCircle2 size={16} /> Gerar {selecionados.length} {selecionados.length === 1 ? 'Boleto' : 'Boletos'} {enviarWhatsAppAuto ? 'e Enviar WhatsApp' : ''}
           </button>
         </div>
       </div>
     </div>
   )
 }
-
-function ModalFundo({ condo, onClose, onSave }) {
-  const [saldoStr, setSaldoStr] = useState(condo?.fundoReserva ? Number(condo.fundoReserva).toLocaleString('pt-BR',{minimumFractionDigits:2}) : '')
-  const [metaStr, setMetaStr]   = useState(condo?.fundoMeta  ? Number(condo.fundoMeta).toLocaleString('pt-BR',{minimumFractionDigits:2}) : '')
-
-  const parseBR = v => parseFloat(v.replace(/\./g,'').replace(',','.')) || 0
-  const fmtInput = (v, setter) => {
-    const nums = v.replace(/\D/g,'')
-    if (!nums) { setter(''); return }
-    const n = parseInt(nums,10)/100
-    setter(n.toLocaleString('pt-BR',{minimumFractionDigits:2}))
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-sm" onClick={e=>e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <div>
-             <h3 className="font-bold text-gray-800">Atualizar Fundo</h3>
-             <p className="text-xs text-gray-500">{condo?.nome}</p>
-          </div>
-          <button onClick={onClose}><X size={18} className="text-gray-400"/></button>
-        </div>
-        <div className="p-6 flex flex-col gap-4">
-          <div><label className="label">Saldo atual (R$)</label><input className="input" value={saldoStr} onChange={e=>fmtInput(e.target.value,setSaldoStr)} placeholder="0,00" autoFocus inputMode="numeric"/></div>
-          <div><label className="label">Meta anual (R$)</label><input className="input" value={metaStr} onChange={e=>fmtInput(e.target.value,setMetaStr)} placeholder="0,00" inputMode="numeric"/></div>
-        </div>
-        <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
-          <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={()=>onSave({fundoReserva:parseBR(saldoStr),fundoMeta:parseBR(metaStr)})} className="btn-primary">Salvar</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const statusBadge = s=>({Pago:'badge-green',Pendente:'badge-yellow',Vencido:'badge-red'}[s]||'badge-blue')
-const statusIcon  = s=>s==='Pago'?<CheckCircle2 size={14} className="text-emerald-500"/>:s==='Vencido'?<AlertCircle size={14} className="text-red-500"/>:<Clock size={14} className="text-amber-500"/>
-const fmt = v=>Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})
 
 export default function Boletos() {
   const { user } = useAuth()
