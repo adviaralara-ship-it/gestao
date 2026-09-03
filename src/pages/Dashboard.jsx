@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react'
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
 import {
   TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck,
   CreditCard, DollarSign, FileText, Bell, Clock, Wrench, Shield, Plus,
   FileSpreadsheet, ArrowRight, CheckCircle2, AlertCircle, Sparkles, ChevronRight,
   ExternalLink, Layers, Eye, Bot, Megaphone, Car, QrCode, Gavel, FolderOpen, Check, User, Camera,
-  DoorOpen, Package, PhoneCall, AlertOctagon, Truck, BookOpen, RefreshCw, PawPrint, Home, Trash2
+  DoorOpen, Package, PhoneCall, AlertOctagon, Truck, BookOpen, RefreshCw, PawPrint, Home, Trash2,
+  PieChart as PieIcon, Percent, ArrowUpRight, Filter
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useNavigate } from 'react-router-dom'
@@ -1002,6 +1003,148 @@ export default function Dashboard() {
     return list
   }, [contasVencidas, statsContratos, statsCotacoes, statsManutencoes, ocFiltradas])
 
+  // =========================================================================
+  // CÁLCULO DE VALORES A RECEBER, EM ATRASO E PAGOS POR CONDOMÍNIO + PIE CHART
+  // =========================================================================
+  const { 
+    resumoPorCondominio, 
+    totalAReceberGeral, 
+    totalEmAtrasoGeral, 
+    totalPagoGeral,
+    pizzaStatusData,
+    pizzaCondominiosAtrasoData,
+    pizzaCondominiosAReceberData
+  } = useMemo(() => {
+    const hoje = new Date()
+    hoje.setHours(0, 0, 0, 0)
+
+    const mapCondos = {}
+
+    // Inicializar todos os condomínios cadastrados
+    condominios.forEach(c => {
+      const nome = (c.nome || 'Geral').trim()
+      mapCondos[nome] = {
+        id: c.id,
+        nome: nome,
+        aReceber: 0,
+        qtdAReceber: 0,
+        emAtraso: 0,
+        qtdEmAtraso: 0,
+        pago: 0,
+        qtdPago: 0,
+        totalGeral: 0,
+        qtdTotal: 0
+      }
+    })
+
+    // Processar boletos
+    boletos.forEach(b => {
+      const cNome = (b.condominio || 'Geral').trim()
+      if (!mapCondos[cNome]) {
+        mapCondos[cNome] = {
+          id: cNome,
+          nome: cNome,
+          aReceber: 0,
+          qtdAReceber: 0,
+          emAtraso: 0,
+          qtdEmAtraso: 0,
+          pago: 0,
+          qtdPago: 0,
+          totalGeral: 0,
+          qtdTotal: 0
+        }
+      }
+
+      const val = parseFloat(b.valor) || 0
+      const dStr = b.vencimento || b.data || ''
+      let isAtrasado = false
+
+      if (dStr) {
+        try {
+          const d = parseISO(dStr)
+          if (differenceInDays(d, hoje) < 0) {
+            isAtrasado = true
+          }
+        } catch(e) {}
+      }
+
+      mapCondos[cNome].totalGeral += val
+      mapCondos[cNome].qtdTotal += 1
+
+      if (b.status === 'Pago') {
+        mapCondos[cNome].pago += val
+        mapCondos[cNome].qtdPago += 1
+      } else if (b.status === 'Vencido' || isAtrasado) {
+        mapCondos[cNome].emAtraso += val
+        mapCondos[cNome].qtdEmAtraso += 1
+      } else {
+        mapCondos[cNome].aReceber += val
+        mapCondos[cNome].qtdAReceber += 1
+      }
+    })
+
+    // Converter para lista ordenada
+    const lista = Object.values(mapCondos).map(item => {
+      const soma = item.pago + item.aReceber + item.emAtraso
+      const taxaInadimplencia = soma > 0 ? ((item.emAtraso / soma) * 100) : 0
+      return {
+        ...item,
+        taxaInadimplencia: Math.min(100, Math.round(taxaInadimplencia * 10) / 10)
+      }
+    }).sort((a, b) => (b.emAtraso + b.aReceber) - (a.emAtraso + a.aReceber))
+
+    let totalARec = 0
+    let totalAtraso = 0
+    let totalPago = 0
+
+    lista.forEach(l => {
+      totalARec += l.aReceber
+      totalAtraso += l.emAtraso
+      totalPago += l.pago
+    })
+
+    // Dados para Gráfico de Pizza 1: Status Geral (Pago x A Receber x Em Atraso)
+    const pizzaStatus = [
+      { name: 'Em Atraso (Inadimplente)', value: totalAtraso, color: '#ef4444' },
+      { name: 'A Receber (No Prazo)', value: totalARec, color: '#3b82f6' },
+      { name: 'Recebido / Pago', value: totalPago, color: '#10b981' },
+    ].filter(p => p.value > 0)
+
+    // Cores para os condomínios
+    const CORES_CONDOS = [
+      '#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', 
+      '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4', '#e11d48', '#84cc16'
+    ]
+
+    // Dados para Gráfico de Pizza 2: Inadimplência / Atraso por Condomínio
+    const pizzaAtraso = lista
+      .filter(l => l.emAtraso > 0)
+      .map((l, idx) => ({
+        name: l.nome,
+        value: l.emAtraso,
+        color: CORES_CONDOS[idx % CORES_CONDOS.length]
+      }))
+
+    // Dados para Gráfico de Pizza 3: A Receber por Condomínio
+    const pizzaARec = lista
+      .filter(l => l.aReceber > 0)
+      .map((l, idx) => ({
+        name: l.nome,
+        value: l.aReceber,
+        color: CORES_CONDOS[idx % CORES_CONDOS.length]
+      }))
+
+    return {
+      resumoPorCondominio: lista,
+      totalAReceberGeral: totalARec,
+      totalEmAtrasoGeral: totalAtraso,
+      totalPagoGeral: totalPago,
+      pizzaStatusData: pizzaStatus.length > 0 ? pizzaStatus : [{ name: 'Sem Boletos', value: 1, color: '#94a3b8' }],
+      pizzaCondominiosAtrasoData: pizzaAtraso,
+      pizzaCondominiosAReceberData: pizzaARec
+    }
+  }, [condominios, boletos])
+
   const saudacaoHora = useMemo(() => {
     const hora = new Date().getHours()
     if (hora >= 5 && hora < 12) return 'Bom dia'
@@ -1175,6 +1318,255 @@ export default function Dashboard() {
               <Bar dataKey="despesas" name="Despesas" fill="#ef4444" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* 2. VALORES A RECEBER, EM ATRASO E GRÁFICOS DE PIZZA POR CONDOMÍNIO */}
+      <div className="bg-white p-6 rounded-2xl border border-pale-300 shadow-sm flex flex-col gap-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600">
+                <PieIcon size={20} />
+              </div>
+              <h3 className="font-bold text-gray-900 text-lg">Valores a Receber & Em Atraso por Condomínio</h3>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Visão consolidada de arrecadação, inadimplência e projeção financeira de todos os condomínios
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => navigate('/boletos')}
+              className="text-xs font-bold text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 py-2 px-3 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <span>Gerenciar Boletos</span>
+              <ChevronRight size={14} />
+            </button>
+            <button 
+              onClick={() => navigate('/inadimplencia')}
+              className="text-xs font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 py-2 px-3 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <span>Régua de Cobrança</span>
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* Gráficos de Pizza Lado a Lado */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Pizza 1: Status Geral de Faturamento */}
+          <div className="p-4 bg-slate-50/70 rounded-2xl border border-slate-200/80 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-brand-600"></span>
+                Status Geral de Arrecadação (Total)
+              </h4>
+              <span className="text-[11px] font-bold text-gray-500">
+                Total: R$ {(totalPagoGeral + totalAReceberGeral + totalEmAtrasoGeral).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+
+            <div className="h-56 w-full relative flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pizzaStatusData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={75}
+                    paddingAngle={4}
+                    dataKey="value"
+                  >
+                    {pizzaStatusData.map((entry, index) => (
+                      <Cell key={`cell-status-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(val) => [`R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, '']}
+                    contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Resumo dos 3 indicadores */}
+            <div className="grid grid-cols-3 gap-2 mt-2 pt-3 border-t border-slate-200 text-center">
+              <div className="bg-emerald-50/80 p-2 rounded-xl border border-emerald-100">
+                <span className="text-[10px] font-bold text-emerald-800 uppercase block">Recebido</span>
+                <span className="text-xs font-black text-emerald-700">
+                  R$ {totalPagoGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="bg-blue-50/80 p-2 rounded-xl border border-blue-100">
+                <span className="text-[10px] font-bold text-blue-800 uppercase block">A Receber</span>
+                <span className="text-xs font-black text-blue-700">
+                  R$ {totalAReceberGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="bg-rose-50/80 p-2 rounded-xl border border-rose-100">
+                <span className="text-[10px] font-bold text-rose-800 uppercase block">Em Atraso</span>
+                <span className="text-xs font-black text-rose-700">
+                  R$ {totalEmAtrasoGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Pizza 2: Inadimplência por Condomínio */}
+          <div className="p-4 bg-slate-50/70 rounded-2xl border border-slate-200/80 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                Distribuição de Atrasos por Condomínio
+              </h4>
+              <span className="text-[11px] font-bold text-rose-600">
+                Atraso Total: R$ {totalEmAtrasoGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+
+            <div className="h-56 w-full relative flex items-center justify-center">
+              {pizzaCondominiosAtrasoData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pizzaCondominiosAtrasoData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={75}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {pizzaCondominiosAtrasoData.map((entry, index) => (
+                        <Cell key={`cell-condo-atraso-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(val) => [`R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Valor em Atraso']}
+                      contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-center p-6 text-gray-400">
+                  <CheckCircle2 size={36} className="text-emerald-500 mb-2" />
+                  <p className="text-xs font-bold text-emerald-700">Parabéns! 100% dos condomínios em dia!</p>
+                  <p className="text-[11px] text-gray-400">Nenhum valor em atraso registrado no momento.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-2 pt-3 border-t border-slate-200 text-[11px] text-gray-500 flex items-center justify-between">
+              <span>Condomínios com pendência: <b>{pizzaCondominiosAtrasoData.length}</b></span>
+              <button onClick={() => navigate('/inadimplencia')} className="text-brand-600 font-bold hover:underline cursor-pointer">
+                Ver detalhes na Régua →
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabela Detalhada por Condomínio */}
+        <div className="overflow-x-auto border border-gray-100 rounded-2xl">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-gray-200 bg-slate-50 text-[11px] font-black text-gray-600 uppercase tracking-wider">
+                <th className="py-3 px-4">Condomínio</th>
+                <th className="py-3 px-4">A Receber (No Prazo)</th>
+                <th className="py-3 px-4">Em Atraso (Vencido)</th>
+                <th className="py-3 px-4">Recebido (Pago)</th>
+                <th className="py-3 px-4">Índice Inadimplência</th>
+                <th className="py-3 px-4 text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-xs font-medium text-gray-700">
+              {resumoPorCondominio.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-gray-400">
+                    Nenhum condomínio cadastrado com movimentação.
+                  </td>
+                </tr>
+              ) : (
+                resumoPorCondominio.map((c, idx) => (
+                  <tr key={c.id || c.nome || idx} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-3.5 px-4 font-bold text-gray-900 flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-brand-700 flex-shrink-0">
+                        <Building2 size={14} />
+                      </div>
+                      <div>
+                        <span>{c.nome}</span>
+                        <span className="block text-[10px] font-normal text-gray-400">
+                          {c.qtdTotal} boletos cadastrados
+                        </span>
+                      </div>
+                    </td>
+
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-blue-700">
+                          R$ {c.aReceber.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                        {c.qtdAReceber > 0 && (
+                          <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md font-bold">
+                            {c.qtdAReceber}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-black ${c.emAtraso > 0 ? 'text-rose-600' : 'text-gray-400'}`}>
+                          R$ {c.emAtraso.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                        {c.qtdEmAtraso > 0 && (
+                          <span className="text-[10px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded-md font-bold">
+                            {c.qtdEmAtraso} atrasado{c.qtdEmAtraso > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="py-3.5 px-4 font-bold text-emerald-700">
+                      R$ {c.pago.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </td>
+
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-2 w-36">
+                        <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
+                          <div 
+                            className={`h-2 rounded-full ${c.taxaInadimplencia > 15 ? 'bg-rose-500' : c.taxaInadimplencia > 5 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                            style={{ width: `${Math.min(100, c.taxaInadimplencia)}%` }}
+                          />
+                        </div>
+                        <span className={`text-[11px] font-black ${c.taxaInadimplencia > 15 ? 'text-rose-600' : c.taxaInadimplencia > 5 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          {c.taxaInadimplencia}%
+                        </span>
+                      </div>
+                    </td>
+
+                    <td className="py-3.5 px-4 text-right">
+                      <button
+                        onClick={() => {
+                          setCondoFiltro(c.nome)
+                          navigate('/boletos')
+                        }}
+                        className="p-1.5 bg-slate-100 hover:bg-brand-50 hover:text-brand-700 text-gray-600 rounded-lg transition-colors font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                        title="Ver boletos deste condomínio"
+                      >
+                        <span>Boletos</span>
+                        <ArrowUpRight size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
