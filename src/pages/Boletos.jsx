@@ -591,7 +591,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
   const condoSelecionado = condominiosValidos.find(c => c.nome === condoNome)
   const [chavePix, setChavePix] = useState(condoSelecionado?.chave_pix || '')
   const [discriminarTaxa, setDiscriminarTaxa] = useState(condoSelecionado?.discriminarTaxa || false)
-  const [taxaStr, setTaxaStr] = useState(condoSelecionado?.taxaEmissao !== undefined ? String(condoSelecionado.taxaEmissao).replace('.', ',') : '3,50')
+  const [taxaStr, setTaxaStr] = useState(condoSelecionado?.taxaEmissao && Number(condoSelecionado.taxaEmissao) > 0 ? String(condoSelecionado.taxaEmissao).replace('.', ',') : '3,50')
   const [nomeTaxa, setNomeTaxa] = useState(condoSelecionado?.nomeTaxa || 'Serviço de Cobrança Digital')
   const [valoresCustom, setValoresCustom] = useState({})
   const [enviarWhatsAppAuto, setEnviarWhatsAppAuto] = useState(true)
@@ -601,7 +601,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     if (c) {
       setChavePix(c.chave_pix || '')
       if (c.discriminarTaxa !== undefined) setDiscriminarTaxa(c.discriminarTaxa)
-      if (c.taxaEmissao !== undefined) setTaxaStr(String(c.taxaEmissao).replace('.', ','))
+      if (c.taxaEmissao && Number(c.taxaEmissao) > 0) { setTaxaStr(String(c.taxaEmissao).replace('.', ',')) } else { setTaxaStr('3,50') }
       if (c.nomeTaxa) {
         const n = c.nomeTaxa.includes('Processamento') || c.nomeTaxa.includes('Tarifa') ? 'Serviço de Cobrança Digital' : c.nomeTaxa
         setNomeTaxa(n)
@@ -646,7 +646,8 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
 
   const handleGerar = () => {
     const valorPadraoNum = typeof valorStr === 'number' ? valorStr : (parseFloat(String(valorStr || '').replace(/\./g, '').replace(',', '.')) || 0)
-    const taxaNum = typeof taxaStr === 'number' ? taxaStr : (parseFloat(String(taxaStr || '').replace(/\./g, '').replace(',', '.')) || 0)
+    let taxaNum = typeof taxaStr === 'number' ? taxaStr : (parseFloat(String(taxaStr || '').replace(/\./g, '').replace(',', '.')) || 3.50)
+    if (taxaNum <= 0 && discriminarTaxa) taxaNum = 3.50
     
     if (valorPadraoNum < 0) {
       alert("Por favor, informe um valor válido para a taxa condominial.")
@@ -678,12 +679,13 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
           competencia,
           vencimento,
           valor: valFinal,
+          valorOriginal: valFinal,
           chave_pix: chavePix,
           status: 'Pendente',
           emitido: true,
-          discriminarTaxa: discriminarTaxa,
+          discriminarTaxa: Boolean(discriminarTaxa),
           taxaEmissao: discriminarTaxa ? taxaNum : 0,
-          nomeTaxa: nomeTaxa,
+          nomeTaxa: nomeTaxa || 'Serviço de Cobrança Digital',
           linha: gerarLinhaDigitavel(m.apt || '101', valFinal, vencimento),
           pix_emv: generateStaticPix(chavePix, valFinal, condoNome, "BR"),
           _createdAt: new Date().toISOString()
@@ -744,11 +746,17 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
               <input
                 type="checkbox"
                 checked={discriminarTaxa}
-                onChange={e => setDiscriminarTaxa(e.target.checked)}
+                onChange={e => {
+                  const check = e.target.checked
+                  setDiscriminarTaxa(check)
+                  if (check && (!taxaStr || taxaStr === '0,00' || taxaStr === '0')) {
+                    setTaxaStr('3,50')
+                  }
+                }}
                 className="w-5 h-5 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer shrink-0"
               />
               <span className="text-xs font-black text-brand-950">
-                Serviço de Cobrança Digital (R$ {maskCurrency(taxaStr)})
+                Serviço de Cobrança Digital (R$ {taxaStr && taxaStr !== '0,00' && taxaStr !== '0' ? maskCurrency(taxaStr) : '3,50'})
               </span>
             </label>
             <p className="text-[11px] text-gray-600 ml-7 leading-relaxed">
@@ -759,11 +767,20 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 ml-7 bg-white p-3 rounded-xl border border-brand-200">
                 <div>
                   <label className="label text-[10px] font-bold">Valor do Serviço por Boleto (R$)</label>
-                  <CurrencyInput value={taxaStr} onChange={v => setTaxaStr(v)} placeholder="3,50" />
+                  <CurrencyInput 
+                    value={taxaStr || '3,50'} 
+                    onChange={v => setTaxaStr(v || '3,50')} 
+                    placeholder="3,50" 
+                  />
                 </div>
                 <div>
                   <label className="label text-[10px] font-bold">Descrição no Boleto</label>
-                  <input className="input text-xs text-gray-800" value={nomeTaxa} onChange={e => setNomeTaxa(e.target.value)} placeholder="Serviço de Cobrança Digital" />
+                  <input 
+                    className="input text-xs text-gray-800" 
+                    value={nomeTaxa} 
+                    onChange={e => setNomeTaxa(e.target.value)} 
+                    placeholder="Serviço de Cobrança Digital" 
+                  />
                 </div>
               </div>
             )}
