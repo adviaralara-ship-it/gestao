@@ -5,7 +5,7 @@ import autoTable from 'jspdf-autotable'
 import { PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Legend } from 'recharts'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 
-export default function DRE({ lancamentos, condoFilter }) {
+export default function DRE({ lancamentos = [], condoFilter = "Geral" }) {
   const hoje = new Date()
   const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`
   const [mesDe, setMesDe] = useState(mesAtual)
@@ -14,7 +14,7 @@ export default function DRE({ lancamentos, condoFilter }) {
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   // Filtrar apenas recebidos e pagos do período para o DRE efetivo
-  const lancamentosPeriodo = lancamentos.filter(t => {
+  const lancamentosPeriodo = (lancamentos || []).filter(t => {
     if (!t.data) return false
     const mes = t.data.substring(0, 7)
     if (mesDe && mesAte) return mes >= mesDe && mes <= mesAte

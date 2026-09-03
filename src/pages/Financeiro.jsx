@@ -512,8 +512,8 @@ export default function Financeiro() {
       {activeTab === 'Dashboard' && <DashboardFinanceiro lancamentos={lancamentos} contas={contas} setModalLanc={setModalLanc} />}
       {activeTab === 'ContasPagar' && <ContasPagar lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
       {activeTab === 'ContasReceber' && <ContasReceber lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
-      {activeTab === 'FluxoCaixa' && <FluxoCaixa lancamentos={lancamentos} />}
-      {activeTab === 'DRE' && <DRE lancamentos={lancamentos} />}
+      {activeTab === 'FluxoCaixa' && <FluxoCaixa lancamentos={lancamentos} contas={contas} />}
+      {activeTab === 'DRE' && <DRE lancamentos={lancamentos} condoFilter={condoFilter} />}
       {activeTab === 'Historico' && <Historico lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
 
       {/* Modais */}
