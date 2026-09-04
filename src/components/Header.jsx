@@ -284,7 +284,7 @@ export default function Header({ onMenuClick }) {
                   {results.map(item => (
                     <button
                       key={item.to}
-                      onClick={() => { navigate(item.to); setSearchOpen(false); setSearchCategory('') }}
+                      onClick={() => { if (item.to === '/ponto') { window.open('/ponto', '_blank'); } else { navigate(item.to); } setSearchOpen(false); setSearchCategory(''); }}
                       className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-brand-50 border border-slate-100 hover:border-brand-300 transition-all text-left group cursor-pointer bg-slate-50/50 hover:shadow-sm"
                     >
                       <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 group-hover:bg-brand-600 group-hover:text-white flex items-center justify-center text-brand-700 shadow-sm shrink-0 transition-colors">
@@ -313,7 +313,7 @@ export default function Header({ onMenuClick }) {
         {/* Botão Rápido de Bater Ponto */}
         {user?.role !== 'Morador' && (
           <button
-            onClick={() => navigate('/ponto')}
+            onClick={() => window.open('/ponto', '_blank')}
             className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-[11px] sm:text-xs font-black px-2.5 sm:px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 transition-all hover:scale-105 cursor-pointer"
             title="Registrar Ponto Eletrônico (com foto e GPS)"
           >

@@ -36,7 +36,7 @@ export default function RH() {
           <p className="section-sub">Gestão de colaboradores, ponto eletrônico e folha de pagamento</p>
         </div>
         <button
-          onClick={() => navigate('/ponto')}
+          onClick={() => window.open('/ponto', '_blank')}
           className="btn-primary py-2.5 px-4 text-xs font-black bg-emerald-600 hover:bg-emerald-500 flex items-center gap-2 shadow-md"
         >
           <Clock size={16} /> Abrir Tela de Bater Ponto

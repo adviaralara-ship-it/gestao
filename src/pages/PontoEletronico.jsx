@@ -186,7 +186,7 @@ export default function PontoEletronico() {
           <h2 className="text-2xl font-black text-gray-900 mb-2">Ponto Registrado!</h2>
           <p className="text-sm text-gray-500 mb-6">Seu ponto foi batido com sucesso e validado com foto e GPS.</p>
           <button 
-            onClick={() => navigate('/dashboard')} 
+            onClick={() => { if (window.opener || window.history.length <= 1) { window.close(); } else { navigate('/dashboard'); } }} 
             className="btn-primary w-full flex items-center justify-center gap-2 text-xs font-bold py-3 cursor-pointer"
           >
             <ArrowLeft size={16} /> Voltar ao Painel
@@ -201,7 +201,7 @@ export default function PontoEletronico() {
       <div className="card max-w-md w-full animate-fade-in border-t-4 border-t-brand-600 shadow-xl rounded-3xl bg-white p-5 sm:p-7">
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
           <button 
-            onClick={() => navigate(-1 || '/dashboard')} 
+            onClick={() => { if (window.opener || window.history.length <= 1) { window.close(); } else { navigate('/dashboard'); } }} 
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-gray-700 text-xs font-bold transition-all cursor-pointer shadow-sm"
             title="Voltar"
           >
