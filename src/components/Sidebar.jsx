@@ -11,18 +11,36 @@ function NavGroup({ group, collapsed }) {
   if (collapsed) {
     return (
       <div className="flex flex-col gap-1">
-        {group.items.map(item => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            title={item.label}
-            className={({ isActive }) =>
-              isActive ? 'nav-item-active justify-center px-0 py-2.5' : 'nav-item-inactive justify-center px-0 py-2.5'
-            }
-          >
-            <item.icon size={18} />
-          </NavLink>
-        ))}
+        {group.items.map(item => {
+          const isPonto = item.to === '/ponto'
+          if (isPonto) {
+            return (
+              <a
+                key={item.to}
+                href="/ponto"
+                target="_blank"
+                rel="noopener noreferrer"
+                title={item.label}
+                className="nav-item-inactive justify-center px-0 py-2.5 hover:text-brand-600"
+              >
+                <item.icon size={18} />
+              </a>
+            )
+          }
+
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              title={item.label}
+              className={({ isActive }) =>
+                isActive ? 'nav-item-active justify-center px-0 py-2.5' : 'nav-item-inactive justify-center px-0 py-2.5'
+              }
+            >
+              <item.icon size={18} />
+            </NavLink>
+          )
+        })}
       </div>
     )
   }
@@ -40,6 +58,24 @@ function NavGroup({ group, collapsed }) {
         <div className="flex flex-col gap-0.5 mt-1 mb-2">
           {group.items.map(item => {
             const isSub = item.label.startsWith('↳')
+            const isPonto = item.to === '/ponto'
+
+            if (isPonto) {
+              return (
+                <a
+                  key={item.to}
+                  href="/ponto"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`nav-item-inactive hover:text-brand-600 ${isSub ? 'ml-4 text-[13px] opacity-90' : ''}`}
+                  title="Abrir Ponto Eletrônico em nova aba"
+                >
+                  <item.icon size={isSub ? 14 : 16} />
+                  <span className="truncate">{item.label.replace('↳ ', '')}</span>
+                </a>
+              )
+            }
+
             return (
               <NavLink
                 key={item.to}
