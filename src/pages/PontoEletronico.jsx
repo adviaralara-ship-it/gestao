@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { MapPin, Camera, Clock, CheckCircle2, User, Loader2, AlertCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { MapPin, Camera, Clock, CheckCircle2, User, Loader2, AlertCircle, ArrowLeft } from 'lucide-react'
 import { collection, addDoc, getDocs, serverTimestamp, query, where } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth'
 import { db, storage, auth } from '../firebase'
 
 export default function PontoEletronico() {
+  const navigate = useNavigate()
   const [colabs, setColabs] = useState([])
   const [selectedColab, setSelectedColab] = useState('')
   const [location, setLocation] = useState(null)
@@ -177,26 +179,43 @@ export default function PontoEletronico() {
   if (success) {
     return (
       <div className="min-h-screen bg-cream-50 flex items-center justify-center p-6">
-        <div className="card max-w-sm w-full text-center py-12 animate-fade-in">
-          <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div className="card max-w-sm w-full text-center py-10 animate-fade-in shadow-xl rounded-3xl">
+          <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
             <CheckCircle2 size={40} />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Ponto Registrado!</h2>
-          <p className="text-gray-500">Seu ponto foi batido com sucesso e validado com GPS.</p>
+          <h2 className="text-2xl font-black text-gray-900 mb-2">Ponto Registrado!</h2>
+          <p className="text-sm text-gray-500 mb-6">Seu ponto foi batido com sucesso e validado com foto e GPS.</p>
+          <button 
+            onClick={() => navigate('/dashboard')} 
+            className="btn-primary w-full flex items-center justify-center gap-2 text-xs font-bold py-3 cursor-pointer"
+          >
+            <ArrowLeft size={16} /> Voltar ao Painel
+          </button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-cream-50 flex items-center justify-center p-6">
-      <div className="card max-w-md w-full animate-fade-in border-t-4 border-t-brand-600">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-6">
+      <div className="card max-w-md w-full animate-fade-in border-t-4 border-t-brand-600 shadow-xl rounded-3xl bg-white p-5 sm:p-7">
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+          <button 
+            onClick={() => navigate(-1 || '/dashboard')} 
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-gray-700 text-xs font-bold transition-all cursor-pointer shadow-sm"
+            title="Voltar"
+          >
+            <ArrowLeft size={15} /> Voltar
+          </button>
+          <span className="text-[11px] font-bold text-gray-400">Alpha Ponto REP-P</span>
+        </div>
+
         <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-brand-100 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
+          <div className="w-12 h-12 bg-brand-100 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-2 shadow-sm">
             <Clock size={24} />
           </div>
-          <h2 className="text-xl font-bold text-gray-800">Ponto Eletrônico (REP-P)</h2>
-          <p className="text-sm text-gray-500">Registro com biometria facial e geolocalização</p>
+          <h2 className="text-xl font-black text-gray-900">Ponto Eletrônico (REP-P)</h2>
+          <p className="text-xs text-gray-500">Registro com biometria facial e geolocalização</p>
         </div>
 
         {errorMsg && (

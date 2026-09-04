@@ -45,8 +45,9 @@ function dtBR(iso) {
   return `${d}/${m}/${y}`
 }
 
-function vencStatus(venc) {
+function vencStatus(venc, coluna) {
   if (!venc) return null
+  if (coluna === 'Concluído' || coluna === 'concluido' || coluna === 'Finalizado') return 'done'
   if (venc < hoje()) return 'overdue'
   if (venc === hoje()) return 'today'
   const diff = Math.ceil((new Date(venc) - new Date(hoje())) / 86400000)
@@ -54,14 +55,26 @@ function vencStatus(venc) {
   return 'ok'
 }
 
-function VencBadge({ venc }) {
-  const s = vencStatus(venc)
+function VencBadge({ venc, coluna }) {
+  if (coluna === 'Concluído' || coluna === 'concluido' || coluna === 'Finalizado') {
+    return venc ? (
+      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+        ✓ Concluída ({dtBR(venc)})
+      </span>
+    ) : (
+      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+        ✓ Concluída
+      </span>
+    )
+  }
+  const s = vencStatus(venc, coluna)
   if (!s) return null
   const cfg = {
-    overdue: { cls: 'bg-red-100 text-red-700', txt: '⚠️ Atrasada' },
-    today: { cls: 'bg-amber-100 text-amber-700', txt: '🔥 Vence hoje' },
-    soon: { cls: 'bg-orange-100 text-orange-700', txt: `📅 ${dtBR(venc)}` },
-    ok: { cls: 'bg-cream-100 text-gray-600', txt: `📅 ${dtBR(venc)}` },
+    overdue: { cls: 'bg-red-100 text-red-700 border border-red-200', txt: '⚠️ Atrasada' },
+    today: { cls: 'bg-amber-100 text-amber-700 border border-amber-200', txt: '🔥 Vence hoje' },
+    soon: { cls: 'bg-orange-100 text-orange-700 border border-orange-200', txt: `📅 ${dtBR(venc)}` },
+    ok: { cls: 'bg-slate-100 text-gray-600 border border-slate-200', txt: `📅 ${dtBR(venc)}` },
+    done: { cls: 'bg-emerald-100 text-emerald-800 border border-emerald-200', txt: `✓ Concluída (${dtBR(venc)})` },
   }[s]
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.cls}`}>{cfg.txt}</span>
 }
@@ -268,7 +281,7 @@ function KanbanView({ tarefas, onEdit, onDelete, onMove, onAdd, onEmail }) {
                 {t.descricao && <p className="text-xs text-gray-500 mb-2 line-clamp-2">{t.descricao}</p>}
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${prioColors[t.prioridade]}`}>{t.prioridade}</span>
-                  <VencBadge venc={t.vencimento} />
+                  <VencBadge venc={t.vencimento} coluna={t.coluna} />
                   {t.responsavel && <span className="text-xs text-gray-500 flex items-center gap-1 bg-cream-100 px-2 py-0.5 rounded-full"><User size={9} />{t.responsavel}</span>}
                 </div>
                 {t.tags && <div className="flex flex-wrap gap-1 mb-2">{t.tags.split(',').map(g => g.trim()).filter(Boolean).map(g => <span key={g} className="text-xs bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full border border-brand-100">#{g}</span>)}</div>}
