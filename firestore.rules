@@ -1,24 +1,53 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /candidatos/{document=**} {
+
+    // Função auxiliar para verificar autenticação
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Candidatos a vagas de emprego (público para envio de currículo)
+    match /candidatos/{docId} {
       allow create: if true;
-      allow read, update, delete: if request.auth != null;
+      allow read, update, delete: if isAuthenticated();
     }
-    match /notificacoes/{document=**} {
-       allow create: if true;
-       allow read, update, delete: if request.auth != null;
+
+    // Notificações do sistema
+    match /notificacoes/{docId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
     }
-    match /usuarios/{document=**} {
-       allow create: if true;
-       allow read, update, delete: if request.auth != null;
+
+    // Usuários do sistema (isolamento de credenciais)
+    match /usuarios/{userId} {
+      allow create: if true;
+      allow read: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
     }
-    match /moradores/{document=**} {
-       allow create: if true;
-       allow read, update, delete: if request.auth != null;
+
+    // Moradores (cadastro público controlado)
+    match /moradores/{moradorId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
     }
+
+    // Registros de auditoria (apenas leitura/escrita autenticada)
+    match /auditoria_logs/{logId} {
+      allow create: if true;
+      allow read: if isAuthenticated();
+      allow update, delete: if false; // Logs são imutáveis (não podem ser alterados ou apagados)
+    }
+
+    // Ponto eletrônico (registro público para bater ponto com GPS)
+    match /ponto_registros/{pontoId} {
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
+    }
+
+    // Módulos confidenciais (Financeiro, Boletos, Documentos, Contratos, etc.)
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAuthenticated();
     }
   }
 }

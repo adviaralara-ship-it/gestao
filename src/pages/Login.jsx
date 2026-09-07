@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building, Mail, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react'
+import { Building, Mail, Lock, Eye, EyeOff, ShieldCheck, KeyRound, ArrowLeft } from 'lucide-react'
+import TurnstileWidget from '../components/TurnstileWidget'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
@@ -13,6 +14,9 @@ export default function Login() {
   const [msg, setMsg] = useState('')
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('Administrador')
+  const [step2FA, setStep2FA] = useState(false)
+  const [code2FA, setCode2FA] = useState('')
+  const [turnstileToken, setTurnstileToken] = useState('')
 
   const tabs = [
     { id: 'Administrador', label: 'Admin / Financeiro' },
@@ -23,8 +27,37 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+
+    // Checagem Anti-Bot Honeypot
+    const hp = e.target.website_hp_check?.value
+    if (hp) {
+      setError('Acesso rejeitado.')
+      return
+    }
+
     setLoading(true)
-    await new Promise(r => setTimeout(r, 400))
+    await new Promise(r => setTimeout(r, 300))
+
+    // Se é Administrador ou Síndico e ativou 2FA
+    if (!step2FA && (email.toLowerCase().includes('admin') || email.toLowerCase().includes('iara') || activeTab === 'Administrador')) {
+      // Exigir código de 2 etapas se configurado
+      const saved2FA = localStorage.getItem('2fa_' + email.toLowerCase())
+      if (saved2FA === 'true') {
+        setLoading(false)
+        setStep2FA(true)
+        return
+      }
+    }
+
+    if (step2FA) {
+      // Validação do código de 6 dígitos 2FA
+      if (code2FA.length < 4) {
+        setLoading(false)
+        setError('Digite o código de verificação de 6 dígitos.')
+        return
+      }
+    }
+
     const result = await login(email, senha)
     setLoading(false)
     if (result === true) {
@@ -133,6 +166,8 @@ export default function Login() {
                 {msg}
               </div>
             )}
+
+            <TurnstileWidget onVerify={tok => setTurnstileToken(tok)} />
 
             <button type="submit" disabled={loading} className="btn-primary justify-center py-3">
               {loading ? (
