@@ -46,6 +46,8 @@ export async function gerarBoletoPdfBlob(b, condoDoc) {
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(pixPayload)}`
   const condoNomeStr = condoDoc?.nome || b.condominio || 'Condomínio Residencial'
   const enderecoStr = condoDoc?.endereco || 'Endereço Cadastrado'
+  const cnpjCondoStr = condoDoc?.cnpj || b.cnpjCondominio || b.cnpj || ''
+  const cpfMoradorStr = b.cpf || b.documento || ''
 
   const deveDiscriminar = b.discriminarTaxa !== undefined ? b.discriminarTaxa : (condoDoc?.discriminarTaxa || false)
   const taxaEmissao = deveDiscriminar ? Number(b.taxaEmissao || condoDoc?.taxaEmissao || 0) : 0
@@ -88,12 +90,14 @@ export async function gerarBoletoPdfBlob(b, condoDoc) {
           <span style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase;">Condomínio Beneficiário</span>
           <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${condoNomeStr}</p>
           <p style="margin: 2px 0 0; color: #64748b; font-size: 11px;">${enderecoStr}</p>
+          ${cnpjCondoStr ? `<p style="margin: 2px 0 0; color: #475569; font-family: monospace; font-size: 10px; font-weight: bold;">CNPJ: ${cnpjCondoStr}</p>` : ''}
           <p style="margin: 4px 0 0; color: #047857; font-weight: bold; font-family: monospace; font-size: 10px;">Chave PIX: ${chavePix}</p>
         </div>
         <div>
           <span style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase;">Pagador / Morador</span>
           <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${b.morador || 'Morador'}</p>
           <p style="margin: 2px 0 0; color: #334155; font-weight: bold; font-size: 11px;">Unidade: ${b.apt ? 'Apt ' + b.apt : '—'}</p>
+          ${cpfMoradorStr ? `<p style="margin: 2px 0 0; color: #475569; font-family: monospace; font-size: 10px; font-weight: bold;">CPF: ${cpfMoradorStr}</p>` : ''}
           <p style="margin: 4px 0 0; color: #64748b; font-family: monospace; font-size: 10px;">Competência: ${b.competencia || 'Mês Vigente'}</p>
         </div>
         <div style="background: #ecfdf5; padding: 12px; border-radius: 10px; border: 1px solid #a7f3d0; display: flex; flex-direction: column; justify-content: space-between;">
@@ -189,6 +193,8 @@ export async function gerarBoletoPdfBase64(b, condoDoc) {
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(pixPayload)}`
   const condoNomeStr = condoDoc?.nome || b.condominio || 'Condomínio Residencial'
   const enderecoStr = condoDoc?.endereco || 'Endereço Cadastrado'
+  const cnpjCondoStr = condoDoc?.cnpj || b.cnpjCondominio || b.cnpj || ''
+  const cpfMoradorStr = b.cpf || b.documento || ''
 
   const deveDiscriminar = b.discriminarTaxa !== undefined ? b.discriminarTaxa : (condoDoc?.discriminarTaxa || false)
   const taxaEmissao = deveDiscriminar ? Number(b.taxaEmissao || condoDoc?.taxaEmissao || 0) : 0
@@ -228,12 +234,14 @@ export async function gerarBoletoPdfBase64(b, condoDoc) {
           <span style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase;">Condomínio Beneficiário</span>
           <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${condoNomeStr}</p>
           <p style="margin: 2px 0 0; color: #64748b; font-size: 11px;">${enderecoStr}</p>
+          ${cnpjCondoStr ? `<p style="margin: 2px 0 0; color: #475569; font-family: monospace; font-size: 10px; font-weight: bold;">CNPJ: ${cnpjCondoStr}</p>` : ''}
           <p style="margin: 4px 0 0; color: #047857; font-weight: bold; font-family: monospace; font-size: 10px;">Chave PIX: ${chavePix}</p>
         </div>
         <div>
           <span style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase;">Pagador / Morador</span>
           <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${b.morador || 'Morador'}</p>
           <p style="margin: 2px 0 0; color: #334155; font-weight: bold; font-size: 11px;">Unidade: ${b.apt ? 'Apt ' + b.apt : '—'}</p>
+          ${cpfMoradorStr ? `<p style="margin: 2px 0 0; color: #475569; font-family: monospace; font-size: 10px; font-weight: bold;">CPF: ${cpfMoradorStr}</p>` : ''}
           <p style="margin: 4px 0 0; color: #64748b; font-family: monospace; font-size: 10px;">Competência: ${b.competencia || 'Mês Vigente'}</p>
         </div>
         <div style="background: #ecfdf5; padding: 12px; border-radius: 10px; border: 1px solid #a7f3d0; display: flex; flex-direction: column; justify-content: space-between;">

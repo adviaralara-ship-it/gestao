@@ -125,6 +125,12 @@ function BoletoPrintModal({ boleto, condominio, moradores = [], onClose }) {
 
   const [downloading, setDownloading] = useState(false)
 
+  const moradorDoc = (boleto.moradorId && moradores.find(m => m.id === boleto.moradorId))
+    || moradores.find(m => (m.nome && boleto.morador && m.nome.trim().toLowerCase() === boleto.morador.trim().toLowerCase()) || (m.apt && boleto.apt && String(m.apt).trim() === String(boleto.apt).trim()))
+    || {}
+  const cnpjCondoStr = condominio?.cnpj || boleto.cnpjCondominio || boleto.cnpj || ''
+  const cpfMoradorStr = boleto.cpf || moradorDoc?.cpf || moradorDoc?.documento || ''
+
   const handleDownloadPDF = async () => {
     try {
       setDownloading(true)
@@ -175,12 +181,14 @@ function BoletoPrintModal({ boleto, condominio, moradores = [], onClose }) {
               <span style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase;">Condomínio Beneficiário</span>
               <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${condoNomeStr}</p>
               <p style="margin: 2px 0 0; color: #64748b; font-size: 11px;">${enderecoStr}</p>
+              ${cnpjCondoStr ? `<p style="margin: 2px 0 0; color: #475569; font-family: monospace; font-size: 10px; font-weight: bold;">CNPJ: ${cnpjCondoStr}</p>` : ''}
               <p style="margin: 4px 0 0; color: #047857; font-weight: bold; font-family: monospace; font-size: 10px;">Chave PIX: ${chavePixFinal}</p>
             </div>
             <div>
               <span style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase;">Pagador / Morador</span>
               <p style="margin: 4px 0 0; font-weight: 900; font-size: 13px; color: #0f172a;">${boleto.morador || 'Morador'}</p>
               <p style="margin: 2px 0 0; color: #334155; font-weight: bold; font-size: 11px;">Unidade: ${boleto.apt ? 'Apt ' + boleto.apt : '—'}</p>
+              ${cpfMoradorStr ? `<p style="margin: 2px 0 0; color: #475569; font-family: monospace; font-size: 10px; font-weight: bold;">CPF: ${cpfMoradorStr}</p>` : ''}
               <p style="margin: 4px 0 0; color: #64748b; font-family: monospace; font-size: 10px;">Competência: ${boleto.competencia || 'Mês Vigente'}</p>
             </div>
             <div style="background: #ecfdf5; padding: 12px; border-radius: 10px; border: 1px solid #a7f3d0; display: flex; flex-direction: column; justify-content: space-between;">
@@ -409,6 +417,7 @@ function BoletoPrintModal({ boleto, condominio, moradores = [], onClose }) {
               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Condomínio Beneficiário</span>
               <p className="font-bold text-slate-900 text-xs leading-snug break-words">{condominio?.nome || boleto.condominio || 'Condomínio Residencial'}</p>
               <p className="text-[10px] text-gray-600 mt-0.5 leading-snug break-words">{condominio?.endereco || 'Endereço Cadastrado'}</p>
+              {cnpjCondoStr && <p className="text-[10px] text-slate-600 font-mono font-bold mt-0.5">CNPJ: {cnpjCondoStr}</p>}
               <p className="text-emerald-700 font-mono text-[10px] font-bold mt-1 break-all">Chave PIX: {chavePixFinal}</p>
             </div>
 
@@ -416,6 +425,7 @@ function BoletoPrintModal({ boleto, condominio, moradores = [], onClose }) {
               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Pagador / Morador</span>
               <p className="font-bold text-slate-900 text-xs leading-snug break-words">{boleto.morador}</p>
               <p className="text-slate-800 font-bold text-[11px] mt-0.5">Unidade: {boleto.apt ? `Apt ${boleto.apt}` : '—'}</p>
+              {cpfMoradorStr && <p className="text-[10px] text-slate-600 font-mono font-bold mt-0.5">CPF: {cpfMoradorStr}</p>}
               <p className="text-gray-500 font-mono text-[10px] mt-0.5">Competência: {boleto.competencia || 'Mês Vigente'}</p>
             </div>
 
@@ -648,9 +658,9 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
   
   const condoSelecionado = condominiosValidos.find(c => c.nome === condoNome)
   const [chavePix, setChavePix] = useState(condoSelecionado?.chave_pix || '')
-  const [discriminarTaxa, setDiscriminarTaxa] = useState(false)
-  const [taxaStr, setTaxaStr] = useState('3,50')
-  const [nomeTaxa, setNomeTaxa] = useState('Serviço de Cobrança Digital')
+  const [discriminarTaxa, setDiscriminarTaxa] = useState(Boolean(condoSelecionado?.discriminarTaxa))
+  const [taxaStr, setTaxaStr] = useState(condoSelecionado?.taxaEmissao !== undefined && Number(condoSelecionado.taxaEmissao) > 0 ? Number(condoSelecionado.taxaEmissao) : 3.50)
+  const [nomeTaxa, setNomeTaxa] = useState(condoSelecionado?.nomeTaxa || 'Serviço de Cobrança Digital')
   const [valoresCustom, setValoresCustom] = useState({})
   const [enviarWhatsAppAuto, setEnviarWhatsAppAuto] = useState(true)
   const [buscaNome, setBuscaNome] = useState('')
@@ -661,10 +671,10 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     if (c) {
       if (c.chave_pix) setChavePix(c.chave_pix)
       if (c.discriminarTaxa !== undefined) setDiscriminarTaxa(Boolean(c.discriminarTaxa))
-      if (c.taxaEmissao && Number(c.taxaEmissao) > 0) {
-        setTaxaStr(String(c.taxaEmissao).replace('.', ','))
+      if (c.taxaEmissao !== undefined && Number(c.taxaEmissao) > 0) {
+        setTaxaStr(Number(c.taxaEmissao))
       } else {
-        setTaxaStr('3,50')
+        setTaxaStr(3.50)
       }
       if (c.nomeTaxa) {
         const n = c.nomeTaxa.includes('Processamento') || c.nomeTaxa.includes('Tarifa') ? 'Serviço de Cobrança Digital' : c.nomeTaxa
@@ -817,6 +827,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
         apt: u.apt,
         bloco: u.bloco || titular?.bloco || '',
         condominio: condoNome,
+        cnpjCondominio: condoSelecionado?.cnpj || c?.cnpj || '',
         competencia,
         vencimento,
         valor: valFinal,
