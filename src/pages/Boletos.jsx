@@ -32,8 +32,51 @@ function gerarLinhaDigitavel(apt, valor, venc) {
   return `34191.${r()}${r()}${r()}${r()}${r()} ${r()}${r()}${r()}${r()}${r()}.${r()}${r()}${r()}${r()}${r()}${r()} ${r()}${r()}${r()}${r()}${r()}.${r()}${r()}${r()}${r()}${r()}${r()} ${r()} ${(venc||'').replace(/\//g,'')}${String(Math.round((valor||0)*100)).padStart(10,'0')}`
 }
 
-function generateStaticPix(chavePix, valor, nome = "Condominio", cidade = "Sao Paulo") {
-  if (!chavePix) return "";
+export function formatPixKey(key) {
+  if (!key) return ""
+  let k = String(key).trim()
+
+  // E-mail
+  if (k.includes('@')) {
+    return k.toLowerCase().trim()
+  }
+
+  // Chave Aleatória (UUID)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (uuidRegex.test(k)) {
+    return k.toLowerCase().trim()
+  }
+
+  const digits = k.replace(/\D/g, '')
+
+  // CNPJ (14 dígitos)
+  if (digits.length === 14) {
+    return digits
+  }
+
+  // CPF (11 dígitos)
+  if (digits.length === 11 && !k.includes('(') && !k.startsWith('+55')) {
+    // Se for CPF (começa sem parênteses de DDD)
+    return digits
+  }
+
+  // Telefone / Celular com DDD (10 ou 11 dígitos) -> BACEN exige +55
+  if (digits.length === 10 || digits.length === 11) {
+    return `+55${digits}`
+  }
+
+  if (digits.length === 12 || digits.length === 13) {
+    if (digits.startsWith('55')) {
+      return `+${digits}`
+    }
+  }
+
+  return k
+}
+
+function generateStaticPix(chavePixRaw, valor, nome = "Condominio", cidade = "Sao Paulo") {
+  const chavePix = formatPixKey(chavePixRaw)
+  if (!chavePix) return ""
   const formatLength = (id, value) => {
     const v = String(value);
     return id + String(v.length).padStart(2, '0') + v;
@@ -44,8 +87,8 @@ function generateStaticPix(chavePix, valor, nome = "Condominio", cidade = "Sao P
   const currency = formatLength("53", "986");
   const amount = valor ? formatLength("54", Number(valor).toFixed(2)) : "";
   const country = formatLength("58", "BR");
-  const merchantName = formatLength("59", nome.substring(0, 25).normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
-  const merchantCity = formatLength("60", cidade.substring(0, 15).normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+  const merchantName = formatLength("59", (nome || "Condominio").substring(0, 25).normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+  const merchantCity = formatLength("60", (cidade || "Sao Paulo").substring(0, 15).normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
   const additionalData = formatLength("62", formatLength("05", "***"));
   const payload = payloadFormat + merchantAccount + merchantCategory + currency + amount + country + merchantName + merchantCity + additionalData + "6304";
   
@@ -62,7 +105,7 @@ function generateStaticPix(chavePix, valor, nome = "Condominio", cidade = "Sao P
 
 function BoletoPrintModal({ boleto, condominio, moradores = [], onClose }) {
   const [copied, setCopied] = useState(false)
-  const chavePixFinal = boleto.chave_pix || condominio?.chave_pix || 'alpha.solucoes@condominios.com.br'
+  const chavePixFinal = condominio?.chave_pix || condominio?.chavePix || boleto.chave_pix || '66.643.272/0001-18'
   const nomeCondo = condominio?.nome || boleto.condominio || "Condominio Residencial"
   // Sempre gera o PIX com o valor atualizado do boleto para garantir que qualquer alteração de valor seja refletida
   const pixFinal = generateStaticPix(chavePixFinal, Number(boleto.valor || 0), nomeCondo, "BR")
