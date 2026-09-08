@@ -610,6 +610,8 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
   const [nomeTaxa, setNomeTaxa] = useState('Serviço de Cobrança Digital')
   const [valoresCustom, setValoresCustom] = useState({})
   const [enviarWhatsAppAuto, setEnviarWhatsAppAuto] = useState(true)
+  const [filtroTipo, setFiltroTipo] = useState('Todos')
+  const [buscaNome, setBuscaNome] = useState('')
 
   // Dispara apenas quando o usuário TROCA o condomínio no select
   useEffect(() => {
@@ -630,18 +632,16 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     }
   }, [condoNome])
 
-  // Moradores e Dependentes filtrados estritamente pelo condomínio selecionado
   const normalizeCondo = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 
-  const [filtroTipo, setFiltroTipo] = useState('Todos') // 'Todos', 'Titulares', 'Dependentes'
-  const [buscaNome, setBuscaNome] = useState('')
-
+  // Lista de todos os moradores e dependentes do condomínio
   const todosDoCondo = moradores.filter(m => {
-    if (!condoNome) return false
+    if (!condoNome) return true
     const cM = normalizeCondo(m.condominio)
     const cMN = normalizeCondo(m.condominioNome)
     const cTarget = normalizeCondo(condoNome)
-    return cM === cTarget || cMN === cTarget || (cM && cTarget && (cM.includes(cTarget) || cTarget.includes(cM)))
+    if (!cTarget || cTarget === 'todos') return true
+    return cM === cTarget || cMN === cTarget || (cM && cTarget && (cM.includes(cTarget) || cTarget.includes(cM))) || (!cM && !cMN)
   }).sort((a, b) => {
     const aptA = String(a.apt || a.unidade || '').localeCompare(String(b.apt || b.unidade || ''), undefined, { numeric: true })
     if (aptA !== 0) return aptA
@@ -650,8 +650,8 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     return isDepA - isDepB
   })
 
-  // Lista para exibição com filtros de busca e tipo
-  const moradoresDoCondo = todosDoCondo.filter(m => {
+  // Lista filtrada por busca e tipo
+  const moradoresVisiveis = todosDoCondo.filter(m => {
     const isDep = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente'
     if (filtroTipo === 'Titulares' && isDep) return false
     if (filtroTipo === 'Dependentes' && !isDep) return false
@@ -664,23 +664,16 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     }
     return true
   })
-  
-  const [selecionados, setSelecionados] = useState(() => todosDoCondo.filter(m => m.status !== 'Dependente' && m.tipo !== 'Dependente').map(m => m.id))
+
+  // Inicializa selecionando todos os moradores da lista
+  const [selecionados, setSelecionados] = useState(() => todosDoCondo.map(m => m.id))
 
   useEffect(() => {
-    setSelecionados(todosDoCondo.filter(m => m.status !== 'Dependente' && m.tipo !== 'Dependente').map(m => m.id))
+    setSelecionados(todosDoCondo.map(m => m.id))
   }, [condoNome, moradores.length])
 
   const toggleMorador = (id) => {
     setSelecionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  }
-
-  const toggleTodos = () => {
-    if (selecionados.length === moradoresDoCondo.length) {
-      setSelecionados([])
-    } else {
-      setSelecionados(moradoresDoCondo.map(m => m.id))
-    }
   }
 
   const handleCustomValChange = (id, val) => {
@@ -749,8 +742,10 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-2xl w-[95vw] sm:w-full p-0 flex flex-col max-h-[92vh] overflow-hidden bg-white rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay z-50 p-2 sm:p-4 flex items-center justify-center" onClick={onClose}>
+      <div className="modal-content max-w-5xl w-full p-0 flex flex-col max-h-[94vh] overflow-hidden bg-white rounded-3xl shadow-2xl border border-gray-200" onClick={e => e.stopPropagation()}>
+        
+        {/* Cabeçalho */}
         <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div>
             <h3 className="font-black text-base sm:text-lg flex items-center gap-2">
@@ -758,166 +753,170 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
             </h3>
             <p className="text-[11px] sm:text-xs text-gray-400">Emissão em massa com QR Code PIX individual e valores editáveis por morador</p>
           </div>
-          <button onClick={onClose}><X size={20} className="text-gray-400 hover:text-white" /></button>
+          <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+            <X size={20} />
+          </button>
         </div>
 
-        <div className="p-4 sm:p-6 flex flex-col gap-4 overflow-y-auto flex-1">
-          {/* Seleção do Condomínio */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-gray-200">
-            <div>
-              <label className="label text-xs font-black">Condomínio *</label>
-              <select className="input text-xs font-bold w-full bg-white" value={condoNome} onChange={e => setCondoNome(e.target.value)}>
-                {condominiosValidos.length === 0 && <option value="">Nenhum condomínio cadastrado</option>}
-                {condominiosValidos.map(c => <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label text-xs font-black">Chave PIX de Recebimento</label>
-              <input className="input text-xs w-full bg-white" value={chavePix} onChange={e => setChavePix(e.target.value)} placeholder="CNPJ, E-mail ou Celular" />
-            </div>
-          </div>
-
-          {/* Dados da Cobrança */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="label text-xs font-black">Valor Padrão da Cota (R$) *</label>
-              <CurrencyInput value={valorStr} onChange={v => setValorStr(v)} placeholder="0,00" />
-            </div>
-            <div>
-              <label className="label text-xs font-black">Competência *</label>
-              <input className="input text-xs font-bold w-full" value={competencia} onChange={e => setCompetencia(e.target.value)} placeholder="Ex: Set/2026" />
-            </div>
-            <div>
-              <label className="label text-xs font-black">Data de Vencimento *</label>
-              <input type="date" className="input text-xs font-bold w-full" value={vencimento} onChange={e => setVencimento(e.target.value)} />
-            </div>
-          </div>
-
-          {/* Opção de Taxa Discriminada (CLICÁVEL EM QUALQUER LUGAR DO CARD) */}
-          <div 
-            onClick={handleToggleTaxa}
-            className={`p-4 rounded-2xl border-2 transition-all cursor-pointer select-none shadow-sm flex flex-col gap-2 ${
-              discriminarTaxa 
-                ? 'bg-brand-50/90 border-brand-500 ring-2 ring-brand-200' 
-                : 'bg-slate-50/90 border-slate-300 hover:border-brand-300 hover:bg-slate-100/80'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="check-taxa-lote"
-                  checked={discriminarTaxa}
-                  onChange={handleToggleTaxa}
-                  onClick={e => e.stopPropagation()}
-                  className="w-5 h-5 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer shrink-0"
-                />
-                <span className="text-xs sm:text-sm font-black text-gray-900">
-                  Serviço de Cobrança Digital (R$ {taxaStr !== '' && taxaStr !== undefined && taxaStr !== null ? maskCurrency(taxaStr) : '3,50'})
-                </span>
+        {/* Corpo em 2 Colunas */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 sm:p-5 overflow-y-auto flex-1 bg-slate-50">
+          
+          {/* Coluna Esquerda (5 colunas): Parâmetros do Lote */}
+          <div className="lg:col-span-5 flex flex-col gap-3">
+            
+            {/* Condomínio e PIX */}
+            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-3">
+              <div>
+                <label className="label text-xs font-black">Condomínio *</label>
+                <select className="input text-xs font-bold w-full bg-slate-50" value={condoNome} onChange={e => setCondoNome(e.target.value)}>
+                  {condominiosValidos.length === 0 && <option value="">Nenhum condomínio cadastrado</option>}
+                  {condominiosValidos.map(c => <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>)}
+                </select>
               </div>
-              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${discriminarTaxa ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
-                {discriminarTaxa ? 'Ativado' : 'Desativado'}
-              </span>
+              <div>
+                <label className="label text-xs font-black">Chave PIX de Recebimento</label>
+                <input className="input text-xs w-full bg-slate-50" value={chavePix} onChange={e => setChavePix(e.target.value)} placeholder="CNPJ, E-mail ou Celular" />
+              </div>
             </div>
 
-            <p className="text-[11px] text-gray-600 ml-8 leading-relaxed">
-              Marque para discriminar o <b>Serviço de Cobrança Digital</b> no demonstrativo do boleto.
-            </p>
+            {/* Valores e Datas */}
+            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="label text-xs font-black">Valor Padrão da Cota (R$) *</label>
+                <CurrencyInput value={valorStr} onChange={v => setValorStr(v)} placeholder="0,00" />
+              </div>
+              <div>
+                <label className="label text-xs font-black">Competência *</label>
+                <input className="input text-xs font-bold w-full bg-slate-50" value={competencia} onChange={e => setCompetencia(e.target.value)} placeholder="Ex: Set/2026" />
+              </div>
+              <div>
+                <label className="label text-xs font-black">Vencimento *</label>
+                <input type="date" className="input text-xs font-bold w-full bg-slate-50" value={vencimento} onChange={e => setVencimento(e.target.value)} />
+              </div>
+            </div>
 
-            {discriminarTaxa && (
-              <div 
-                onClick={e => e.stopPropagation()} 
-                className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2 ml-0 sm:ml-8 bg-white p-3.5 rounded-xl border border-brand-200 animate-fade-in shadow-inner"
-              >
-                <div>
-                  <label className="label text-[10px] font-black text-brand-950">Valor do Serviço por Boleto (R$)</label>
-                  <CurrencyInput value={taxaStr} onChange={v => setTaxaStr(v)} placeholder="3,50" />
-                </div>
-                <div>
-                  <label className="label text-[10px] font-black text-brand-950">Descrição no Boleto</label>
-                  <input 
-                    className="input text-xs text-gray-900 font-bold bg-slate-50" 
-                    value={nomeTaxa} 
-                    onChange={e => setNomeTaxa(e.target.value)} 
-                    placeholder="Serviço de Cobrança Digital" 
+            {/* Serviço de Cobrança Digital */}
+            <div 
+              onClick={handleToggleTaxa}
+              className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer select-none shadow-sm flex flex-col gap-2 ${
+                discriminarTaxa 
+                  ? 'bg-brand-50/90 border-brand-500 ring-2 ring-brand-200' 
+                  : 'bg-white border-gray-200 hover:border-brand-300'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    id="check-taxa-lote"
+                    checked={discriminarTaxa}
+                    onChange={handleToggleTaxa}
+                    onClick={e => e.stopPropagation()}
+                    className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer shrink-0"
                   />
+                  <span className="text-xs font-black text-gray-900">
+                    Serviço de Cobrança Digital (R$ {taxaStr !== '' && taxaStr !== undefined && taxaStr !== null ? maskCurrency(taxaStr) : '3,50'})
+                  </span>
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* Opção de Disparo Automático por WhatsApp */}
-          <div 
-            onClick={() => setEnviarWhatsAppAuto(p => !p)}
-            className={`p-4 rounded-2xl border-2 transition-all cursor-pointer select-none shadow-sm flex flex-col gap-1.5 ${
-              enviarWhatsAppAuto 
-                ? 'bg-emerald-50/90 border-emerald-500 ring-2 ring-emerald-200' 
-                : 'bg-slate-50 border-slate-300 hover:border-emerald-300'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="check-whatsapp-auto"
-                  checked={enviarWhatsAppAuto}
-                  onChange={() => setEnviarWhatsAppAuto(p => !p)}
-                  onClick={e => e.stopPropagation()}
-                  className="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer shrink-0"
-                />
-                <span className="text-xs sm:text-sm font-black text-emerald-950 flex items-center gap-1.5">
-                  🚀 Disparar boletos automaticamente via WhatsApp ao gerar
+                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${discriminarTaxa ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                  {discriminarTaxa ? 'Ativado' : 'Desativado'}
                 </span>
               </div>
-              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${enviarWhatsAppAuto ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
-                {enviarWhatsAppAuto ? 'Ativado' : 'Desativado'}
-              </span>
+
+              {discriminarTaxa && (
+                <div 
+                  onClick={e => e.stopPropagation()} 
+                  className="grid grid-cols-2 gap-2 mt-1 bg-white p-2.5 rounded-xl border border-brand-200 shadow-inner"
+                >
+                  <div>
+                    <label className="label text-[9px] font-black">Taxa (R$)</label>
+                    <CurrencyInput value={taxaStr} onChange={v => setTaxaStr(v)} placeholder="3,50" />
+                  </div>
+                  <div>
+                    <label className="label text-[9px] font-black">Texto no Boleto</label>
+                    <input 
+                      className="input text-xs text-gray-900 font-bold bg-slate-50" 
+                      value={nomeTaxa} 
+                      onChange={e => setNomeTaxa(e.target.value)} 
+                      placeholder="Serviço de Cobrança Digital" 
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-            <p className="text-[11px] text-emerald-800 ml-8 leading-relaxed">
-              O sistema gera o <b>PDF oficial</b> e entrega instantaneamente no WhatsApp de cada morador com QR Code PIX!
-            </p>
+
+            {/* Disparo WhatsApp */}
+            <div 
+              onClick={() => setEnviarWhatsAppAuto(p => !p)}
+              className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer select-none shadow-sm flex flex-col gap-1.5 ${
+                enviarWhatsAppAuto 
+                  ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-200' 
+                  : 'bg-white border-gray-200 hover:border-emerald-300'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    id="check-whatsapp-auto"
+                    checked={enviarWhatsAppAuto}
+                    onChange={() => setEnviarWhatsAppAuto(p => !p)}
+                    onClick={e => e.stopPropagation()}
+                    className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer shrink-0"
+                  />
+                  <span className="text-xs font-black text-emerald-950">
+                    🚀 Disparar boletos via WhatsApp
+                  </span>
+                </div>
+                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${enviarWhatsAppAuto ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                  {enviarWhatsAppAuto ? 'Ativado' : 'Desativado'}
+                </span>
+              </div>
+            </div>
+
           </div>
 
-          {/* Lista de Moradores & Dependentes */}
-          <div className="border border-gray-200 rounded-2xl overflow-hidden mt-1 bg-white shadow-sm">
-            <div className="p-3 bg-slate-100 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          {/* Coluna Direita (7 colunas): Lista de Moradores & Dependentes SEMPRE VISÍVEL */}
+          <div className="lg:col-span-7 flex flex-col bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden min-h-[420px]">
+            
+            {/* Topo da lista de moradores */}
+            <div className="p-3 bg-slate-100 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <span className="text-xs font-black text-gray-900 block">
-                  👥 Moradores & Contatos ({selecionados.length} de {todosDoCondo.length} selecionados para envio)
+                  👥 Moradores & Contatos ({selecionados.length} de {todosDoCondo.length} selecionados)
                 </span>
                 <span className="text-[10px] text-gray-500">
-                  Selecione quem receberá o boleto e aviso de cobrança via WhatsApp
+                  Marque quem receberá o boleto e aviso de cobrança
                 </span>
               </div>
 
-              {/* Filtros Rápidos */}
+              {/* Botões de Seleção */}
               <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setSelecionados(todosDoCondo.map(m => m.id))}
-                  className="text-[11px] font-bold px-2.5 py-1 bg-white border border-gray-300 rounded-lg hover:bg-slate-50 text-gray-700"
+                  className="text-[10px] font-bold px-2 py-1 bg-white border border-gray-300 rounded-lg hover:bg-slate-50 text-gray-700"
                 >
-                  Selecionar Todos
+                  Marcar Todos
                 </button>
                 <button
                   type="button"
                   onClick={() => setSelecionados(todosDoCondo.filter(m => m.status !== 'Dependente' && m.tipo !== 'Dependente').map(m => m.id))}
-                  className="text-[11px] font-bold px-2.5 py-1 bg-white border border-brand-300 rounded-lg hover:bg-brand-50 text-brand-700"
+                  className="text-[10px] font-bold px-2 py-1 bg-white border border-brand-300 rounded-lg hover:bg-brand-50 text-brand-700"
                 >
                   Apenas Titulares
                 </button>
                 <button
                   type="button"
                   onClick={() => setSelecionados([])}
-                  className="text-[11px] font-bold px-2.5 py-1 bg-white border border-gray-300 rounded-lg hover:bg-red-50 text-red-600"
+                  className="text-[10px] font-bold px-2 py-1 bg-white border border-gray-300 rounded-lg hover:bg-red-50 text-red-600"
                 >
                   Limpar
                 </button>
               </div>
             </div>
 
-            {/* Barra de Busca e Filtro de Vínculo */}
+            {/* Barra de Busca e Filtro */}
             <div className="p-2.5 bg-slate-50 border-b border-gray-200 flex gap-2 items-center">
               <input
                 type="text"
@@ -937,17 +936,17 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
               </select>
             </div>
 
-            <div className="max-h-60 overflow-y-auto divide-y divide-gray-100">
-              {moradoresDoCondo.length === 0 ? (
-                <div className="p-6 text-center text-xs text-gray-400">
-                  Nenhum morador titular cadastrado para este condomínio.
+            {/* Lista com Scroll Independente e visibilidade total */}
+            <div className="flex-1 overflow-y-auto divide-y divide-gray-100 max-h-[380px]">
+              {moradoresVisiveis.length === 0 ? (
+                <div className="p-8 text-center text-xs text-gray-400">
+                  Nenhum morador ou dependente encontrado para este condomínio.
                 </div>
               ) : (
-                moradoresDoCondo.map(m => {
+                moradoresVisiveis.map(m => {
                   const isSel = selecionados.includes(m.id)
                   const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || m.fone || ''
                   const temWhats = rawTel && rawTel.replace(/\D/g, '').length >= 10
-
                   const isDependente = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente'
                   const vinculoLabel = m.status || m.tipo || (isDependente ? 'Dependente' : 'Proprietário')
 
@@ -955,7 +954,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
                     <div 
                       key={m.id} 
                       onClick={() => toggleMorador(m.id)}
-                      className={`p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-all border-b border-gray-100 last:border-0 ${isSel ? 'bg-emerald-50/40' : 'opacity-60 bg-white'}`}
+                      className={`p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-all ${isSel ? 'bg-emerald-50/40' : 'opacity-60 bg-white'}`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <input
@@ -1017,9 +1016,11 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
               )}
             </div>
           </div>
+
         </div>
 
-        <div className="p-4 sm:p-5 border-t border-gray-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
+        {/* Rodapé com botão de ação */}
+        <div className="p-4 sm:p-5 border-t border-gray-200 bg-white flex items-center justify-between gap-3 shrink-0">
           <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
           <button
             onClick={handleGerar}
@@ -1028,6 +1029,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
             <CheckCircle2 size={16} /> Gerar {selecionados.length} {selecionados.length === 1 ? 'Boleto' : 'Boletos'} {enviarWhatsAppAuto ? 'e Enviar WhatsApp' : ''}
           </button>
         </div>
+
       </div>
     </div>
   )
