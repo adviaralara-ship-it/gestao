@@ -653,10 +653,8 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
   const [nomeTaxa, setNomeTaxa] = useState('Serviço de Cobrança Digital')
   const [valoresCustom, setValoresCustom] = useState({})
   const [enviarWhatsAppAuto, setEnviarWhatsAppAuto] = useState(true)
-  const [filtroTipo, setFiltroTipo] = useState('Todos')
   const [buscaNome, setBuscaNome] = useState('')
 
-  // Dispara apenas quando o usuário TROCA o condomínio no select
   useEffect(() => {
     if (!condoNome) return
     const c = condominios.find(item => item && item.nome === condoNome)
@@ -677,7 +675,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
 
   const normalizeCondo = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 
-  // Lista de todos os moradores e dependentes do condomínio
+  // Agrupa moradores e dependentes por Unidade / Apartamento
   const todosDoCondo = moradores.filter(m => {
     if (!condoNome) return true
     const cM = normalizeCondo(m.condominio)
@@ -685,42 +683,67 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     const cTarget = normalizeCondo(condoNome)
     if (!cTarget || cTarget === 'todos') return true
     return cM === cTarget || cMN === cTarget || (cM && cTarget && (cM.includes(cTarget) || cTarget.includes(cM))) || (!cM && !cMN)
-  }).sort((a, b) => {
-    const aptA = String(a.apt || a.unidade || '').localeCompare(String(b.apt || b.unidade || ''), undefined, { numeric: true })
-    if (aptA !== 0) return aptA
-    const isDepA = a.status === 'Dependente' || a.tipo === 'Dependente' ? 1 : 0
-    const isDepB = b.status === 'Dependente' || b.tipo === 'Dependente' ? 1 : 0
-    return isDepA - isDepB
   })
 
-  // Lista filtrada por busca e tipo
-  const moradoresVisiveis = todosDoCondo.filter(m => {
-    const isDep = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente'
-    if (filtroTipo === 'Titulares' && isDep) return false
-    if (filtroTipo === 'Dependentes' && !isDep) return false
-    if (buscaNome) {
-      const q = buscaNome.toLowerCase()
-      const matchNome = (m.nome || '').toLowerCase().includes(q)
-      const matchApt = String(m.apt || m.unidade || '').toLowerCase().includes(q)
-      const matchTel = String(m.tel || m.telefone || m.whatsapp || '').includes(q)
-      return matchNome || matchApt || matchTel
-    }
-    return true
-  })
+  // Agrupamento por Apartamento
+  const unidadesAgrupadas = React.useMemo(() => {
+    const map = new Map()
 
-  // Inicializa selecionando todos os moradores da lista
+    todosDoCondo.forEach(m => {
+      const aptKey = String(m.apt || m.unidade || 'Sem Apt').trim()
+      if (!map.has(aptKey)) {
+        map.set(aptKey, {
+          apt: aptKey,
+          bloco: m.bloco || '',
+          titular: null,
+          moradores: []
+        })
+      }
+      const entry = map.get(aptKey)
+      entry.moradores.push(m)
+
+      const isDep = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente'
+      if (!entry.titular && !isDep) {
+        entry.titular = m
+      }
+    })
+
+    // Se uma unidade só tem dependentes, o primeiro vira titular
+    map.forEach(entry => {
+      if (!entry.titular && entry.moradores.length > 0) {
+        entry.titular = entry.moradores[0]
+      }
+    })
+
+    return Array.from(map.values()).sort((a, b) => 
+      a.apt.localeCompare(b.apt, undefined, { numeric: true })
+    )
+  }, [todosDoCondo])
+
+  // Estado de seleção de contatos para envio de WhatsApp (guarda IDs de cada pessoa)
   const [selecionados, setSelecionados] = useState(() => todosDoCondo.map(m => m.id))
 
   useEffect(() => {
     setSelecionados(todosDoCondo.map(m => m.id))
   }, [condoNome, moradores.length])
 
-  const toggleMorador = (id) => {
+  const toggleContato = (id) => {
     setSelecionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
-  const handleCustomValChange = (id, val) => {
-    setValoresCustom(prev => ({ ...prev, [id]: val }))
+  const toggleUnidadeInteira = (unidade) => {
+    const idsUnidade = unidade.moradores.map(m => m.id)
+    const todosMarcados = idsUnidade.every(id => selecionados.includes(id))
+
+    if (todosMarcados) {
+      setSelecionados(prev => prev.filter(id => !idsUnidade.includes(id)))
+    } else {
+      setSelecionados(prev => Array.from(new Set([...prev, ...idsUnidade])))
+    }
+  }
+
+  const handleCustomValChange = (aptKey, val) => {
+    setValoresCustom(prev => ({ ...prev, [aptKey]: val }))
   }
 
   const handleToggleTaxa = () => {
@@ -732,6 +755,23 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
       return next
     })
   }
+
+  // Filtragem na busca
+  const unidadesVisiveis = unidadesAgrupadas.filter(u => {
+    if (!buscaNome) return true
+    const q = buscaNome.toLowerCase()
+    const matchApt = u.apt.toLowerCase().includes(q)
+    const matchMoradores = u.moradores.some(m => 
+      (m.nome || '').toLowerCase().includes(q) || 
+      String(m.tel || m.telefone || m.whatsapp || '').includes(q)
+    )
+    return matchApt || matchMoradores
+  })
+
+  // Quantas unidades têm pelo menos 1 pessoa selecionada
+  const unidadesSelecionadas = unidadesAgrupadas.filter(u => 
+    u.moradores.some(m => selecionados.includes(m.id))
+  )
 
   const handleGerar = () => {
     const valorPadraoNum = typeof valorStr === 'number' ? valorStr : (parseFloat(String(valorStr || '').replace(/\./g, '').replace(',', '.')) || 0)
@@ -746,40 +786,53 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
       alert("Informe a data de vencimento.")
       return
     }
-    if (selecionados.length === 0) {
-      alert("Selecione pelo menos um morador.")
+    if (unidadesSelecionadas.length === 0) {
+      alert("Selecione pelo menos uma unidade/morador para gerar os boletos.")
       return
     }
 
-    const listaParaCriar = todosDoCondo
-      .filter(m => selecionados.includes(m.id))
-      .map(m => {
-        const valMoradorRaw = valoresCustom[m.id] !== undefined ? valoresCustom[m.id] : valorStr
-        const valFinal = typeof valMoradorRaw === 'number' ? valMoradorRaw : (parseFloat(String(valMoradorRaw || '').replace(/\./g, '').replace(',', '.')) || valorPadraoNum)
-        const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || ''
+    // Gera 1 único boleto contábil por unidade no nome do Titular, incluindo a lista de todos os contatos selecionados para envio
+    const listaParaCriar = unidadesSelecionadas.map(u => {
+      const titular = u.titular || u.moradores[0]
+      const valUnidadeRaw = valoresCustom[u.apt] !== undefined ? valoresCustom[u.apt] : valorStr
+      const valFinal = typeof valUnidadeRaw === 'number' ? valUnidadeRaw : (parseFloat(String(valUnidadeRaw || '').replace(/\./g, '').replace(',', '.')) || valorPadraoNum)
 
-        return {
+      // Contatos selecionados desta unidade que receberão o WhatsApp
+      const contatosEnvio = u.moradores
+        .filter(m => selecionados.includes(m.id))
+        .map(m => ({
           moradorId: m.id,
-          morador: m.nome,
-          telefone: rawTel,
-          email: m.email || '',
-          apt: m.apt || m.unidade || '',
-          condominio: condoNome,
-          competencia,
-          vencimento,
-          valor: valFinal,
-          valorOriginal: valFinal,
-          chave_pix: chavePix,
-          status: 'Pendente',
-          emitido: true,
-          discriminarTaxa: Boolean(discriminarTaxa),
-          taxaEmissao: discriminarTaxa ? taxaNum : 0,
-          nomeTaxa: nomeTaxa || 'Serviço de Cobrança Digital',
-          linha: gerarLinhaDigitavel(m.apt || '101', valFinal, vencimento),
-          pix_emv: generateStaticPix(chavePix, valFinal, condoNome, "BR"),
-          _createdAt: new Date().toISOString()
-        }
-      })
+          nome: m.nome,
+          tel: m.tel || m.telefone || m.whatsapp || m.celular || m.fone || '',
+          vinculo: m.status || m.tipo || 'Morador'
+        }))
+        .filter(c => c.tel && c.tel.replace(/\D/g, '').length >= 8)
+
+      return {
+        moradorId: titular?.id || '',
+        morador: titular?.nome || `Morador Apt ${u.apt}`,
+        cpf: titular?.cpf || '',
+        telefone: titular?.tel || titular?.telefone || titular?.whatsapp || '',
+        email: titular?.email || '',
+        apt: u.apt,
+        bloco: u.bloco || titular?.bloco || '',
+        condominio: condoNome,
+        competencia,
+        vencimento,
+        valor: valFinal,
+        valorOriginal: valFinal,
+        chave_pix: chavePix,
+        status: 'Pendente',
+        emitido: true,
+        discriminarTaxa: Boolean(discriminarTaxa),
+        taxaEmissao: discriminarTaxa ? taxaNum : 0,
+        nomeTaxa: nomeTaxa || 'Serviço de Cobrança Digital',
+        linha: gerarLinhaDigitavel(u.apt, valFinal, vencimento),
+        pix_emv: generateStaticPix(chavePix, valFinal, condoNome, "BR"),
+        contatosEnvio: contatosEnvio,
+        _createdAt: new Date().toISOString()
+      }
+    })
 
     onSave(listaParaCriar, enviarWhatsAppAuto)
   }
@@ -792,9 +845,11 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
         <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div>
             <h3 className="font-black text-base sm:text-lg flex items-center gap-2">
-              📦 Gerar Boletos do Mês em Lote
+              📦 Gerar Boletos do Mês por Unidade
             </h3>
-            <p className="text-[11px] sm:text-xs text-gray-400">Emissão em massa com QR Code PIX individual e valores editáveis por morador</p>
+            <p className="text-[11px] sm:text-xs text-gray-400">
+              Gera 1 boleto oficial no nome do Titular e envia via WhatsApp para o titular e dependentes selecionados
+            </p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
             <X size={20} />
@@ -804,7 +859,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
         {/* Corpo em 2 Colunas */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 sm:p-5 overflow-y-auto flex-1 bg-slate-50">
           
-          {/* Coluna Esquerda (5 colunas): Parâmetros do Lote */}
+          {/* Coluna Esquerda: Parâmetros */}
           <div className="lg:col-span-5 flex flex-col gap-3">
             
             {/* Condomínio e PIX */}
@@ -825,7 +880,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
             {/* Valores e Datas */}
             <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm grid grid-cols-2 gap-3">
               <div className="col-span-2">
-                <label className="label text-xs font-black">Valor Padrão da Cota (R$) *</label>
+                <label className="label text-xs font-black">Valor Padrão da Cota por Apt (R$) *</label>
                 <CurrencyInput value={valorStr} onChange={v => setValorStr(v)} placeholder="0,00" />
               </div>
               <div>
@@ -908,7 +963,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
                     className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer shrink-0"
                   />
                   <span className="text-xs font-black text-emerald-950">
-                    🚀 Disparar boletos via WhatsApp
+                    🚀 Enviar boletos no WhatsApp de todos selecionados
                   </span>
                 </div>
                 <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${enviarWhatsAppAuto ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
@@ -919,21 +974,20 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
 
           </div>
 
-          {/* Coluna Direita (7 colunas): Lista de Moradores & Dependentes SEMPRE VISÍVEL */}
-          <div className="lg:col-span-7 flex flex-col bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden min-h-[420px]">
+          {/* Coluna Direita: Unidades & Contatos */}
+          <div className="lg:col-span-7 flex flex-col bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden min-h-[440px]">
             
-            {/* Topo da lista de moradores */}
+            {/* Topo da lista */}
             <div className="p-3 bg-slate-100 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <span className="text-xs font-black text-gray-900 block">
-                  👥 Moradores & Contatos ({selecionados.length} de {todosDoCondo.length} selecionados)
+                  🏢 {unidadesSelecionadas.length} de {unidadesAgrupadas.length} Unidades ({selecionados.length} destinatários)
                 </span>
                 <span className="text-[10px] text-gray-500">
-                  Marque quem receberá o boleto e aviso de cobrança
+                  O boleto é gerado no nome do Titular e disparado para os números marcados
                 </span>
               </div>
 
-              {/* Botões de Seleção */}
               <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   type="button"
@@ -959,100 +1013,107 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
               </div>
             </div>
 
-            {/* Barra de Busca e Filtro */}
-            <div className="p-2.5 bg-slate-50 border-b border-gray-200 flex gap-2 items-center">
+            {/* Busca */}
+            <div className="p-2.5 bg-slate-50 border-b border-gray-200">
               <input
                 type="text"
-                className="input text-xs py-1 px-2.5 bg-white flex-1"
-                placeholder="🔍 Buscar por nome, apt ou telefone..."
+                className="input text-xs py-1 px-2.5 bg-white w-full"
+                placeholder="🔍 Buscar por morador, apartamento ou telefone..."
                 value={buscaNome}
                 onChange={e => setBuscaNome(e.target.value)}
               />
-              <select
-                className="input text-xs py-1 px-2 bg-white w-36 shrink-0"
-                value={filtroTipo}
-                onChange={e => setFiltroTipo(e.target.value)}
-              >
-                <option value="Todos">Todos ({todosDoCondo.length})</option>
-                <option value="Titulares">Titulares ({todosDoCondo.filter(m => m.status !== 'Dependente' && m.tipo !== 'Dependente').length})</option>
-                <option value="Dependentes">Dependentes ({todosDoCondo.filter(m => m.status === 'Dependente' || m.tipo === 'Dependente').length})</option>
-              </select>
             </div>
 
-            {/* Lista com Scroll Independente e visibilidade total */}
-            <div className="flex-1 overflow-y-auto divide-y divide-gray-100 max-h-[380px]">
-              {moradoresVisiveis.length === 0 ? (
+            {/* Lista Agrupada por Apartamento */}
+            <div className="flex-1 overflow-y-auto divide-y divide-gray-200 max-h-[380px]">
+              {unidadesVisiveis.length === 0 ? (
                 <div className="p-8 text-center text-xs text-gray-400">
-                  Nenhum morador ou dependente encontrado para este condomínio.
+                  Nenhuma unidade encontrada para este condomínio.
                 </div>
               ) : (
-                moradoresVisiveis.map(m => {
-                  const isSel = selecionados.includes(m.id)
-                  const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || m.fone || ''
-                  const temWhats = rawTel && rawTel.replace(/\D/g, '').length >= 10
-                  const isDependente = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente'
-                  const vinculoLabel = m.status || m.tipo || (isDependente ? 'Dependente' : 'Proprietário')
+                unidadesVisiveis.map(u => {
+                  const titular = u.titular || u.moradores[0]
+                  const temSelecionadoNaUnidade = u.moradores.some(m => selecionados.includes(m.id))
 
                   return (
-                    <div 
-                      key={m.id} 
-                      onClick={() => toggleMorador(m.id)}
-                      className={`p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-all ${isSel ? 'bg-emerald-50/40' : 'opacity-60 bg-white'}`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <input
-                          type="checkbox"
-                          checked={isSel}
-                          onChange={() => {}}
-                          onClick={e => { e.stopPropagation(); toggleMorador(m.id); }}
-                          className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-xs font-bold text-gray-900 truncate">
-                              {m.nome}
-                            </p>
-                            <span className="text-[10px] font-bold text-gray-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                              Apt {m.apt || m.unidade || '—'} {m.bloco ? ('Bloco ' + m.bloco) : ''}
-                            </span>
-                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                              isDependente 
-                                ? 'bg-purple-100 text-purple-700 border border-purple-200' 
-                                : vinculoLabel === 'Inquilino' 
-                                  ? 'bg-blue-100 text-blue-700 border border-blue-200' 
-                                  : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                            }`}>
-                              {isDependente ? '👨‍👩‍👧 Dependente' : ('👤 ' + vinculoLabel)}
-                            </span>
-                          </div>
+                    <div key={u.apt} className={`p-3.5 flex flex-col gap-2 transition-all ${temSelecionadoNaUnidade ? 'bg-slate-50/50' : 'opacity-60 bg-white'}`}>
+                      
+                      {/* Linha do Apartamento e Titular */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => toggleUnidadeInteira(u)}
+                            className="text-xs font-black text-slate-900 bg-slate-200 hover:bg-slate-300 px-2.5 py-1 rounded-lg border border-slate-300 shrink-0"
+                            title="Marcar/Desmarcar todos desta unidade"
+                          >
+                            🏢 Apt {u.apt} {u.bloco ? `(${u.bloco})` : ''}
+                          </button>
+                          <span className="text-xs font-bold text-gray-800 truncate">
+                            Titular do Boleto: <strong>{titular?.nome || 'Não definido'}</strong>
+                          </span>
+                        </div>
 
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[11px] text-gray-600 font-mono font-bold">
-                              📞 {rawTel || 'Sem telefone/WhatsApp'}
-                            </span>
-                            {temWhats ? (
-                              <span className="text-[9px] text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.2 rounded flex items-center gap-0.5">
-                                WhatsApp Ativo ✓
-                              </span>
-                            ) : (
-                              <span className="text-[9px] text-amber-700 font-bold bg-amber-100 px-1.5 py-0.2 rounded">
-                                Sem WhatsApp
-                              </span>
-                            )}
+                        {/* Valor individual se quiser customizar */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] text-gray-500 font-bold hidden sm:inline">Valor Apt:</span>
+                          <div className="w-24">
+                            <CurrencyInput
+                              value={valoresCustom[u.apt] !== undefined ? valoresCustom[u.apt] : valorStr}
+                              onChange={v => handleCustomValChange(u.apt, v)}
+                              placeholder="0,00"
+                            />
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
-                        <label className="text-[10px] text-gray-500 font-bold hidden sm:inline">Valor (R$):</label>
-                        <div className="w-24">
-                          <CurrencyInput
-                            value={valoresCustom[m.id] !== undefined ? valoresCustom[m.id] : valorStr}
-                            onChange={v => handleCustomValChange(m.id, v)}
-                            placeholder="0,00"
-                          />
+                      {/* Lista de Contatos/Dependentes para Envio de WhatsApp */}
+                      <div className="pl-3 sm:pl-4 border-l-2 border-emerald-300 ml-2 flex flex-col gap-1.5">
+                        <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">
+                          📲 Contatos para envio do WhatsApp desta unidade:
+                        </span>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {u.moradores.map(m => {
+                            const isSel = selecionados.includes(m.id)
+                            const isDep = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente'
+                            const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || m.fone || ''
+                            const temWhats = rawTel && rawTel.replace(/\D/g, '').length >= 8
+
+                            return (
+                              <label
+                                key={m.id}
+                                className={`flex items-center gap-2 p-2 rounded-xl border text-xs cursor-pointer transition-all select-none ${
+                                  isSel 
+                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold shadow-xs' 
+                                    : 'bg-white border-gray-200 text-gray-500 hover:bg-slate-50'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSel}
+                                  onChange={() => toggleContato(m.id)}
+                                  className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1 truncate">
+                                    <span className="truncate">{m.nome}</span>
+                                    <span className={`text-[8px] font-black uppercase px-1 py-0.2 rounded ${
+                                      isDep ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                                    }`}>
+                                      {isDep ? 'Dependente' : 'Titular'}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] font-mono text-gray-500 block truncate">
+                                    📞 {rawTel || 'Sem WhatsApp'}
+                                  </span>
+                                </div>
+                              </label>
+                            )
+                          })}
                         </div>
                       </div>
+
                     </div>
                   )
                 })
@@ -1069,7 +1130,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
             onClick={handleGerar}
             className="btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-700/20 py-2.5 px-5 flex items-center gap-2 cursor-pointer"
           >
-            <CheckCircle2 size={16} /> Gerar {selecionados.length} {selecionados.length === 1 ? 'Boleto' : 'Boletos'} {enviarWhatsAppAuto ? 'e Enviar WhatsApp' : ''}
+            <CheckCircle2 size={16} /> Gerar {unidadesSelecionadas.length} {unidadesSelecionadas.length === 1 ? 'Boleto' : 'Boletos'} ({selecionados.length} envios de WhatsApp)
           </button>
         </div>
 
@@ -1106,10 +1167,18 @@ export default function Boletos() {
     let falhasWhats = 0
 
     try {
+      // Calcula total de envios de WhatsApp
+      let totalEnvios = 0
+      lista.forEach(b => {
+        const dests = b.contatosEnvio && b.contatosEnvio.length > 0 ? b.contatosEnvio : [{ nome: b.morador, tel: b.telefone }]
+        totalEnvios += dests.length
+      })
+
       if (dispararWhatsApp) {
-        setProgressoLote({ total: lista.length, atual: 0, morador: 'Iniciando gravação no sistema...' })
+        setProgressoLote({ total: totalEnvios, atual: 0, morador: 'Iniciando gravação dos boletos...' })
       }
 
+      let contadorEnvio = 0
       for (let i = 0; i < lista.length; i++) {
         const b = lista[i]
         const docRef = await addItem(b)
@@ -1117,23 +1186,35 @@ export default function Boletos() {
         criados++
 
         if (dispararWhatsApp) {
-          setProgressoLote({ total: lista.length, atual: i + 1, morador: b.morador })
-          const moradorDoc = (b.moradorId && moradores.find(m => m.id === b.moradorId))
-            || moradores.find(m => (m.nome && b.morador && m.nome.trim().toLowerCase() === b.morador.trim().toLowerCase()) || (m.apt && b.apt && String(m.apt).trim() === String(b.apt).trim()))
-            || { nome: b.morador, tel: b.telefone, apt: b.apt, condominio: b.condominio }
           const condoDoc = allCondominios.find(c => c.nome === b.condominio)
-          
-          try {
-            const res = await enviarBoletoWhatsAppAuto(novoBoleto, moradorDoc, condoDoc)
-            if (res.success) {
-              enviadosWhats++
-            } else {
-              console.warn('Falha envio WhatsApp:', b.morador, res.error)
+          const destinatarios = (b.contatosEnvio && b.contatosEnvio.length > 0) 
+            ? b.contatosEnvio 
+            : [{ nome: b.morador, tel: b.telefone, vinculo: 'Titular' }]
+
+          for (const dest of destinatarios) {
+            contadorEnvio++
+            setProgressoLote({ total: totalEnvios, atual: contadorEnvio, morador: `${dest.nome} (Apt ${b.apt})` })
+
+            const moradorEnvioDoc = {
+              nome: dest.nome,
+              tel: dest.tel,
+              apt: b.apt,
+              condominio: b.condominio,
+              cpf: b.cpf
+            }
+
+            try {
+              const res = await enviarBoletoWhatsAppAuto(novoBoleto, moradorEnvioDoc, condoDoc)
+              if (res.success) {
+                enviadosWhats++
+              } else {
+                console.warn('Falha envio WhatsApp:', dest.nome, res.error)
+                falhasWhats++
+              }
+            } catch (err) {
+              console.error('Erro individual WhatsApp:', err)
               falhasWhats++
             }
-          } catch (err) {
-            console.error('Erro individual WhatsApp:', err)
-            falhasWhats++
           }
         }
       }
@@ -1146,12 +1227,12 @@ export default function Boletos() {
     
     if (dispararWhatsApp) {
       if (enviadosWhats > 0) {
-        alert(`🎉 Geração & Disparo Concluídos!\n\n📄 ${criados} boletos gerados no sistema.\n📲 ${enviadosWhats} boletos em PDF entregues com sucesso via WhatsApp oficial!\n${falhasWhats > 0 ? `⚠️ ${falhasWhats} envios pendentes/sem contato.` : ''}`)
+        alert(`🎉 Geração & Disparo Concluídos!\n\n📄 ${criados} boletos gerados oficialmente no nome dos titulares.\n📲 ${enviadosWhats} envios de PDF entregues no WhatsApp (titulares e dependentes selecionados)!\n${falhasWhats > 0 ? `⚠️ ${falhasWhats} envios pendentes/sem número.` : ''}`)
       } else {
-        alert(`📄 ${criados} boletos gerados com sucesso!\n⚠️ O envio automático via WhatsApp não foi concluído para ${falhasWhats} moradores (verifique se o morador possui DDD e número válido cadastrado).`)
+        alert(`📄 ${criados} boletos gerados com sucesso!\n⚠️ O envio automático via WhatsApp não foi concluído para ${falhasWhats} contatos (verifique se possuem DDD e número válido).`)
       }
     } else {
-      alert(`🎉 Sucesso! ${criados} boletos PIX foram gerados com sucesso para os moradores selecionados!`)
+      alert(`🎉 Sucesso! ${criados} boletos PIX foram gerados com sucesso no nome dos titulares!`)
     }
   }
 
