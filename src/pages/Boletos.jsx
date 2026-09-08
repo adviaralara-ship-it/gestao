@@ -630,24 +630,45 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     }
   }, [condoNome])
 
-  // Moradores filtrados estritamente pelo condomínio selecionado
+  // Moradores e Dependentes filtrados estritamente pelo condomínio selecionado
   const normalizeCondo = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 
-  const moradoresDoCondo = moradores.filter(m => {
+  const [filtroTipo, setFiltroTipo] = useState('Todos') // 'Todos', 'Titulares', 'Dependentes'
+  const [buscaNome, setBuscaNome] = useState('')
+
+  const todosDoCondo = moradores.filter(m => {
     if (!condoNome) return false
     const cM = normalizeCondo(m.condominio)
     const cMN = normalizeCondo(m.condominioNome)
     const cTarget = normalizeCondo(condoNome)
+    return cM === cTarget || cMN === cTarget || (cM && cTarget && (cM.includes(cTarget) || cTarget.includes(cM)))
+  }).sort((a, b) => {
+    const aptA = String(a.apt || a.unidade || '').localeCompare(String(b.apt || b.unidade || ''), undefined, { numeric: true })
+    if (aptA !== 0) return aptA
+    const isDepA = a.status === 'Dependente' || a.tipo === 'Dependente' ? 1 : 0
+    const isDepB = b.status === 'Dependente' || b.tipo === 'Dependente' ? 1 : 0
+    return isDepA - isDepB
+  })
 
-    const matchCondo = cM === cTarget || cMN === cTarget || (cM && cTarget && (cM.includes(cTarget) || cTarget.includes(cM)))
-    const isDependente = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente' || (m.parentesco && m.parentesco !== 'Titular')
-    return matchCondo && !isDependente
+  // Lista para exibição com filtros de busca e tipo
+  const moradoresDoCondo = todosDoCondo.filter(m => {
+    const isDep = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente'
+    if (filtroTipo === 'Titulares' && isDep) return false
+    if (filtroTipo === 'Dependentes' && !isDep) return false
+    if (buscaNome) {
+      const q = buscaNome.toLowerCase()
+      const matchNome = (m.nome || '').toLowerCase().includes(q)
+      const matchApt = String(m.apt || m.unidade || '').toLowerCase().includes(q)
+      const matchTel = String(m.tel || m.telefone || m.whatsapp || '').includes(q)
+      return matchNome || matchApt || matchTel
+    }
+    return true
   })
   
-  const [selecionados, setSelecionados] = useState(() => moradoresDoCondo.map(m => m.id))
+  const [selecionados, setSelecionados] = useState(() => todosDoCondo.filter(m => m.status !== 'Dependente' && m.tipo !== 'Dependente').map(m => m.id))
 
   useEffect(() => {
-    setSelecionados(moradoresDoCondo.map(m => m.id))
+    setSelecionados(todosDoCondo.filter(m => m.status !== 'Dependente' && m.tipo !== 'Dependente').map(m => m.id))
   }, [condoNome, moradores.length])
 
   const toggleMorador = (id) => {
@@ -694,7 +715,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
       return
     }
 
-    const listaParaCriar = moradoresDoCondo
+    const listaParaCriar = todosDoCondo
       .filter(m => selecionados.includes(m.id))
       .map(m => {
         const valMoradorRaw = valoresCustom[m.id] !== undefined ? valoresCustom[m.id] : valorStr
@@ -858,15 +879,62 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
             </p>
           </div>
 
-          {/* Lista de Moradores */}
-          <div className="border border-gray-200 rounded-2xl overflow-hidden mt-1">
-            <div className="p-3 bg-slate-100 border-b border-gray-200 flex items-center justify-between">
-              <span className="text-xs font-black text-gray-800">
-                👥 Moradores ({selecionados.length} de {moradoresDoCondo.length} selecionados)
-              </span>
-              <button onClick={toggleTodos} className="text-xs font-bold text-brand-600 hover:text-brand-800">
-                {selecionados.length === moradoresDoCondo.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
-              </button>
+          {/* Lista de Moradores & Dependentes */}
+          <div className="border border-gray-200 rounded-2xl overflow-hidden mt-1 bg-white shadow-sm">
+            <div className="p-3 bg-slate-100 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div>
+                <span className="text-xs font-black text-gray-900 block">
+                  👥 Moradores & Contatos ({selecionados.length} de {todosDoCondo.length} selecionados para envio)
+                </span>
+                <span className="text-[10px] text-gray-500">
+                  Selecione quem receberá o boleto e aviso de cobrança via WhatsApp
+                </span>
+              </div>
+
+              {/* Filtros Rápidos */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setSelecionados(todosDoCondo.map(m => m.id))}
+                  className="text-[11px] font-bold px-2.5 py-1 bg-white border border-gray-300 rounded-lg hover:bg-slate-50 text-gray-700"
+                >
+                  Selecionar Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelecionados(todosDoCondo.filter(m => m.status !== 'Dependente' && m.tipo !== 'Dependente').map(m => m.id))}
+                  className="text-[11px] font-bold px-2.5 py-1 bg-white border border-brand-300 rounded-lg hover:bg-brand-50 text-brand-700"
+                >
+                  Apenas Titulares
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelecionados([])}
+                  className="text-[11px] font-bold px-2.5 py-1 bg-white border border-gray-300 rounded-lg hover:bg-red-50 text-red-600"
+                >
+                  Limpar
+                </button>
+              </div>
+            </div>
+
+            {/* Barra de Busca e Filtro de Vínculo */}
+            <div className="p-2.5 bg-slate-50 border-b border-gray-200 flex gap-2 items-center">
+              <input
+                type="text"
+                className="input text-xs py-1 px-2.5 bg-white flex-1"
+                placeholder="🔍 Buscar por nome, apt ou telefone..."
+                value={buscaNome}
+                onChange={e => setBuscaNome(e.target.value)}
+              />
+              <select
+                className="input text-xs py-1 px-2 bg-white w-36 shrink-0"
+                value={filtroTipo}
+                onChange={e => setFiltroTipo(e.target.value)}
+              >
+                <option value="Todos">Todos ({todosDoCondo.length})</option>
+                <option value="Titulares">Titulares ({todosDoCondo.filter(m => m.status !== 'Dependente' && m.tipo !== 'Dependente').length})</option>
+                <option value="Dependentes">Dependentes ({todosDoCondo.filter(m => m.status === 'Dependente' || m.tipo === 'Dependente').length})</option>
+              </select>
             </div>
 
             <div className="max-h-60 overflow-y-auto divide-y divide-gray-100">
@@ -880,11 +948,14 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
                   const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || m.fone || ''
                   const temWhats = rawTel && rawTel.replace(/\D/g, '').length >= 10
 
+                  const isDependente = m.status === 'Dependente' || m.tipo === 'Dependente' || m.tipoMorador === 'Dependente'
+                  const vinculoLabel = m.status || m.tipo || (isDependente ? 'Dependente' : 'Proprietário')
+
                   return (
                     <div 
                       key={m.id} 
                       onClick={() => toggleMorador(m.id)}
-                      className={`p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-colors ${isSel ? 'bg-brand-50/30' : 'opacity-60'}`}
+                      className={`p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-all border-b border-gray-100 last:border-0 ${isSel ? 'bg-emerald-50/40' : 'opacity-60 bg-white'}`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <input
@@ -892,18 +963,39 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
                           checked={isSel}
                           onChange={() => {}}
                           onClick={e => { e.stopPropagation(); toggleMorador(m.id); }}
-                          className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer"
+                          className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer shrink-0"
                         />
                         <div className="min-w-0">
-                          <p className="text-xs font-bold text-gray-900 truncate">
-                            {m.nome} <span className="text-gray-400 font-normal">(Apt {m.apt || m.unidade || '—'})</span>
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-gray-500 font-mono">{rawTel || 'Sem WhatsApp'}</span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-xs font-bold text-gray-900 truncate">
+                              {m.nome}
+                            </p>
+                            <span className="text-[10px] font-bold text-gray-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                              Apt {m.apt || m.unidade || '—'} {m.bloco ? ('Bloco ' + m.bloco) : ''}
+                            </span>
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                              isDependente 
+                                ? 'bg-purple-100 text-purple-700 border border-purple-200' 
+                                : vinculoLabel === 'Inquilino' 
+                                  ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                                  : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            }`}>
+                              {isDependente ? '👨‍👩‍👧 Dependente' : ('👤 ' + vinculoLabel)}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[11px] text-gray-600 font-mono font-bold">
+                              📞 {rawTel || 'Sem telefone/WhatsApp'}
+                            </span>
                             {temWhats ? (
-                              <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">WhatsApp ✓</span>
+                              <span className="text-[9px] text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                                WhatsApp Ativo ✓
+                              </span>
                             ) : (
-                              <span className="text-[9px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.2 rounded">Sem número</span>
+                              <span className="text-[9px] text-amber-700 font-bold bg-amber-100 px-1.5 py-0.2 rounded">
+                                Sem WhatsApp
+                              </span>
                             )}
                           </div>
                         </div>
