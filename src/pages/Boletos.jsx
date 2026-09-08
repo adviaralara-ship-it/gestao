@@ -12,6 +12,21 @@ import RepassesAlphaModal from '../components/RepassesAlphaModal'
 import { CurrencyInput, maskCurrency, parseCurrency } from '../utils/currency'
 import { enviarBoletoWhatsAppAuto } from '../utils/whatsappAutomacao'
 
+const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+function statusBadge(status) {
+  if (status === 'Pago') return 'badge-green'
+  if (status === 'Vencido') return 'badge-red'
+  return 'badge-yellow'
+}
+
+function statusIcon(status) {
+  if (status === 'Pago') return <CheckCircle2 size={11} className="text-green-600" />
+  if (status === 'Vencido') return <AlertCircle size={11} className="text-red-600" />
+  return <Clock size={11} className="text-amber-600" />
+}
+
+
 function gerarLinhaDigitavel(apt, valor, venc) {
   const r = () => Math.floor(Math.random() * 9)
   return `34191.${r()}${r()}${r()}${r()}${r()} ${r()}${r()}${r()}${r()}${r()}.${r()}${r()}${r()}${r()}${r()}${r()} ${r()}${r()}${r()}${r()}${r()}.${r()}${r()}${r()}${r()}${r()}${r()} ${r()} ${(venc||'').replace(/\//g,'')}${String(Math.round((valor||0)*100)).padStart(10,'0')}`
@@ -1208,7 +1223,8 @@ export default function Boletos() {
   const pendente = boletosFiltradosPorCondo.filter(b=>b.status==='Pendente').length
   const vencido  = boletosFiltradosPorCondo.filter(b=>b.status==='Vencido').length
 
-  const boletos = boletosFiltradosPorCondo.filter(b => {
+  const boletos = (boletosFiltradosPorCondo || []).filter(b => {
+    if (!b) return false
     if (statusFilter === 'Todos') return true
     if (statusFilter === 'Pago') return b.status === 'Pago'
     if (statusFilter === 'Pendente') return b.status === 'Pendente'
