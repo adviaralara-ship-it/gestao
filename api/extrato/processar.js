@@ -175,7 +175,7 @@ export default async function handler(req, res) {
 
   try {
     const { action, ofxText, ofxBase64, appPassword, condominio = 'Todos' } = req.body || {};
-    const effectivePass = (appPassword || process.env.GMAIL_APP_PASSWORD || GMAIL_DEFAULT_PASS).replace(/[^a-zA-Z0-9]/g, '');
+    const effectivePass = (appPassword || GMAIL_DEFAULT_PASS || process.env.GMAIL_APP_PASSWORD || '').replace(/[^a-zA-Z0-9]/g, '');
 
     // CASO 1: Ação de Sincronização direta com o Gmail
     if (action === 'sincronizar-gmail' || (!ofxText && !ofxBase64)) {
