@@ -639,6 +639,39 @@ function ModalBoleto({ data, onClose, onSave, moradores = [] }) {
   )
 }
 
+function ModalFundo({ condo, onClose, onSave }) {
+  const [fundoReserva, setFundoReserva] = useState(condo?.fundoReserva || '')
+  const [fundoMeta, setFundoMeta] = useState(condo?.fundoMeta || '')
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b border-cream-300 flex items-center justify-between">
+          <h3 className="font-bold text-gray-800">Editar Fundo de Reserva - {condo?.nome || 'Condomínio'}</h3>
+          <button onClick={onClose}><X size={18} className="text-gray-400 hover:text-gray-700"/></button>
+        </div>
+        <div className="p-5 flex flex-col gap-4">
+          <div>
+            <label className="label">Saldo Atual do Fundo (R$)</label>
+            <CurrencyInput value={fundoReserva} onChange={v => setFundoReserva(v)} placeholder="0,00" />
+          </div>
+          <div>
+            <label className="label">Meta Anual (R$)</label>
+            <CurrencyInput value={fundoMeta} onChange={v => setFundoMeta(v)} placeholder="0,00" />
+          </div>
+        </div>
+        <div className="p-5 border-t border-cream-300 flex gap-3 justify-end">
+          <button onClick={onClose} className="btn-secondary">Cancelar</button>
+          <button onClick={() => onSave({ 
+            fundoReserva: typeof fundoReserva === 'number' ? fundoReserva : (parseFloat(String(fundoReserva||'').replace(/\./g,'').replace(',','.'))||0), 
+            fundoMeta: typeof fundoMeta === 'number' ? fundoMeta : (parseFloat(String(fundoMeta||'').replace(/\./g,'').replace(',','.'))||0) 
+          })} className="btn-primary">Salvar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, onSave }) {
   const condominiosValidos = condominios.filter(c => c && c.nome && c.nome.trim())
   const [condoNome, setCondoNome] = useState(() => {
@@ -1179,31 +1212,41 @@ export default function Boletos() {
   const [progressoLote, setProgressoLote] = useState(null)
 
   const handleSaveLote = async (lista, dispararWhatsApp = false) => {
+    if (!lista || lista.length === 0) return
     let criados = 0
     let enviadosWhats = 0
     let falhasWhats = 0
 
     try {
-      // Calcula total de envios de WhatsApp
-      let totalEnvios = 0
-      lista.forEach(b => {
-        const dests = b.contatosEnvio && b.contatosEnvio.length > 0 ? b.contatosEnvio : [{ nome: b.morador, tel: b.telefone }]
-        totalEnvios += dests.length
-      })
-
-      if (dispararWhatsApp) {
-        setProgressoLote({ total: totalEnvios, atual: 0, morador: 'Iniciando gravação dos boletos...' })
+      // 1. Salva todos os boletos primeiro no Firestore
+      const boletosSalvos = []
+      for (let i = 0; i < lista.length; i++) {
+        try {
+          const b = lista[i]
+          const docRef = await addItem(b)
+          const novoBoleto = { ...b, id: docRef?.id || b.id }
+          boletosSalvos.push(novoBoleto)
+          criados++
+        } catch (errDb) {
+          console.error('Erro ao gravar boleto no banco:', errDb)
+        }
       }
 
-      let contadorEnvio = 0
-      for (let i = 0; i < lista.length; i++) {
-        const b = lista[i]
-        const docRef = await addItem(b)
-        const novoBoleto = { ...b, id: docRef?.id || b.id }
-        criados++
+      // 2. Se for disparar WhatsApp, processa os envios de forma controlada
+      if (dispararWhatsApp && boletosSalvos.length > 0) {
+        let totalEnvios = 0
+        boletosSalvos.forEach(b => {
+          const dests = b.contatosEnvio && b.contatosEnvio.length > 0 ? b.contatosEnvio : [{ nome: b.morador, tel: b.telefone }]
+          totalEnvios += dests.length
+        })
 
-        if (dispararWhatsApp) {
-          const condoDoc = allCondominios.find(c => c.nome === b.condominio)
+        if (totalEnvios > 0) {
+          setProgressoLote({ total: totalEnvios, atual: 0, morador: 'Iniciando disparos no WhatsApp...' })
+        }
+
+        let contadorEnvio = 0
+        for (const b of boletosSalvos) {
+          const condoDoc = (allCondominios || []).find(c => c && c.nome === b.condominio)
           const destinatarios = (b.contatosEnvio && b.contatosEnvio.length > 0) 
             ? b.contatosEnvio 
             : [{ nome: b.morador, tel: b.telefone, vinculo: 'Titular' }]
@@ -1221,15 +1264,14 @@ export default function Boletos() {
             }
 
             try {
-              const res = await enviarBoletoWhatsAppAuto(novoBoleto, moradorEnvioDoc, condoDoc)
-              if (res.success) {
+              const res = await enviarBoletoWhatsAppAuto(b, moradorEnvioDoc, condoDoc)
+              if (res && res.success) {
                 enviadosWhats++
               } else {
-                console.warn('Falha envio WhatsApp:', dest.nome, res.error)
                 falhasWhats++
               }
-            } catch (err) {
-              console.error('Erro individual WhatsApp:', err)
+            } catch (errW) {
+              console.error('Erro individual WhatsApp:', errW)
               falhasWhats++
             }
           }
@@ -1237,6 +1279,7 @@ export default function Boletos() {
       }
     } catch(err) {
       console.error('Erro geral ao processar lote:', err)
+      alert('Ocorreu um erro ao processar os boletos: ' + (err.message || 'Tente novamente.'))
     } finally {
       setProgressoLote(null)
       setModalLote(false)
@@ -1442,12 +1485,12 @@ export default function Boletos() {
     }
 
     if (['Síndico', 'Subsíndico', 'Conselheiro'].includes(user?.role)) {
-       const moradorDoc = moradores.find(m => m.nome === b.morador);
+       const moradorDoc = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase());
        const bCondo = b.condominio || moradorDoc?.condominio;
        return !bCondo || bCondo === user?.condominio;
     }
     if (condoFilter && condoFilter !== 'Todos') {
-       const moradorDoc = moradores.find(m => m.nome === b.morador);
+       const moradorDoc = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase());
        const bCondo = b.condominio || moradorDoc?.condominio;
        return bCondo === condoFilter;
     }
@@ -1494,7 +1537,7 @@ export default function Boletos() {
       const venc = new Date(b.vencimento + 'T12:00:00')
       const diff = Math.round((venc - hoje) / 86400000)
       
-      const moradorDoc = moradores.find(m => m.nome === b.morador);
+      const moradorDoc = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase());
       const bCondo = b.condominio || moradorDoc?.condominio || '';
 
       if (diff === 5 && !b.notif5d) {
@@ -1535,7 +1578,7 @@ export default function Boletos() {
 
   const emitirBoleto = async b => {
     try {
-      const mor = moradores.find(m => m.nome === b.morador)
+      const mor = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase())
       const condoDoc = allCondominios.find(c => c.nome === (b.condominio || mor?.condominio))
       const chavePix = condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
       
@@ -1584,7 +1627,7 @@ export default function Boletos() {
   const emitirLote = async () => {
     for (const b of boletos) {
       if (!b.emitido) {
-        const mor = moradores.find(m => m.nome === b.morador)
+        const mor = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase())
         const condoDoc = allCondominios.find(c => c.nome === (b.condominio || mor?.condominio))
         const chavePix = condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
         const linha = b.linha || gerarLinhaDigitavel(b.apt, b.valor, b.vencimento)
@@ -1596,7 +1639,7 @@ export default function Boletos() {
   }
 
   const enviarWhats = b => {
-    const mor = moradores.find(m => m.nome === b.morador)
+    const mor = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase())
     const condoDoc = allCondominios.find(c => c.nome === (b.condominio || mor?.condominio))
     const chavePix = condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
     const pix = b.pix_emv || generateStaticPix(chavePix, b.valor, condoDoc?.nome || "Alpha Solucoes", "BR")
@@ -1610,7 +1653,7 @@ export default function Boletos() {
   
   const handleSaveBoleto = async form => {
     const val = Number(form.valor) || 0
-    const mor = moradores.find(m => m.nome === form.morador)
+    const mor = (moradores || []).find(m => m && m.nome && form?.morador && m.nome.trim().toLowerCase() === String(form.morador).trim().toLowerCase())
     const condoDoc = allCondominios.find(c => c.nome === (form.condominio || mor?.condominio))
     const chavePix = form.chave_pix || condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
     const condoFinal = form.condominio || condoDoc?.nome || mor?.condominio || "Alpha Condomínios"
@@ -1658,7 +1701,7 @@ export default function Boletos() {
       `Deseja gerar a 2ª via com o novo QR Code PIX atualizado agora?`
 
     if (window.confirm(msgConfirm)) {
-      const mor = moradores.find(m => m.nome === b.morador)
+      const mor = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase())
       const condoDoc = allCondominios.find(c => c.nome === (b.condominio || mor?.condominio))
       const chavePix = b.chave_pix || condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
       const condoFinal = b.condominio || condoDoc?.nome || "Alpha Condomínios"
@@ -1728,7 +1771,7 @@ export default function Boletos() {
           let valor = parseFloat(valorBruto.replace(/\./g, '').replace(',', '.')) || 0;
           if (isNaN(valor)) valor = parseFloat(valorBruto.replace(',', '.')) || 0;
 
-          const moradorDb = moradores.find(m => m.nome.toLowerCase() === nome.toLowerCase());
+          const moradorDb = (moradores || []).find(m => m && m.nome && m.nome.toLowerCase().trim() === String(nome).toLowerCase().trim());
           const apt = (idxApt !== -1 ? cols[idxApt] : '') || moradorDb?.apt || '';
           
           let venc = idxVencimento !== -1 ? cols[idxVencimento] : '';

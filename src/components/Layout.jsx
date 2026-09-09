@@ -4,6 +4,46 @@ import Sidebar from './Sidebar'
 import Header from './Header'
 import { ArrowLeft } from 'lucide-react'
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('ErrorBoundary capturou erro:', error, errorInfo)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 text-center flex flex-col items-center justify-center min-h-[50vh] gap-4 bg-white rounded-3xl border border-gray-200 shadow-sm m-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center text-2xl font-black">
+            ⚠️
+          </div>
+          <div>
+            <h3 className="text-lg font-black text-slate-800">Ops! Algo inesperado aconteceu nesta tela.</h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-md">
+              {this.state.error?.message || 'Erro ao renderizar o módulo.'}
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false, error: null })
+              window.location.reload()
+            }}
+            className="px-5 py-2.5 bg-brand-600 text-white font-black text-xs rounded-xl hover:bg-brand-500 shadow-md cursor-pointer"
+          >
+            Recarregar Módulo
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
@@ -23,7 +63,9 @@ export default function Layout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-20 lg:pb-6">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
 
           {/* Botão de Voltar menor no canto inferior esquerdo no celular */}
           {!isHome && (
