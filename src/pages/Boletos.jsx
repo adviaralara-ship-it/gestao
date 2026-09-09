@@ -833,7 +833,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
         apt: u.apt,
         bloco: u.bloco || titular?.bloco || '',
         condominio: condoNome,
-        cnpjCondominio: condoSelecionado?.cnpj || c?.cnpj || '',
+        cnpjCondominio: condoSelecionado?.cnpj || '',
         competencia,
         vencimento,
         valor: valFinal,
