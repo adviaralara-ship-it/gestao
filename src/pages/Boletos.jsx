@@ -645,7 +645,12 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     if (initialCondo && condominiosValidos.some(c => c.nome === initialCondo)) return initialCondo
     return condominiosValidos[0]?.nome || ''
   })
-  const [valorStr, setValorStr] = useState('450,00')
+  const [valorStr, setValorStr] = useState(() => {
+    if (condoSelecionado?.cotaPadrao !== undefined && Number(condoSelecionado.cotaPadrao) > 0) {
+      return Number(condoSelecionado.cotaPadrao)
+    }
+    return 450.00
+  })
   const [competencia, setCompetencia] = useState(() => {
     const d = new Date()
     return d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '/')
@@ -670,6 +675,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     const c = condominios.find(item => item && item.nome === condoNome)
     if (c) {
       if (c.chave_pix) setChavePix(c.chave_pix)
+      if (c.cotaPadrao !== undefined && Number(c.cotaPadrao) > 0) setValorStr(Number(c.cotaPadrao))
       if (c.discriminarTaxa !== undefined) setDiscriminarTaxa(Boolean(c.discriminarTaxa))
       if (c.taxaEmissao !== undefined && Number(c.taxaEmissao) > 0) {
         setTaxaStr(Number(c.taxaEmissao))

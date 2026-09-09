@@ -9,12 +9,13 @@ const fmtBR   = v => Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:
 function CondoModal({ data, onClose, onSave }) {
   const [form, setForm] = useState(data || {
     nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
-    honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital'
+    honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: ''
   })
   const [fundoStr, setFundoStr] = useState(data?.fundoReserva || '')
   const [metaStr,  setMetaStr]  = useState(data?.fundoMeta || '')
   const [honorariosStr, setHonorariosStr] = useState(data?.honorariosAdm || '')
   const [taxaStr, setTaxaStr] = useState(data?.taxaEmissao !== undefined ? data.taxaEmissao : 3.50)
+  const [cotaStr, setCotaStr] = useState(data?.cotaPadrao !== undefined ? data.cotaPadrao : '')
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
 
   return (
@@ -32,6 +33,22 @@ function CondoModal({ data, onClose, onSave }) {
             <select className="input" value={form.status} onChange={e=>set('status',e.target.value)}>
               <option>Ativo</option><option>Manutenção</option><option>Inativo</option>
             </select>
+          </div>
+
+          {/* Seção Cota Condominial / Valor Padrão do Boleto */}
+          <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <label className="label text-xs font-black text-emerald-900 flex items-center gap-1.5 m-0">
+                <DollarSign size={14} className="text-emerald-700"/> Valor Padrão da Cota por Apartamento (R$)
+              </label>
+              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">Boleto Mensal</span>
+            </div>
+            <p className="text-[11px] text-emerald-800/80 leading-relaxed">
+              Defina o valor base do boleto deste condomínio. Ao gerar os boletos em lote, este valor será preenchido automaticamente.
+            </p>
+            <div className="mt-1">
+              <CurrencyInput value={cotaStr} onChange={v => setCotaStr(v)} placeholder="Ex: 450,00" />
+            </div>
           </div>
 
           {/* Seção de Remuneração e Taxas da Alpha */}
@@ -104,6 +121,7 @@ function CondoModal({ data, onClose, onSave }) {
           <button onClick={()=>onSave({
             ...form,
             unidades:Number(form.unidades)||0,
+            cotaPadrao: parseBR(cotaStr),
             honorariosAdm: parseBR(honorariosStr),
             taxaEmissao: form.discriminarTaxa ? parseBR(taxaStr) : 0,
             fundoReserva:parseBR(fundoStr),
@@ -162,6 +180,7 @@ export default function Condominios() {
               </div>
               <div className="flex items-center gap-4 text-xs text-gray-400">
                 <span className="flex items-center gap-1"><Home size={12}/>{c.unidades} unidades</span>
+                {c.cotaPadrao > 0 && <span className="flex items-center gap-1 text-emerald-700 font-bold"><DollarSign size={12}/>Cota: R$ {fmtBR(c.cotaPadrao)}</span>}
               </div>
 
               {/* Fundo de Reserva */}
