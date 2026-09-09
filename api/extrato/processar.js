@@ -31,6 +31,7 @@ function getDb() {
 }
 
 const GMAIL_USER = 'alphaadmsc@gmail.com';
+const GMAIL_DEFAULT_PASS = 'pognicpypmgbxmrw';
 
 function parseOFX(data) {
   const transactions = [];
@@ -174,7 +175,7 @@ module.exports = async (req, res) => {
 
   try {
     const { action, ofxText, ofxBase64, appPassword, condominio = 'Todos' } = req.body || {};
-    const effectivePass = (appPassword || process.env.GMAIL_APP_PASSWORD || 'Rurvep-coxkov-mivxo8').replace(/[^a-zA-Z0-9]/g, '');
+    const effectivePass = (appPassword || process.env.GMAIL_APP_PASSWORD || GMAIL_DEFAULT_PASS).replace(/[^a-zA-Z0-9]/g, '');
 
     // CASO 1: Ação de Sincronização direta com o Gmail
     if (action === 'sincronizar-gmail' || (!ofxText && !ofxBase64)) {
