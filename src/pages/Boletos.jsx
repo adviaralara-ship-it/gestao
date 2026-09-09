@@ -673,14 +673,16 @@ function ModalFundo({ condo, onClose, onSave }) {
 }
 
 function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, onSave }) {
-  const condominiosValidos = condominios.filter(c => c && c.nome && c.nome.trim())
-  const [condoNome, setCondoNome] = useState(() => {
-    if (initialCondo && condominiosValidos.some(c => c.nome === initialCondo)) return initialCondo
-    return condominiosValidos[0]?.nome || ''
-  })
+  const condominiosValidos = (condominios || []).filter(c => c && c.nome && c.nome.trim())
+  const initialSelectedCondo = (initialCondo && condominiosValidos.find(c => c.nome === initialCondo)) || condominiosValidos[0] || null
+  const initialCondoName = initialSelectedCondo?.nome || ''
+
+  const [condoNome, setCondoNome] = useState(initialCondoName)
+  const condoSelecionado = condominiosValidos.find(c => c.nome === condoNome) || initialSelectedCondo
+
   const [valorStr, setValorStr] = useState(() => {
-    if (condoSelecionado?.cotaPadrao !== undefined && Number(condoSelecionado.cotaPadrao) > 0) {
-      return Number(condoSelecionado.cotaPadrao)
+    if (initialSelectedCondo?.cotaPadrao !== undefined && Number(initialSelectedCondo.cotaPadrao) > 0) {
+      return Number(initialSelectedCondo.cotaPadrao)
     }
     return 450.00
   })
@@ -694,18 +696,17 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     return d.toISOString().split('T')[0]
   })
   
-  const condoSelecionado = condominiosValidos.find(c => c.nome === condoNome)
-  const [chavePix, setChavePix] = useState(condoSelecionado?.chave_pix || '')
-  const [discriminarTaxa, setDiscriminarTaxa] = useState(Boolean(condoSelecionado?.discriminarTaxa))
-  const [taxaStr, setTaxaStr] = useState(condoSelecionado?.taxaEmissao !== undefined && Number(condoSelecionado.taxaEmissao) > 0 ? Number(condoSelecionado.taxaEmissao) : 3.50)
-  const [nomeTaxa, setNomeTaxa] = useState(condoSelecionado?.nomeTaxa || 'Serviço de Cobrança Digital')
+  const [chavePix, setChavePix] = useState(initialSelectedCondo?.chave_pix || '')
+  const [discriminarTaxa, setDiscriminarTaxa] = useState(Boolean(initialSelectedCondo?.discriminarTaxa))
+  const [taxaStr, setTaxaStr] = useState(initialSelectedCondo?.taxaEmissao !== undefined && Number(initialSelectedCondo.taxaEmissao) > 0 ? Number(initialSelectedCondo.taxaEmissao) : 3.50)
+  const [nomeTaxa, setNomeTaxa] = useState(initialSelectedCondo?.nomeTaxa || 'Serviço de Cobrança Digital')
   const [valoresCustom, setValoresCustom] = useState({})
   const [enviarWhatsAppAuto, setEnviarWhatsAppAuto] = useState(true)
   const [buscaNome, setBuscaNome] = useState('')
 
   useEffect(() => {
     if (!condoNome) return
-    const c = condominios.find(item => item && item.nome === condoNome)
+    const c = (condominios || []).find(item => item && item.nome === condoNome)
     if (c) {
       if (c.chave_pix) setChavePix(c.chave_pix)
       if (c.cotaPadrao !== undefined && Number(c.cotaPadrao) > 0) setValorStr(Number(c.cotaPadrao))
@@ -720,7 +721,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
         setNomeTaxa(n)
       }
     }
-  }, [condoNome])
+  }, [condoNome, condominios])
 
   const normalizeCondo = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 
