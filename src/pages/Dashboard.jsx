@@ -3,7 +3,7 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
 import {
-  TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck,
+  TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck, Calendar,
   CreditCard, DollarSign, FileText, Bell, Clock, Wrench, Shield, Plus,
   FileSpreadsheet, ArrowRight, CheckCircle2, AlertCircle, Sparkles, ChevronRight,
   ExternalLink, Layers, Eye, Bot, Megaphone, Car, QrCode, Gavel, FolderOpen, Check, User, Camera,
