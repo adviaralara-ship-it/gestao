@@ -83,6 +83,33 @@ export default function Conciliacao({ lancamentos, setModalLanc, updateLancament
     }
   }
 
+  const [isSyncingGmail, setIsSyncingGmail] = useState(false)
+
+  const handleSincronizarGmail = async () => {
+    setIsSyncingGmail(true)
+    try {
+      const res = await fetch('/api/extrato/sincronizar-gmail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      const data = await res.json()
+      if (data.success) {
+        alert(`🤖 Robô do Gmail Concluído!\n\n📧 E-mails verificados: ${data.emailsVerificados}\n📂 Extratos OFX encontrados: ${data.anexosEncontrados}\n\n✅ ${data.totalConciliados} boletos conciliados com sucesso!\n💸 ${data.totalDespesas} despesas bancárias registradas.`)
+        if (data.extratosProcessados && data.extratosProcessados.length > 0) {
+          // Atualiza a tela com o resumo
+          setResultadoAuto(data)
+        }
+      } else {
+        alert('Aviso na sincronização do Gmail: ' + (data.error || 'Não foi possível conectar.'))
+      }
+    } catch(err) {
+      console.error(err)
+      alert('Erro ao sincronizar com Gmail: ' + err.message)
+    } finally {
+      setIsSyncingGmail(false)
+    }
+  }
+
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   const handleLancarDespesa = (ofx) => {
@@ -129,12 +156,21 @@ export default function Conciliacao({ lancamentos, setModalLanc, updateLancament
             <Mail size={22} />
           </div>
           <div>
-            <h4 className="font-bold text-brand-900 text-sm">Integração com E-mail Oficial: alphaadmsc@gmail.com</h4>
+            <h4 className="font-bold text-brand-900 text-sm">Robô Integrado com o E-mail: alphaadmsc@gmail.com</h4>
             <p className="text-xs text-gray-600 mt-0.5 max-w-xl">
-              No aplicativo do <strong>Nubank PJ</strong> ou <strong>Cora</strong>, basta exportar o extrato para <strong>alphaadmsc@gmail.com</strong>. Você pode soltar o arquivo aqui para conciliar tudo com 1 clique.
+              O robô conecta na caixa de entrada, detecta extratos .OFX enviados pelo <strong>Nubank PJ</strong> ou <strong>Cora</strong> e realiza a conciliação bancária automaticamente.
             </p>
           </div>
         </div>
+
+        <button 
+          onClick={handleSincronizarGmail}
+          disabled={isSyncingGmail}
+          className="btn-primary bg-brand-600 hover:bg-brand-700 text-white font-black text-xs py-2.5 px-4 rounded-xl flex items-center gap-2 shrink-0 shadow-md"
+        >
+          <RefreshCw size={15} className={isSyncingGmail ? "animate-spin" : ""} />
+          {isSyncingGmail ? 'Conectando ao Gmail...' : '🤖 Sincronizar Agora com Gmail'}
+        </button>
       </div>
 
       {!ofxItems.length && (
