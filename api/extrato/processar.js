@@ -1,9 +1,9 @@
 // api/extrato/processar.js
 // Endpoint seguro para processar extratos bancários OFX e sincronizar com Gmail (alphaadmsc@gmail.com)
 
-const admin = require('firebase-admin');
-const imaps = require('imap-simple');
-const simpleParser = require('mailparser').simpleParser;
+import admin from 'firebase-admin';
+import imaps from 'imap-simple';
+import { simpleParser } from 'mailparser';
 
 function getDb() {
   if (!admin.apps.length) {
@@ -165,7 +165,7 @@ async function conciliarTransacoes(transactions, origem = 'OFX', condominio = 'T
   return { conciliadosCount, despesasLancadas, resultados };
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -279,7 +279,7 @@ module.exports = async (req, res) => {
         console.error('Erro na conexão IMAP do Gmail:', err);
         return res.status(200).json({ 
           success: false, 
-          error: `Falha na autenticação do Gmail: ${err.message || 'Verifique se o IMAP está ativado e a senha de app está correta.'}`
+          error: `Falha na conexão com Gmail: ${err.message || 'Verifique as configurações do IMAP.'}`
         });
       }
     }
@@ -325,4 +325,4 @@ module.exports = async (req, res) => {
     console.error('Erro ao processar extrato OFX:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
-};
+}
