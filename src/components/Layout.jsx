@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import { ArrowLeft } from 'lucide-react'
+import { useMaintenanceAutoReminder } from '../hooks/useMaintenanceAutoReminder'
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -45,6 +46,7 @@ class ErrorBoundary extends React.Component {
 }
 
 export default function Layout() {
+  useMaintenanceAutoReminder()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const location = useLocation()

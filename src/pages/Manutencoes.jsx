@@ -1,10 +1,14 @@
+import React, { useState } from 'react'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
-import React, { useState, useEffect } from 'react'
-import { Wrench, Plus, CheckCircle, Clock, Trash2, Calendar, AlertCircle, ShoppingBag, ExternalLink, Briefcase, FileText, Printer } from 'lucide-react'
+import { 
+  Wrench, Plus, CheckCircle, Clock, Trash2, Calendar, AlertCircle, 
+  ShoppingBag, ExternalLink, Briefcase, FileText, Printer, Bell, RefreshCw, Check 
+} from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { CurrencyInput } from '../utils/currency'
+import { verificarEDispararLembretesManutencao } from '../hooks/useMaintenanceAutoReminder'
 
 function ModalManutencao({ data, condominios, onClose, onSave }) {
   const [form, setForm] = useState(data || {
@@ -202,6 +206,7 @@ export default function Manutencoes() {
   const [modalManu, setModalManu] = useState(null)
   const [modalDemanda, setModalDemanda] = useState(null)
   const [modalProposta, setModalProposta] = useState(null)
+  const [isChecking, setIsChecking] = useState(false)
   
   const [condoFiltro, setCondoFiltro] = useState(isMorador ? user?.condominio : 'Todos')
 
@@ -221,11 +226,41 @@ export default function Manutencoes() {
       return { ...m, statusVisual }
     }).sort((a,b) => new Date(a.dataPrevista) - new Date(b.dataPrevista))
 
+  const handleVerificarLembretes = async () => {
+    setIsChecking(true)
+    try {
+      const res = await verificarEDispararLembretesManutencao()
+      if (res?.success) {
+        if (res.disparos > 0) {
+          alert(`🔔 Verificação concluída!\n\nForam disparados ${res.disparos} lembretes automáticos de manutenção (WhatsApp e Sininho).`)
+        } else {
+          alert('✅ Verificação concluída!\n\nTodos os lembretes de manutenções já estão em dia para a data de hoje.')
+        }
+      } else {
+        alert('Aviso na verificação: ' + (res?.error || 'Não foi possível verificar.'))
+      }
+    } catch(err) {
+      console.error(err)
+      alert('Erro ao verificar lembretes: ' + err.message)
+    } finally {
+      setIsChecking(false)
+    }
+  }
+
   const handleSaveManu = async (form) => {
     try {
       let savedDoc = null
       if (form.id) {
-        await updateItem(form.id, form)
+        // Se mudou a data, reseta as flags para disparar na nova véspera/dia
+        const existing = manutencoes.find(m => m.id === form.id)
+        const toUpdate = { ...form }
+        if (existing && existing.dataPrevista !== form.dataPrevista) {
+          delete toUpdate.notifD1
+          delete toUpdate.notifD0
+          delete toUpdate.lembreteVesperaEnviadoEm
+          delete toUpdate.lembreteHojeEnviadoEm
+        }
+        await updateItem(form.id, toUpdate)
         savedDoc = form
       } else {
         const docRef = await addItem(form)
@@ -247,7 +282,7 @@ export default function Manutencoes() {
         _createdAt: serverTimestamp()
       })
 
-      // 2. Disparo para os números de WhatsApp dos Administradores e Síndico
+      // 2. Disparo imediato para os números de WhatsApp dos Administradores e Síndico
       const telefonesDestino = new Set()
 
       // Número oficial padrão da Alpha
@@ -288,7 +323,12 @@ export default function Manutencoes() {
         } catch(e) {}
       }
 
-      alert(`🎉 Manutenção salva com sucesso!\n\n🔔 Notificação adicionada no sininho.\n📲 Disparo de WhatsApp enviado para os administradores.`)
+      // Executa verificação em background de lembretes
+      setTimeout(() => {
+        verificarEDispararLembretesManutencao().catch(() => {})
+      }, 1000)
+
+      alert(`🎉 Manutenção salva com sucesso!\n\n🔔 Notificação adicionada no sininho.\n📲 Disparo de WhatsApp enviado para os administradores.\n⏰ Lembretes automáticos agendados para 1 dia antes e no próprio dia.`)
     } catch(err) {
       console.error('Erro ao salvar manutenção:', err)
       alert('Erro ao salvar: ' + err.message)
@@ -321,7 +361,7 @@ export default function Manutencoes() {
       <div className="page-header print:hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="section-title text-xl flex items-center gap-2"><Wrench className="text-brand-600"/> Manutenção Inteligente e Compras</h2>
-          <p className="section-sub">Controle o cronograma de ativos e receba propostas de fornecedores pelo Portal Público.</p>
+          <p className="section-sub">Controle o cronograma de ativos, envie lembretes automáticos e receba propostas de fornecedores.</p>
         </div>
         <div className="flex items-center gap-3">
           {!isMorador && (
@@ -370,7 +410,7 @@ export default function Manutencoes() {
 
       {tab === 'cronograma' && (
         <>
-          <div className="flex justify-between items-center print:hidden">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 print:hidden">
             <div className="flex items-center gap-4 bg-white p-3 rounded-xl border border-cream-200 shadow-sm">
               <div>
                 <p className="text-xs text-gray-500 uppercase font-bold">Total Previsto</p>
@@ -383,13 +423,22 @@ export default function Manutencoes() {
               </div>
             </div>
             
-            <div className="flex gap-2">
-              <button onClick={handlePrint} className="btn-secondary py-2 px-4 text-sm bg-white border-cream-300">
-                <Printer size={16} /> Gerar PDF / Relatório
+            <div className="flex flex-wrap items-center gap-2">
+              <button 
+                onClick={handleVerificarLembretes} 
+                disabled={isChecking}
+                className="btn-secondary py-2 px-3.5 text-xs bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 flex items-center gap-1.5 shadow-sm font-bold"
+                title="Verifica agendamentos de hoje e amanhã e envia lembretes automáticos"
+              >
+                <RefreshCw size={14} className={isChecking ? "animate-spin text-amber-600" : "text-amber-600"} />
+                {isChecking ? 'Verificando...' : 'Verificar Lembretes'}
+              </button>
+              <button onClick={handlePrint} className="btn-secondary py-2 px-3.5 text-xs bg-white border-cream-300 flex items-center gap-1.5">
+                <Printer size={14} /> Relatório PDF
               </button>
               {isAdminOrSindico && (
-                <button onClick={() => setModalManu({})} className="btn-primary py-2 px-4 text-sm">
-                  <Plus size={16} /> Agendar Manutenção
+                <button onClick={() => setModalManu({})} className="btn-primary py-2 px-4 text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                  <Plus size={15} /> Agendar Manutenção
                 </button>
               )}
             </div>
@@ -403,7 +452,7 @@ export default function Manutencoes() {
               </div>
             )}
             {viewManutencoes.map(m => (
-              <div key={m.id} className="card p-5 hover:border-brand-300 transition-all group flex flex-col justify-between">
+              <div key={m.id} className="card p-5 hover:border-brand-300 transition-all group flex flex-col justify-between shadow-sm">
                 <div>
                   <div className="flex justify-between items-start mb-3">
                     <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase border ${getStatusStyle(m.statusVisual)}`}>
@@ -411,8 +460,8 @@ export default function Manutencoes() {
                     </span>
                     {isAdminOrSindico && (
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => setModalManu(m)} className="text-gray-400 hover:text-brand-600"><Wrench size={14}/></button>
-                        <button onClick={() => deleteItem(m.id)} className="text-gray-400 hover:text-red-600"><Trash2 size={14}/></button>
+                        <button onClick={() => setModalManu(m)} className="text-gray-400 hover:text-brand-600" title="Editar"><Wrench size={14}/></button>
+                        <button onClick={() => { if (window.confirm(`Excluir manutenção "${m.titulo}"?`)) deleteItem(m.id) }} className="text-gray-400 hover:text-red-600" title="Excluir"><Trash2 size={14}/></button>
                       </div>
                     )}
                   </div>
@@ -441,6 +490,22 @@ export default function Manutencoes() {
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-500 flex items-center gap-1.5"><AlertCircle size={14}/> Custo Previsto</span>
                       <span className="font-semibold text-gray-700">R$ {Number(m.custoEstimado).toLocaleString('pt-BR', {minimumFractionDigits:2})}</span>
+                    </div>
+                  )}
+
+                  {/* Badges de Lembretes Automáticos */}
+                  {(m.notifD1 || m.notifD0) && (
+                    <div className="flex flex-col gap-1 mt-1 pt-2 border-t border-gray-200 text-[10px]">
+                      {m.notifD1 && (
+                        <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-semibold">
+                          <Check size={11} className="text-amber-600" /> Lembrete 1 dia antes enviado ({m.notifD1.split('-').reverse().join('/')})
+                        </span>
+                      )}
+                      {m.notifD0 && (
+                        <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-semibold">
+                          <Check size={11} className="text-emerald-600" /> Lembrete do dia enviado ({m.notifD0.split('-').reverse().join('/')})
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
