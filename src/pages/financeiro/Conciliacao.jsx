@@ -88,9 +88,10 @@ export default function Conciliacao({ lancamentos, setModalLanc, updateLancament
   const handleSincronizarGmail = async () => {
     setIsSyncingGmail(true)
     try {
-      const res = await fetch('/api/extrato/sincronizar-gmail', {
+      const res = await fetch('/api/extrato/processar', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sincronizar-gmail' })
       })
       const data = await res.json()
       if (data.success) {

@@ -1,7 +1,9 @@
 // api/extrato/processar.js
-// Endpoint seguro para processar extratos bancários OFX/CSV e efetuar conciliação automática
+// Endpoint unificado para processar extratos bancários OFX e sincronizar com Gmail (alphaadmsc@gmail.com)
 
 const admin = require('firebase-admin');
+const imaps = require('imap-simple');
+const simpleParser = require('mailparser').simpleParser;
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -15,7 +17,9 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// Helper para parsear arquivo OFX em texto
+const GMAIL_USER = 'alphaadmsc@gmail.com';
+const GMAIL_PASS = process.env.GMAIL_APP_PASSWORD || 'rurvepcoxkovmivxo8';
+
 function parseOFX(data) {
   const transactions = [];
   const stmtTrnRegex = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/g;
@@ -49,17 +53,219 @@ function parseOFX(data) {
   return transactions;
 }
 
+// Executa conciliação das transações no Firestore
+async function conciliarTransacoes(transactions, origem = 'OFX', condominio = 'Todos') {
+  const [boletosSnap, lancamentosSnap] = await Promise.all([
+    db.collection('boletos').where('status', '!=', 'Pago').get(),
+    db.collection('financeiro_lancamentos').get()
+  ]);
+
+  const boletosPendentes = boletosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const lancamentosExistentes = lancamentosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  let conciliadosCount = 0;
+  let despesasLancadas = 0;
+  const resultados = [];
+
+  for (const tx of transactions) {
+    const isCredit = tx.amount > 0;
+    const txValorAbs = Math.abs(tx.amount);
+
+    const jaExiste = lancamentosExistentes.some(l => 
+      (l.fitid && l.fitid === tx.fitid) ||
+      (l.data === tx.date && Math.abs(Number(l.valor) - txValorAbs) < 0.01 && l.descricao === tx.description)
+    );
+
+    if (jaExiste) {
+      resultados.push({ ...tx, status: 'Ja_Existente' });
+      continue;
+    }
+
+    if (isCredit) {
+      const boletoMatch = boletosPendentes.find(b => 
+        !b._conciliadoTemp &&
+        Math.abs(Number(b.valor) - txValorAbs) < 0.05
+      );
+
+      if (boletoMatch) {
+        boletoMatch._conciliadoTemp = true;
+
+        await db.collection('boletos').doc(boletoMatch.id).update({
+          status: 'Pago',
+          dataPagamento: tx.date || new Date().toISOString().split('T')[0],
+          metodoPagamento: 'Pix / Extrato Bancário',
+          fitid: tx.fitid
+        });
+
+        await db.collection('financeiro_lancamentos').add({
+          descricao: `Recebimento Cota: ${boletoMatch.morador || 'Morador'} - ${boletoMatch.unidade || boletoMatch.apt || ''} (${boletoMatch.condominio || 'Condomínio'})`,
+          tipo: 'Receita',
+          categoria: 'Taxa Condominial',
+          valor: txValorAbs,
+          data: tx.date || new Date().toISOString().split('T')[0],
+          status: 'Recebido',
+          condominio: boletoMatch.condominio || condominio || 'Todos',
+          fitid: tx.fitid,
+          origem,
+          _createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        conciliadosCount++;
+        resultados.push({ ...tx, status: 'Conciliado_Boleto', boleto: boletoMatch.morador });
+      } else {
+        await db.collection('financeiro_lancamentos').add({
+          descricao: tx.description || 'Receita Bancária / Pix Recebido',
+          tipo: 'Receita',
+          categoria: 'Outras Receitas',
+          valor: txValorAbs,
+          data: tx.date || new Date().toISOString().split('T')[0],
+          status: 'Recebido',
+          condominio: condominio || 'Todos',
+          fitid: tx.fitid,
+          origem,
+          _createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        conciliadosCount++;
+        resultados.push({ ...tx, status: 'Lancado_Receita_Avulsa' });
+      }
+    } else {
+      await db.collection('financeiro_lancamentos').add({
+        descricao: tx.description || 'Débito Bancário / Pagamento',
+        tipo: 'Despesa',
+        categoria: 'Despesas Operacionais',
+        valor: txValorAbs,
+        data: tx.date || new Date().toISOString().split('T')[0],
+        status: 'Pago',
+        condominio: condominio || 'Todos',
+        fitid: tx.fitid,
+        origem,
+        _createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      despesasLancadas++;
+      resultados.push({ ...tx, status: 'Lancado_Despesa' });
+    }
+  }
+
+  return { conciliadosCount, despesasLancadas, resultados };
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
-  try {
-    const { ofxText, ofxBase64, condominio = 'Todos', origem = 'Email alphaadmsc@gmail.com' } = req.body;
+  const { action, ofxText, ofxBase64, condominio = 'Todos' } = req.body || {};
 
+  // CASO 1: Ação de Sincronização direta com o Gmail
+  if (action === 'sincronizar-gmail' || (!ofxText && !ofxBase64)) {
+    let connection;
+    try {
+      const config = {
+        imap: {
+          user: GMAIL_USER,
+          password: GMAIL_PASS.replace(/\s+/g, ''),
+          host: 'imap.gmail.com',
+          port: 993,
+          tls: true,
+          authTimeout: 10000,
+          tlsOptions: { rejectUnauthorized: false }
+        }
+      };
+
+      connection = await imaps.connect(config);
+      await connection.openBox('INBOX');
+
+      const delay = 30 * 24 * 3600 * 1000;
+      const yesterday = new Date(Date.now() - delay);
+      const searchCriteria = [
+        ['SINCE', yesterday.toISOString().slice(0, 10)]
+      ];
+
+      const fetchOptions = {
+        bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE)', 'TEXT', ''],
+        struct: true
+      };
+
+      const messages = await connection.search(searchCriteria, fetchOptions);
+
+      let totalAnexosEncontrados = 0;
+      let totalConciliados = 0;
+      let totalDespesas = 0;
+      const extratosProcessados = [];
+
+      for (const item of messages) {
+        const all = item.parts.find(part => part.which === '');
+        if (!all || !all.body) continue;
+
+        const parsed = await simpleParser(all.body);
+        const subject = parsed.subject || '';
+        const from = parsed.from ? parsed.from.text : '';
+
+        if (parsed.attachments && parsed.attachments.length > 0) {
+          for (const att of parsed.attachments) {
+            const filename = (att.filename || '').toLowerCase();
+            if (filename.endsWith('.ofx') || filename.includes('extrato')) {
+              totalAnexosEncontrados++;
+              const ofxContent = att.content.toString('utf-8');
+              const txs = parseOFX(ofxContent);
+
+              if (txs.length > 0) {
+                const concResult = await conciliarTransacoes(txs, `Gmail (${filename})`, condominio);
+                totalConciliados += concResult.conciliadosCount;
+                totalDespesas += concResult.despesasLancadas;
+
+                extratosProcessados.push({
+                  arquivo: filename,
+                  assunto: subject,
+                  remetente: from,
+                  transacoes: txs.length,
+                  conciliados: concResult.conciliadosCount,
+                  despesas: concResult.despesasLancadas
+                });
+              }
+            }
+          }
+        }
+      }
+
+      connection.end();
+
+      if (totalConciliados > 0 || totalDespesas > 0) {
+        await db.collection('notificacoes').add({
+          titulo: '📬 Robô do Gmail: Extratos Conciliados',
+          text: `🎉 Sincronização do Gmail (${GMAIL_USER}) concluiu com ${totalConciliados} boletos conciliados e ${totalDespesas} despesas registradas.`,
+          time: new Date().toISOString(),
+          tipo: 'conciliacao_gmail',
+          condominio: 'Todos',
+          lida: false,
+          link: '/financeiro',
+          _createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Sincronização concluída! ${messages.length} e-mails verificados, ${totalAnexosEncontrados} extratos OFX encontrados. ${totalConciliados} recebimentos conciliados e ${totalDespesas} despesas lançadas.`,
+        emailsVerificados: messages.length,
+        anexosEncontrados: totalAnexosEncontrados,
+        totalConciliados,
+        totalDespesas,
+        extratosProcessados
+      });
+    } catch (err) {
+      if (connection) connection.end();
+      console.error('Erro na sincronização do Gmail:', err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  // CASO 2: Processamento de texto/base64 de OFX direto
+  try {
     let rawContent = ofxText;
     if (!rawContent && ofxBase64) {
       rawContent = Buffer.from(ofxBase64, 'base64').toString('utf-8');
@@ -74,121 +280,11 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Nenhuma transação válida encontrada no arquivo OFX.' });
     }
 
-    // 1. Busca boletos em aberto e lançamentos existentes
-    const [boletosSnap, lancamentosSnap] = await Promise.all([
-      db.collection('boletos').where('status', '!=', 'Pago').get(),
-      db.collection('financeiro_lancamentos').get()
-    ]);
+    const { conciliadosCount, despesasLancadas, resultados } = await conciliarTransacoes(transactions, 'Extrato OFX Manual', condominio);
 
-    const boletosPendentes = boletosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    const lancamentosExistentes = lancamentosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-    let conciliadosCount = 0;
-    let despesasLancadas = 0;
-    const resultados = [];
-
-    for (const tx of transactions) {
-      const isCredit = tx.amount > 0;
-      const txValorAbs = Math.abs(tx.amount);
-
-      // Verifica se essa transação já foi processada anteriormente pelo fitid ou descrição/valor/data
-      const jaExiste = lancamentosExistentes.some(l => 
-        (l.fitid && l.fitid === tx.fitid) ||
-        (l.data === tx.date && Math.abs(Number(l.valor) - txValorAbs) < 0.01 && l.descricao === tx.description)
-      );
-
-      if (jaExiste) {
-        resultados.push({ ...tx, status: 'Ja_Existente' });
-        continue;
-      }
-
-      if (isCredit) {
-        // Tenta encontrar boleto pendente compatível por valor
-        const boletoMatch = boletosPendentes.find(b => 
-          !b._conciliadoTemp &&
-          Math.abs(Number(b.valor) - txValorAbs) < 0.05
-        );
-
-        if (boletoMatch) {
-          boletoMatch._conciliadoTemp = true; // evita dar baixa no mesmo boleto duas vezes
-
-          // 1. Atualiza boleto para Pago
-          await db.collection('boletos').doc(boletoMatch.id).update({
-            status: 'Pago',
-            dataPagamento: tx.date || new Date().toISOString().split('T')[0],
-            metodoPagamento: 'Pix/Extrato Automático',
-            fitid: tx.fitid
-          });
-
-          // 2. Cria lançamento financeiro de Receita
-          await db.collection('financeiro_lancamentos').add({
-            descricao: `Recebimento Cota: ${boletoMatch.morador || 'Morador'} - ${boletoMatch.unidade || boletoMatch.apt || ''} (${boletoMatch.condominio || 'Condomínio'})`,
-            tipo: 'Receita',
-            categoria: 'Taxa Condominial',
-            valor: txValorAbs,
-            data: tx.date || new Date().toISOString().split('T')[0],
-            status: 'Recebido',
-            condominio: boletoMatch.condominio || condominio || 'Todos',
-            fitid: tx.fitid,
-            origem: 'Conciliação Automática OFX',
-            _createdAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-
-          conciliadosCount++;
-          resultados.push({ ...tx, status: 'Conciliado_Boleto', boleto: boletoMatch.morador });
-        } else {
-          // Receita avulsa não vinculada a boleto
-          await db.collection('financeiro_lancamentos').add({
-            descricao: tx.description || 'Receita Bancária / Pix Recebido',
-            tipo: 'Receita',
-            categoria: 'Outras Receitas',
-            valor: txValorAbs,
-            data: tx.date || new Date().toISOString().split('T')[0],
-            status: 'Recebido',
-            condominio: condominio || 'Todos',
-            fitid: tx.fitid,
-            origem: 'Extrato OFX Automático',
-            _createdAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-
-          conciliadosCount++;
-          resultados.push({ ...tx, status: 'Lancado_Receita_Avulsa' });
-        }
-      } else {
-        // Débito / Despesa bancária
-        await db.collection('financeiro_lancamentos').add({
-          descricao: tx.description || 'Débito Bancário / Pagamento',
-          tipo: 'Despesa',
-          categoria: 'Despesas Operacionais',
-          valor: txValorAbs,
-          data: tx.date || new Date().toISOString().split('T')[0],
-          status: 'Pago',
-          condominio: condominio || 'Todos',
-          fitid: tx.fitid,
-          origem: 'Extrato OFX Automático',
-          _createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        despesasLancadas++;
-        resultados.push({ ...tx, status: 'Lancado_Despesa' });
-      }
-    }
-
-    // Grava registro no histórico de extratos
-    await db.collection('extratos_historico').add({
-      dataProcessamento: new Date().toISOString(),
-      origem,
-      totalTransacoes: transactions.length,
-      conciliados: conciliadosCount,
-      despesas: despesasLancadas,
-      condominio,
-      _createdAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    // Grava notificação no Sininho
     await db.collection('notificacoes').add({
       titulo: '📊 Extrato Bancário Conciliado',
-      text: `🎉 Extrato (${origem}) processado: ${conciliadosCount} boletos/receitas conciliados e ${despesasLancadas} despesas lançadas.`,
+      text: `🎉 Extrato processado: ${conciliadosCount} boletos/receitas conciliados e ${despesasLancadas} despesas lançadas.`,
       time: new Date().toISOString(),
       tipo: 'conciliacao_extrato',
       condominio: condominio || 'Todos',
@@ -205,7 +301,6 @@ module.exports = async (req, res) => {
       despesasLancadas,
       resultados
     });
-
   } catch (error) {
     console.error('Erro ao processar extrato OFX:', error);
     return res.status(500).json({ success: false, error: error.message });
