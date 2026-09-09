@@ -41,6 +41,7 @@ export function getDestinoNotificacao(n) {
   const t = (n.tipo || '').toLowerCase()
   const text = (n.text || n.titulo || n.mensagem || '').toLowerCase()
 
+  if (t === 'manutencao' || text.includes('manutenç') || text.includes('manutenc') || text.includes('visita técnica') || text.includes('visita tecnica') || text.includes('dedetiza') || text.includes('extintor') || text.includes('caixa d')) return '/manutencoes'
   if (t === 'ocorrencia' || text.includes('ocorrência') || text.includes('ocorrencia') || text.includes('solicitaç') || text.includes('chamado')) {
     return '/ocorrencias'
   }

@@ -1,3 +1,5 @@
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '../firebase'
 import React, { useState, useEffect } from 'react'
 import { Wrench, Plus, CheckCircle, Clock, Trash2, Calendar, AlertCircle, ShoppingBag, ExternalLink, Briefcase, FileText, Printer } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
@@ -195,6 +197,7 @@ export default function Manutencoes() {
   const { items: demandas, addItem: addDemanda, updateItem: updateDemanda, deleteItem: delDemanda } = useFirestore('demandas_cotacao')
   const { items: propostas, deleteItem: delProposta } = useFirestore('propostas_fornecedores')
   const { items: condominios } = useFirestore('condominios')
+  const { items: allUsuarios } = useFirestore('usuarios')
   
   const [modalManu, setModalManu] = useState(null)
   const [modalDemanda, setModalDemanda] = useState(null)
@@ -219,9 +222,79 @@ export default function Manutencoes() {
     }).sort((a,b) => new Date(a.dataPrevista) - new Date(b.dataPrevista))
 
   const handleSaveManu = async (form) => {
-    if (form.id) await updateItem(form.id, form)
-    else await addItem(form)
-    setModalManu(null)
+    try {
+      let savedDoc = null
+      if (form.id) {
+        await updateItem(form.id, form)
+        savedDoc = form
+      } else {
+        const docRef = await addItem(form)
+        savedDoc = { ...form, id: docRef?.id }
+      }
+
+      // 1. Gravar notificação no Sininho (Header)
+      const dataFmt = form.dataPrevista ? (form.dataPrevista.includes('-') ? form.dataPrevista.split('-').reverse().join('/') : form.dataPrevista) : 'A definir'
+      const textoNotif = `🔧 MANUTENÇÃO AGENDADA: "${form.titulo}" no ${form.condominio || 'Condomínio'} para ${dataFmt} (Prestador: ${form.fornecedor || 'A definir'})`
+      
+      await addDoc(collection(db, 'notificacoes'), {
+        text: textoNotif,
+        titulo: `🔧 Manutenção: ${form.titulo}`,
+        time: new Date().toISOString(),
+        tipo: 'manutencao',
+        condominio: form.condominio || 'Todos',
+        lida: false,
+        link: '/manutencoes',
+        _createdAt: serverTimestamp()
+      })
+
+      // 2. Disparo para os números de WhatsApp dos Administradores e Síndico
+      const telefonesDestino = new Set()
+
+      // Número oficial padrão da Alpha
+      telefonesDestino.add('558396885931')
+
+      // Busca administradores e síndicos cadastrados no sistema
+      if (allUsuarios && allUsuarios.length > 0) {
+        allUsuarios.forEach(u => {
+          const isAdm = u.role === 'Administrador' || u.role === 'Financeiro'
+          const isSindicoDesteCondo = u.role === 'Síndico' && (!form.condominio || u.condominio === form.condominio)
+          
+          if (isAdm || isSindicoDesteCondo) {
+            const rawTel = u.tel || u.telefone || u.whatsapp || u.celular || ''
+            const cleanTel = String(rawTel).replace(/\D/g, '')
+            if (cleanTel.length >= 8) {
+              telefonesDestino.add(cleanTel.length <= 11 ? `55${cleanTel}` : cleanTel)
+            }
+          }
+        })
+      }
+
+      // Monta mensagem de WhatsApp
+      const custoFmt = form.custoEstimado ? Number(form.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'
+      const msgWhats = `🔔 *NOVA MANUTENÇÃO AGENDADA - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${form.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${form.titulo}\n📅 *Data Prevista:* ${dataFmt}\n👷 *Prestador / Empresa:* ${form.fornecedor || 'Não informado'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n🔄 *Recorrência:* ${form.recorrencia || 'Nenhuma'}\n📌 *Status:* ${form.status || 'Agendada'}${form.descricao ? `\n📝 *Observações:* ${form.descricao}` : ''}\n\n🔗 *Acesse o cronograma completo:*\nhttps://alpha-solucoes-condominiais.vercel.app/manutencoes`
+
+      // Dispara para cada número via API
+      for (const numero of telefonesDestino) {
+        try {
+          fetch('/api/whatsapp-send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              number: numero,
+              text: msgWhats,
+              instance: 'InstanciaAlpha'
+            })
+          }).catch(e => console.warn('Erro envio WhatsApp manutenção:', e))
+        } catch(e) {}
+      }
+
+      alert(`🎉 Manutenção salva com sucesso!\n\n🔔 Notificação adicionada no sininho.\n📲 Disparo de WhatsApp enviado para os administradores.`)
+    } catch(err) {
+      console.error('Erro ao salvar manutenção:', err)
+      alert('Erro ao salvar: ' + err.message)
+    } finally {
+      setModalManu(null)
+    }
   }
 
   const handleSaveDemanda = async (form) => {

@@ -858,42 +858,73 @@ export default function Dashboard() {
   const statsManutencoes = useMemo(() => {
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
+    const hojeStr = hoje.toISOString().split('T')[0]
 
     let pendentes = 0
     let emAndamento = 0
     let concluidas = 0
     let vencendo30Dias = 0
+    let totalCustoPrevisto = 0
     let atrasadas = []
     let proximas = []
+    let todasAtivas = []
 
     manFiltradas.forEach(m => {
-      const st = (m.status || '').toLowerCase()
-      if (st.includes('pendente') || st.includes('abert')) pendentes++
-      if (st.includes('andamento') || st.includes('execu')) emAndamento++
-      if (st.includes('conclu') || st.includes('finaliz')) concluidas++
+      const st = (m.status || 'Agendada').toLowerCase()
+      const val = parseFloat(m.custoEstimado || m.custo || m.valor || 0) || 0
+      totalCustoPrevisto += val
 
-      const dStr = m.proxima_data || m.data || m.vencimento || ''
+      if (st.includes('conclu') || st.includes('finaliz')) {
+        concluidas++
+      } else if (st.includes('andamento') || st.includes('execu')) {
+        emAndamento++
+      } else {
+        pendentes++
+      }
+
+      const dStr = m.dataPrevista || m.proxima_data || m.data || m.vencimento || ''
+      let isAtrasada = false
+      let dias = 0
+
       if (dStr) {
         try {
           const d = parseISO(dStr)
           const diff = differenceInDays(d, hoje)
-          if (diff < 0) {
-            atrasadas.push({ ...m, dias: Math.abs(diff) })
-          } else if (diff <= 30) {
-            vencendo30Dias++
-            proximas.push({ ...m, dias: diff })
+          dias = diff
+
+          if (st !== 'concluída' && st !== 'concluida') {
+            if (diff < 0) {
+              isAtrasada = true
+              atrasadas.push({ ...m, dias: Math.abs(diff), dataFormatada: format(d, 'dd/MM/yyyy') })
+            } else {
+              if (diff <= 30) vencendo30Dias++
+              proximas.push({ ...m, dias: diff, dataFormatada: format(d, 'dd/MM/yyyy') })
+            }
           }
         } catch(e) {}
       }
+
+      if (st !== 'concluída' && st !== 'concluida') {
+        todasAtivas.push({
+          ...m,
+          isAtrasada,
+          dias,
+          statusVisual: isAtrasada ? 'Atrasada' : (m.status || 'Agendada')
+        })
+      }
     })
+
+    todasAtivas.sort((a, b) => new Date(a.dataPrevista || '9999') - new Date(b.dataPrevista || '9999'))
 
     return {
       pendentes,
       emAndamento,
       concluidas,
       vencendo30Dias,
-      atrasadas: atrasadas.slice(0, 2),
-      proximas: proximas.slice(0, 2)
+      totalCustoPrevisto,
+      todasAtivas: todasAtivas.slice(0, 6),
+      atrasadas,
+      proximas
     }
   }, [manFiltradas])
 
@@ -1567,6 +1598,126 @@ export default function Dashboard() {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* SEÇÃO ESPECIAL: CRONOGRAMA DE MANUTENÇÕES PREVENTIVAS E VISITAS TÉCNICAS */}
+      <div className="bg-white p-6 rounded-3xl border border-pale-300 shadow-sm flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+              <Wrench size={22} />
+            </div>
+            <div>
+              <h3 className="font-black text-gray-900 text-lg">
+                Cronograma de Manutenções Preventivas &amp; Visitas Técnicas
+              </h3>
+              <p className="text-xs text-gray-500">
+                Acompanhamento operacional dos condomínios • Visitas, dedetizações, extintores e inspeções
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/manutencoes')}
+              className="btn-secondary text-xs font-black py-2 px-3 flex items-center gap-1.5 bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 shadow-sm"
+            >
+              <Plus size={14} /> + Agendar Manutenção
+            </button>
+            <button
+              onClick={() => navigate('/manutencoes')}
+              className="btn-primary text-xs font-black py-2 px-3 flex items-center gap-1 bg-brand-600 hover:bg-brand-500"
+            >
+              Ver Todas ({manFiltradas.length}) →
+            </button>
+          </div>
+        </div>
+
+        {/* Indicadores Rápidos */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-slate-50 p-3 rounded-xl border border-gray-200">
+            <span className="text-[10px] font-bold text-gray-500 uppercase">Agendadas / Pendentes</span>
+            <p className="text-xl font-black text-blue-700 mt-0.5">{statsManutencoes.pendentes}</p>
+          </div>
+          <div className="bg-rose-50 p-3 rounded-xl border border-rose-200">
+            <span className="text-[10px] font-bold text-rose-800 uppercase">Atrasadas / Atenção</span>
+            <p className="text-xl font-black text-rose-600 mt-0.5">{statsManutencoes.atrasadas.length}</p>
+          </div>
+          <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
+            <span className="text-[10px] font-bold text-emerald-800 uppercase">Concluídas</span>
+            <p className="text-xl font-black text-emerald-700 mt-0.5">{statsManutencoes.concluidas}</p>
+          </div>
+          <div className="bg-purple-50 p-3 rounded-xl border border-purple-200">
+            <span className="text-[10px] font-bold text-purple-800 uppercase">Custo Total Previsto</span>
+            <p className="text-xl font-black text-purple-700 mt-0.5">R$ {statsManutencoes.totalCustoPrevisto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+          </div>
+        </div>
+
+        {/* Cards das Manutenções Agendadas */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-1">
+          {statsManutencoes.todasAtivas.length === 0 ? (
+            <div className="col-span-full py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-gray-300 text-gray-400 text-xs">
+              <CheckCircle2 size={32} className="mx-auto text-emerald-500 mb-2" />
+              <p className="font-bold text-gray-700">Nenhuma manutenção pendente no momento.</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">Clique no botão acima para agendar uma nova visita técnica ou manutenção preventiva.</p>
+            </div>
+          ) : (
+            statsManutencoes.todasAtivas.map(m => (
+              <div 
+                key={m.id}
+                onClick={() => navigate('/manutencoes')}
+                className="p-4 rounded-2xl border transition-all hover:shadow-md cursor-pointer flex flex-col justify-between bg-white hover:border-brand-400 border-gray-200"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase border ${
+                      m.statusVisual === 'Atrasada' 
+                        ? 'bg-rose-100 text-rose-800 border-rose-300' 
+                        : m.statusVisual === 'Em Andamento'
+                          ? 'bg-amber-100 text-amber-800 border-amber-300'
+                          : 'bg-blue-100 text-blue-800 border-blue-300'
+                    }`}>
+                      {m.statusVisual}
+                    </span>
+                    {m.recorrencia && m.recorrencia !== 'Nenhuma' && (
+                      <span className="text-[9px] font-bold text-gray-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                        🔄 {m.recorrencia}
+                      </span>
+                    )}
+                  </div>
+
+                  <h4 className="font-black text-slate-900 text-sm leading-snug">
+                    {m.titulo}
+                  </h4>
+                  {m.fornecedor && (
+                    <p className="text-xs text-gray-600 mt-0.5 font-medium">
+                      Prestador: <span className="text-gray-800 font-bold">{m.fornecedor}</span>
+                    </p>
+                  )}
+
+                  {m.condominio && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md mt-2">
+                      <Building2 size={11} /> {m.condominio}
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1 font-bold text-slate-700">
+                    <Calendar size={13} className={m.isAtrasada ? 'text-rose-600' : 'text-slate-400'} />
+                    <span className={m.isAtrasada ? 'text-rose-600 font-black' : ''}>
+                      {m.dataPrevista ? (m.dataPrevista.includes('-') ? m.dataPrevista.split('-').reverse().join('/') : m.dataPrevista) : 'Sem data'}
+                    </span>
+                  </div>
+                  {m.custoEstimado && Number(m.custoEstimado) > 0 && (
+                    <span className="font-mono font-bold text-emerald-700">
+                      R$ {Number(m.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
