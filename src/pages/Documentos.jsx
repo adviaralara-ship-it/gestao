@@ -6,8 +6,9 @@ import {
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
-import { storage } from '../firebase'
+import { storage, db } from '../firebase'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { converterParaBlobUrl, visualizarDocumento, baixarDocumento } from '../utils/fileViewer'
 
 const categories = [
@@ -110,6 +111,7 @@ function ModalDocumento({ data, onClose, onSave, condominios }) {
   const [nome, setNome] = useState(data?.nome || '')
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState('')
+  const [extrairBoletos, setExtrairBoletos] = useState(true)
   const inputRef = useRef()
 
   const handleFile = (e) => {
@@ -152,7 +154,12 @@ function ModalDocumento({ data, onClose, onSave, condominios }) {
           const storageRef = ref(storage, storagePath)
           
           setUploadProgress('Enviando para o Firebase Storage...')
-          const snapshot = await uploadBytes(storageRef, arquivo)
+          
+          // Adiciona um timeout de 8 segundos para evitar travamento infinito se o Storage não estiver ativo
+          const uploadPromise = uploadBytes(storageRef, arquivo);
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout do Firebase Storage')), 8000));
+          
+          const snapshot = await Promise.race([uploadPromise, timeoutPromise]);
           fileUrl = await getDownloadURL(snapshot.ref)
         } catch (storageErr) {
           console.warn("Storage falhou ou não configurado, tentando fallback:", storageErr)
@@ -181,6 +188,59 @@ function ModalDocumento({ data, onClose, onSave, condominios }) {
         url: fileUrl,
         condominio: condominio || 'Todos'
       })
+
+      // Se checkbox marcado e é PDF, tenta extrair boletos automaticamente
+      if (extrairBoletos && arquivo && fileType === 'pdf' && !data) {
+        try {
+          setUploadProgress('🤖 Analisando boletos no documento...')
+          const reader = new FileReader()
+          const base64 = await new Promise((resolve, reject) => {
+            reader.onload = e => resolve(e.target.result)
+            reader.onerror = reject
+            reader.readAsDataURL(arquivo)
+          })
+          
+          const res = await fetch('/api/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file: base64, mimeType: arquivo.type, type: 'despesa' })
+          })
+          const ocrData = await res.json()
+
+          if (ocrData.success && ocrData.data) {
+            let boletos = ocrData.data
+            if (!Array.isArray(boletos)) boletos = [boletos]
+            boletos = boletos.filter(b => b.valor && b.vencimento)
+
+            if (boletos.length > 0) {
+              for (const b of boletos) {
+                await addDoc(collection(db, 'financeiro_lancamentos'), {
+                  descricao: b.fornecedor ? `${b.descricao || nome.trim()} - ${b.fornecedor}` : (b.descricao || nome.trim()),
+                  tipo: 'Despesa',
+                  categoria: b.categoria || categoria || 'Seguro / Contrato',
+                  valor: String(b.valor),
+                  data: b.vencimento,
+                  status: 'Pendente',
+                  condominio: condominio || 'Todos',
+                  linhaDigitavel: b.linhaDigitavel || '',
+                  pix: b.pix || '',
+                  arquivoUrl: fileUrl,
+                  origem: `Documento: ${nome.trim()}`,
+                  _createdAt: serverTimestamp()
+                })
+              }
+              alert(`✅ Documento salvo e ${boletos.length} boleto(s)/parcela(s) lançados automaticamente em Contas a Pagar!`)
+            } else {
+              alert('✅ Documento salvo! Nenhum boleto com data/valor detectado no PDF.')
+            }
+          } else {
+            alert('✅ Documento salvo na nuvem!')
+          }
+        } catch (extractErr) {
+          console.warn('Extração de boletos falhou (não crítico):', extractErr)
+          alert('✅ Documento salvo! Não foi possível extrair boletos automaticamente desta vez.')
+        }
+      }
 
       onClose()
     } catch (err) {
@@ -320,6 +380,26 @@ function ModalDocumento({ data, onClose, onSave, condominios }) {
               />
             </div>
           </div>
+
+          {/* Checkbox: Extrair boletos automaticamente */}
+          {!data && arquivo && arquivo.type === 'application/pdf' && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5">
+              <input
+                type="checkbox"
+                id="extrair-boletos"
+                checked={extrairBoletos}
+                onChange={e => setExtrairBoletos(e.target.checked)}
+                className="w-4 h-4 mt-0.5 text-amber-600 rounded border-gray-300 cursor-pointer"
+                disabled={uploading}
+              />
+              <label htmlFor="extrair-boletos" className="text-xs font-bold text-amber-900 cursor-pointer leading-tight">
+                🤖 Extrair boletos automaticamente e lançar em <span className="text-brand-700">Contas a Pagar</span>
+                <span className="block font-normal text-amber-700 mt-0.5">
+                  A IA vai ler o PDF e criar uma conta a pagar para cada parcela/boleto encontrado, com data e código de barras.
+                </span>
+              </label>
+            </div>
+          )}
 
           {uploading && (
             <div className="p-3 bg-brand-50 border border-brand-200 rounded-xl flex items-center gap-2 text-brand-800 font-bold text-xs animate-pulse">

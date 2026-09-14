@@ -48,6 +48,7 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
   const [isExtracting, setIsExtracting] = useState(false)
   const [uploadingStorage, setUploadingStorage] = useState(false)
   const [copiado, setCopiado] = useState(false)
+  const [loteMultiboletos, setLoteMultiboletos] = useState(null)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -71,6 +72,11 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
       const reader = new FileReader()
       reader.onload = async (ev) => {
         const base64Data = ev.target.result
+        // Fallback imediato: se o upload no storage falhou, salva o Base64 garantindo que o PDF fique anexado
+        setForm(prev => {
+          if (!prev.arquivoUrl) return { ...prev, arquivoUrl: base64Data }
+          return prev
+        })
         try {
           const res = await fetch('/api/extract', {
             method: 'POST',
@@ -79,14 +85,25 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
           })
           const ocrData = await res.json()
           if (ocrData.success && ocrData.data) {
-            const d = ocrData.data
-            if (d.descricao) set('descricao', d.fornecedor ? `${d.descricao} - ${d.fornecedor}` : d.descricao)
-            if (d.valor) set('valor', String(d.valor))
-            if (d.vencimento) set('data', d.vencimento)
-            if (d.categoria && !form.categoria) set('categoria', d.categoria)
-            if (d.linhaDigitavel) set('linhaDigitavel', d.linhaDigitavel)
-            if (d.pix) set('pix', d.pix)
-            alert('✓ Dados e código do boleto extraídos automaticamente com Inteligência Artificial!')
+            let dataArr = ocrData.data;
+            if (!Array.isArray(dataArr)) dataArr = [dataArr];
+            
+            if (dataArr.length > 0) {
+              const first = dataArr[0];
+              if (first.descricao) set('descricao', first.fornecedor ? `${first.descricao} - ${first.fornecedor}` : first.descricao);
+              if (first.valor) set('valor', String(first.valor));
+              if (first.vencimento) set('data', first.vencimento);
+              if (first.categoria && !form.categoria) set('categoria', first.categoria);
+              if (first.linhaDigitavel) set('linhaDigitavel', first.linhaDigitavel);
+              if (first.pix) set('pix', first.pix);
+              
+              if (dataArr.length > 1) {
+                setLoteMultiboletos(dataArr);
+                alert(`✓ Encontramos ${dataArr.length} boletos/parcelas no arquivo! Configure os dados gerais (condomínio, tipo) e clique em "Salvar Lote" para cadastrar todos.`);
+              } else {
+                alert('✓ Dados e código do boleto extraídos automaticamente com Inteligência Artificial!');
+              }
+            }
           }
         } catch(err) {
           console.error("Erro na extração IA:", err)
@@ -216,10 +233,40 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
               <label className="label">Categoria</label>
               <input 
                 className="input" 
+                list="categorias-sugestoes"
                 value={form.categoria} 
                 onChange={e => set('categoria', e.target.value)} 
-                placeholder="Ex: Honorários, Seguro, Equipe, Tecnologia..." 
+                placeholder="Ex: Manutenção Preventiva, Visita Técnica, Honorários..." 
               />
+              <datalist id="categorias-sugestoes">
+                <option value="Manutenção Preventiva" />
+                <option value="Visita Técnica" />
+                <option value="Manutenção Corretiva" />
+                <option value="Honorários Alpha" />
+                <option value="Equipe / Salários" />
+                <option value="Seguro Predial" />
+                <option value="Limpeza & Conservação" />
+                <option value="Tecnologia & Softwares" />
+                <option value="Tarifa Bancária" />
+                <option value="Água & Saneamento" />
+                <option value="Energia Elétrica" />
+              </datalist>
+              <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                {['Manutenção Preventiva', 'Visita Técnica', 'Manutenção Corretiva'].map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => set('categoria', cat)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                      form.categoria === cat 
+                        ? 'bg-brand-600 text-white border-brand-600 shadow-sm' 
+                        : 'bg-cream-50 text-gray-600 border-cream-300 hover:bg-cream-100'
+                    }`}
+                  >
+                    {cat === 'Manutenção Preventiva' ? '🔧 Preventiva' : cat === 'Visita Técnica' ? '📋 Visita Técnica' : '🚨 Corretiva'}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -279,39 +326,92 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
                 placeholder="Chave PIX do fornecedor ou código Copia e Cola" 
               />
             </div>
+
+            {/* Edição de Parcela de Grupo Existente */}
+            {data && data.grupoParcelaId && (
+              <div className="sm:col-span-2 bg-blue-50 border border-blue-200 p-3.5 rounded-xl flex flex-col gap-2">
+                <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                  📦 Este lançamento é a Parcela {data.numeroParcela || '1'} de {data.totalParcelas || '—'}
+                </span>
+                <label className="flex items-center gap-2 text-xs font-semibold text-blue-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.atualizarGrupo)}
+                    onChange={e => set('atualizarGrupo', e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                  />
+                  Aplicar novo valor/categoria a todas as parcelas pendentes deste parcelamento
+                </label>
+                <p className="text-[10px] text-blue-600">
+                  Desmarcado: altera somente esta parcela individual sem duplicar nem alterar as demais.
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* RECORRÊNCIA AUTOMÁTICA */}
+          {/* PARCELAMENTO / RECORRÊNCIA FLEXÍVEL (LANÇAMENTO NOVO) */}
           {!data && (
-            <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl">
-              <label className="flex items-center gap-2 text-xs font-black text-amber-950 cursor-pointer mb-2">
+            <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl flex flex-col gap-3">
+              <label className="flex items-center gap-2 text-xs font-black text-amber-950 cursor-pointer">
                 <input 
                   type="checkbox" 
-                  checked={form.recorrente} 
-                  onChange={e => set('recorrente', e.target.checked)} 
+                  checked={Boolean(form.parcelado || form.recorrente)} 
+                  onChange={e => {
+                    const checked = e.target.checked
+                    setForm(f => ({ ...f, parcelado: checked, recorrente: checked }))
+                  }} 
                   className="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500 cursor-pointer" 
                 />
-                <Repeat size={15} className="text-amber-700" /> Repetir este lançamento nos próximos meses automaticamente?
+                <Repeat size={15} className="text-amber-700" /> Parcelar ou Repetir este lançamento nos próximos meses?
               </label>
-              {form.recorrente && (
-                <div className="mt-2 flex items-center gap-3">
-                  <div>
-                    <label className="label text-[11px] text-amber-900">Qtd de Meses</label>
-                    <select 
-                      className="input py-1.5 text-xs font-bold bg-white max-w-[160px]" 
-                      value={form.qtdMeses || '12'} 
-                      onChange={e => set('qtdMeses', e.target.value)}
-                    >
-                      <option value="2">2 meses</option>
-                      <option value="3">3 meses (Trimestral)</option>
-                      <option value="6">6 meses (Semestral)</option>
-                      <option value="12">12 meses (Anual)</option>
-                      <option value="24">24 meses (2 anos)</option>
-                    </select>
+
+              {(form.parcelado || form.recorrente) && (
+                <div className="flex flex-col gap-3 bg-white p-3.5 rounded-xl border border-amber-200 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="label text-[11px] font-bold text-gray-700">Quantidade de Parcelas (Meses)</label>
+                      <input
+                        type="number"
+                        min="2"
+                        max="60"
+                        className="input py-1.5 font-bold"
+                        value={form.qtdParcelas || form.qtdMeses || '2'}
+                        onChange={e => setForm(f => ({ ...f, qtdParcelas: e.target.value, qtdMeses: e.target.value }))}
+                        placeholder="Ex: 2, 3, 5, 10, 12..."
+                      />
+                    </div>
+                    <div>
+                      <label className="label text-[11px] font-bold text-gray-700">Como Calcular o Valor?</label>
+                      <select
+                        className="input py-1.5 font-bold"
+                        value={form.modoParcelas || 'dividir'}
+                        onChange={e => set('modoParcelas', e.target.value)}
+                      >
+                        <option value="dividir">Dividir o valor total digitado entre as parcelas</option>
+                        <option value="repetir">Repetir o valor digitado em cada mês</option>
+                      </select>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-amber-800 font-medium leading-tight">
-                    O sistema agendará automaticamente os lançamentos dos próximos meses mantendo o mesmo valor e comprovante.
-                  </p>
+
+                  {/* Resumo do cálculo em tempo real */}
+                  {(() => {
+                    const q = Math.max(2, Number(form.qtdParcelas || form.qtdMeses || 2))
+                    const valLimpo = typeof form.valor === 'number' ? form.valor : (Number(String(form.valor || '0').replace(/\./g, '').replace(',', '.')) || 0)
+                    const valPorParcela = form.modoParcelas === 'repetir' ? valLimpo : (valLimpo / q)
+                    const totalCalculado = form.modoParcelas === 'repetir' ? (valLimpo * q) : valLimpo
+                    return (
+                      <div className="p-2.5 bg-amber-50 rounded-lg border border-amber-200/80 text-[11px] text-amber-900 font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1">
+                        <span>
+                          {form.modoParcelas === 'repetir' 
+                            ? `Serão lançadas ${q} parcelas de R$ ${valPorParcela.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} cada.`
+                            : `Valor total R$ ${totalCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} dividido em ${q} parcelas de R$ ${valPorParcela.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`}
+                        </span>
+                        <span className="text-[10px] text-amber-800 font-black">
+                          Total: R$ {totalCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -326,11 +426,15 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
                 alert('Preencha ao menos a Descrição e o Valor do lançamento.')
                 return;
               }
-              onSave(form) 
+              if (loteMultiboletos && loteMultiboletos.length > 1) {
+                onSave({ ...form, loteMultiboletos })
+              } else {
+                onSave(form)
+              }
             }}
             className="btn-primary"
           >
-            {data ? 'Atualizar Lançamento' : 'Salvar Lançamento'}
+            {data ? 'Atualizar Lançamento' : (loteMultiboletos && loteMultiboletos.length > 1 ? `Salvar Lote (${loteMultiboletos.length})` : 'Salvar Lançamento')}
           </button>
         </div>
       </div>
@@ -396,28 +500,77 @@ export default function Financeiro() {
   const handleSaveLancamento = async (form) => {
     try {
       if (modalLanc && modalLanc.id) {
-        await updateLancamento(modalLanc.id, form)
-        await registrarLogAuditoria(user, 'Edição de Lançamento', `Editou o lançamento ${form.descricao}`)
+        if (form.atualizarGrupo && form.grupoParcelaId) {
+          const parcelasDoGrupo = allLancamentos.filter(l => l.grupoParcelaId === form.grupoParcelaId)
+          for (const p of parcelasDoGrupo) {
+            if (p.id === modalLanc.id) {
+              await updateLancamento(modalLanc.id, form)
+            } else if (p.status !== 'Pago') {
+              await updateLancamento(p.id, {
+                valor: form.valor,
+                categoria: form.categoria || p.categoria,
+                fornecedor: form.fornecedor || p.fornecedor,
+                condominio: form.condominio || p.condominio,
+                tipo: form.tipo || p.tipo,
+                conta: form.conta || p.conta,
+                observacao: form.observacao || p.observacao
+              })
+            }
+          }
+          await registrarLogAuditoria(user, 'Edição de Parcelas em Grupo', `Atualizou o grupo de parcelas do lançamento ${form.descricao}`)
+        } else {
+          await updateLancamento(modalLanc.id, form)
+          await registrarLogAuditoria(user, 'Edição de Lançamento', `Editou o lançamento ${form.descricao}`)
+        }
       } else {
-        if (form.recorrente && form.qtdMeses && Number(form.qtdMeses) > 1) {
-          const totalMeses = Math.min(Number(form.qtdMeses), 60)
+        if (form.loteMultiboletos && form.loteMultiboletos.length > 1) {
+          for (let i = 0; i < form.loteMultiboletos.length; i++) {
+            const b = form.loteMultiboletos[i];
+            await addLancamento({
+              ...form,
+              descricao: b.fornecedor ? `${b.descricao} - ${b.fornecedor}` : (b.descricao || form.descricao),
+              valor: b.valor ? String(b.valor) : form.valor,
+              data: b.vencimento || form.data,
+              linhaDigitavel: b.linhaDigitavel || '',
+              pix: b.pix || '',
+              recorrente: false,
+              parcelado: false,
+              loteMultiboletos: null
+            });
+          }
+          await registrarLogAuditoria(user, 'Criação em Lote OCR', `Criou ${form.loteMultiboletos.length} lançamentos a partir de PDF (Lote).`);
+        } else if ((form.parcelado || form.recorrente) && (Number(form.qtdParcelas || form.qtdMeses) > 1)) {
+          const totalParcelas = Math.min(Math.max(2, Number(form.qtdParcelas || form.qtdMeses)), 60)
           const dataBase = form.data ? new Date(form.data + 'T12:00:00') : new Date()
+          const grupoParcelaId = 'grp_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6)
+          
+          const valLimpo = typeof form.valor === 'number' ? form.valor : (Number(String(form.valor || '0').replace(/\./g, '').replace(',', '.')) || 0)
+          const modo = form.modoParcelas || 'dividir'
+          const valPorParcela = modo === 'repetir' ? valLimpo : Number((valLimpo / totalParcelas).toFixed(2))
 
-          for (let i = 0; i < totalMeses; i++) {
+          for (let i = 0; i < totalParcelas; i++) {
             const dataParcela = new Date(dataBase)
             dataParcela.setMonth(dataBase.getMonth() + i)
             const dataStr = dataParcela.toISOString().split('T')[0]
-            const parcelaLabel = `(${String(i + 1).padStart(2, '0')}/${String(totalMeses).padStart(2, '0')})`
+            const parcelaLabel = `(${String(i + 1).padStart(2, '0')}/${String(totalParcelas).padStart(2, '0')})`
+            const descLimpa = (form.descricao || '').replace(/\s*\(\d+\/\d+\)$/, '').trim()
 
             await addLancamento({
               ...form,
-              descricao: `${form.descricao} ${parcelaLabel}`,
+              descricao: `${descLimpa} ${parcelaLabel}`,
+              valor: String(valPorParcela.toFixed(2)),
               data: dataStr,
               recorrente: false,
-              origemRecorrente: true
+              parcelado: true,
+              origemRecorrente: true,
+              grupoParcelaId,
+              numeroParcela: i + 1,
+              totalParcelas,
+              modoParcelas: modo,
+              status: i === 0 ? (form.status || 'Pendente') : 'Pendente'
             })
           }
-          await registrarLogAuditoria(user, 'Criação Recorrente', `Criou ${totalMeses} lançamentos recorrentes para ${form.descricao}`)
+          await registrarLogAuditoria(user, 'Criação de Parcelas', `Criou ${totalParcelas} parcelas de ${form.descricao}`)
         } else {
           await addLancamento(form)
           await registrarLogAuditoria(user, 'Criação de Lançamento', `Criou o lançamento ${form.descricao}`)
@@ -523,7 +676,7 @@ export default function Financeiro() {
               onClick={() => setActiveTab('ReservaEmergencia')} 
               className={`px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${activeTab === 'ReservaEmergencia' ? 'bg-white shadow-md text-indigo-700 ring-1 ring-slate-200' : 'text-gray-600 hover:text-indigo-600 hover:bg-white/50'}`}
             >
-              <Shield size={14} className="text-indigo-500" /> Fundo / Caixa Alpha
+              <Shield size={14} className="text-indigo-500" /> Fundo de Caixa / Reserva
             </button>
             <button 
               onClick={() => setActiveTab('DRE')} 
@@ -548,7 +701,14 @@ export default function Financeiro() {
       {activeTab === 'RateioAgua' && <RateioAgua lancamentos={lancamentos} />}
       {activeTab === 'FluxoCaixa' && <FluxoCaixa lancamentos={lancamentos} contas={contas} />}
       {activeTab === 'Conciliacao' && <Conciliacao lancamentos={lancamentos} setModalLanc={setModalLanc} updateLancamento={updateLancamento} />}
-      {activeTab === 'ReservaEmergencia' && <ReservaEmergencia lancamentos={allLancamentos} />}
+      {activeTab === 'ReservaEmergencia' && (
+        <ReservaEmergencia 
+          lancamentos={allLancamentos} 
+          condoFilter={condoFilter} 
+          condominiosDisponiveis={condominiosDisponiveis} 
+          setModalLanc={setModalLanc} 
+        />
+      )}
       {activeTab === 'DRE' && <DRE lancamentos={lancamentos} condoFilter={condoFilter} />}
       {activeTab === 'Historico' && <Historico lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
 

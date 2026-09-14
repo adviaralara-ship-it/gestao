@@ -32,14 +32,24 @@ export default async function handler(req, res) {
 
     if (mediaBase64 || mediaUrl) {
       endpoint = `${EVOLUTION_URL}/message/sendMedia/${instance}`;
-      let mediaData = mediaUrl;
+      let mediaData = '';
 
       if (mediaBase64) {
         // Se vier com prefixo data:application/pdf;base64, extrair apenas a string base64 pura
-        if (mediaBase64.includes(',')) {
-          mediaData = mediaBase64.split(',')[1];
-        } else {
-          mediaData = mediaBase64;
+        const raw = mediaBase64.includes(',') ? mediaBase64.split(',')[1] : mediaBase64;
+        mediaData = raw.replace(/\s+/g, '');
+      } else if (mediaUrl) {
+        try {
+          const resp = await fetch(mediaUrl);
+          if (resp.ok) {
+            const buf = await resp.arrayBuffer();
+            mediaData = Buffer.from(buf).toString('base64');
+          } else {
+            mediaData = mediaUrl;
+          }
+        } catch (fetchErr) {
+          console.warn('Falha ao converter mediaUrl em buffer base64, usando URL direta:', fetchErr);
+          mediaData = mediaUrl;
         }
       }
 
@@ -49,7 +59,7 @@ export default async function handler(req, res) {
         mimetype: 'application/pdf',
         caption: text || caption || '',
         media: mediaData,
-        fileName: fileName || 'Boleto_Condominial.pdf'
+        fileName: fileName || 'Documento_Condominial.pdf'
       };
     }
 

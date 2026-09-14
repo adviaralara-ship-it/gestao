@@ -12,7 +12,7 @@ import { verificarEDispararLembretesManutencao } from '../hooks/useMaintenanceAu
 
 function ModalManutencao({ data, condominios, onClose, onSave }) {
   const [form, setForm] = useState(data || {
-    titulo: '', fornecedor: '', dataPrevista: '', custoEstimado: '', recorrencia: 'Nenhuma', status: 'Agendada', descricao: '', condominio: ''
+    titulo: '', tipo: 'Manutenção Preventiva', fornecedor: '', dataPrevista: '', custoEstimado: '', recorrencia: 'Nenhuma', status: 'Agendada', descricao: '', condominio: ''
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -20,15 +20,23 @@ function ModalManutencao({ data, condominios, onClose, onSave }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">{data ? 'Editar Manutenção' : 'Agendar Manutenção'}</h3>
+          <h3 className="font-bold text-gray-800">{data ? 'Editar Manutenção / Visita' : 'Agendar Manutenção ou Visita'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
         <div className="p-6 grid grid-cols-2 gap-4">
           <div className="col-span-2">
             <label className="label">Título / Serviço</label>
-            <input className="input" value={form.titulo} onChange={e => set('titulo', e.target.value)} placeholder="Ex: Limpeza de Caixa D'água" autoFocus />
+            <input className="input" value={form.titulo} onChange={e => set('titulo', e.target.value)} placeholder="Ex: Limpeza de Caixa D'água, Vistoria de Bombas..." autoFocus />
           </div>
-          <div className="col-span-2">
+          <div>
+            <label className="label">Natureza / Categoria</label>
+            <select className="input font-bold bg-amber-50/70 border-amber-300 text-gray-900" value={form.tipo || 'Manutenção Preventiva'} onChange={e => set('tipo', e.target.value)}>
+              <option value="Manutenção Preventiva">🔧 Manutenção Preventiva</option>
+              <option value="Visita Técnica">📋 Visita Técnica</option>
+              <option value="Manutenção Corretiva">🚨 Manutenção Corretiva</option>
+            </select>
+          </div>
+          <div>
             <label className="label">Condomínio</label>
             <select className="input" value={form.condominio || ''} onChange={e => set('condominio', e.target.value)}>
               <option value="">Todos / Geral</option>
@@ -36,8 +44,8 @@ function ModalManutencao({ data, condominios, onClose, onSave }) {
             </select>
           </div>
           <div className="col-span-2">
-            <label className="label">Fornecedor / Prestador</label>
-            <input className="input" value={form.fornecedor} onChange={e => set('fornecedor', e.target.value)} placeholder="Ex: SegurFogo Ltda" />
+            <label className="label">Fornecedor / Prestador Responsável</label>
+            <input className="input" value={form.fornecedor} onChange={e => set('fornecedor', e.target.value)} placeholder="Ex: SegurFogo Ltda, Eng. Carlos..." />
           </div>
           <div>
             <label className="label">Data Prevista</label>
@@ -226,6 +234,18 @@ export default function Manutencoes() {
       return { ...m, statusVisual }
     }).sort((a,b) => new Date(a.dataPrevista) - new Date(b.dataPrevista))
 
+  // Função para identificar se é Visita Técnica (pelo tipo explícito ou palavra-chave no título)
+  const isVisita = (m) => {
+    const t = (m.tipo || '').toLowerCase()
+    const tit = (m.titulo || '').toLowerCase()
+    const desc = (m.descricao || '').toLowerCase()
+    return t.includes('visita') || tit.includes('visita') || desc.includes('visita') || tit.includes('vistoria') || desc.includes('vistoria')
+  }
+
+  // Divisão estrita para não misturar preventivas com visitas técnicas
+  const viewPreventivas = viewManutencoes.filter(m => !isVisita(m))
+  const viewVisitas = viewManutencoes.filter(m => isVisita(m))
+
   const handleVerificarLembretes = async () => {
     setIsChecking(true)
     try {
@@ -249,7 +269,7 @@ export default function Manutencoes() {
 
   const handleSaveManu = async (form) => {
     try {
-      let savedDoc = null
+      const isNew = !form.id
       if (form.id) {
         // Se mudou a data, reseta as flags para disparar na nova véspera/dia
         const existing = manutencoes.find(m => m.id === form.id)
@@ -261,74 +281,69 @@ export default function Manutencoes() {
           delete toUpdate.lembreteHojeEnviadoEm
         }
         await updateItem(form.id, toUpdate)
-        savedDoc = form
       } else {
-        const docRef = await addItem(form)
-        savedDoc = { ...form, id: docRef?.id }
+        await addItem(form)
       }
 
-      // 1. Gravar notificação no Sininho (Header)
-      const dataFmt = form.dataPrevista ? (form.dataPrevista.includes('-') ? form.dataPrevista.split('-').reverse().join('/') : form.dataPrevista) : 'A definir'
-      const textoNotif = `🔧 MANUTENÇÃO AGENDADA: "${form.titulo}" no ${form.condominio || 'Condomínio'} para ${dataFmt} (Prestador: ${form.fornecedor || 'A definir'})`
-      
-      await addDoc(collection(db, 'notificacoes'), {
-        text: textoNotif,
-        titulo: `🔧 Manutenção: ${form.titulo}`,
-        time: new Date().toISOString(),
-        tipo: 'manutencao',
-        condominio: form.condominio || 'Todos',
-        lida: false,
-        link: '/manutencoes',
-        _createdAt: serverTimestamp()
-      })
-
-      // 2. Disparo imediato para os números de WhatsApp dos Administradores e Síndico
-      const telefonesDestino = new Set()
-
-      // Número oficial padrão da Alpha
-      telefonesDestino.add('558396885931')
-
-      // Busca administradores e síndicos cadastrados no sistema
-      if (allUsuarios && allUsuarios.length > 0) {
-        allUsuarios.forEach(u => {
-          const isAdm = u.role === 'Administrador' || u.role === 'Financeiro'
-          const isSindicoDesteCondo = u.role === 'Síndico' && (!form.condominio || u.condominio === form.condominio)
-          
-          if (isAdm || isSindicoDesteCondo) {
-            const rawTel = u.tel || u.telefone || u.whatsapp || u.celular || ''
-            const cleanTel = String(rawTel).replace(/\D/g, '')
-            if (cleanTel.length >= 8) {
-              telefonesDestino.add(cleanTel.length <= 11 ? `55${cleanTel}` : cleanTel)
-            }
-          }
-        })
-      }
-
-      // Monta mensagem de WhatsApp
-      const custoFmt = form.custoEstimado ? Number(form.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'
-      const msgWhats = `🔔 *NOVA MANUTENÇÃO AGENDADA - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${form.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${form.titulo}\n📅 *Data Prevista:* ${dataFmt}\n👷 *Prestador / Empresa:* ${form.fornecedor || 'Não informado'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n🔄 *Recorrência:* ${form.recorrencia || 'Nenhuma'}\n📌 *Status:* ${form.status || 'Agendada'}${form.descricao ? `\n📝 *Observações:* ${form.descricao}` : ''}\n\n🔗 *Acesse o cronograma completo:*\nhttps://alpha-solucoes-condominiais.vercel.app/manutencoes`
-
-      // Dispara para cada número via API
-      for (const numero of telefonesDestino) {
+      // 1. Gravar notificação no Sininho e disparar WhatsApp APENAS se for NOVO agendamento
+      if (isNew) {
+        const dataFmt = form.dataPrevista ? (form.dataPrevista.includes('-') ? form.dataPrevista.split('-').reverse().join('/') : form.dataPrevista) : 'A definir'
+        const tipoLabel = form.tipo || 'Manutenção'
+        const textoNotif = `🔧 ${tipoLabel.toUpperCase()} AGENDADA: "${form.titulo}" no ${form.condominio || 'Condomínio'} para ${dataFmt} (Prestador: ${form.fornecedor || 'A definir'})`
+        
         try {
-          fetch('/api/whatsapp-send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              number: numero,
-              text: msgWhats,
-              instance: 'InstanciaAlpha'
-            })
-          }).catch(e => console.warn('Erro envio WhatsApp manutenção:', e))
+          await addDoc(collection(db, 'notificacoes'), {
+            text: textoNotif,
+            titulo: `🔧 ${tipoLabel}: ${form.titulo}`,
+            time: new Date().toISOString(),
+            tipo: 'manutencao',
+            condominio: form.condominio || 'Todos',
+            lida: false,
+            link: '/manutencoes',
+            _createdAt: serverTimestamp()
+          })
         } catch(e) {}
+
+        // 2. Disparo imediato para os números de WhatsApp dos Administradores e Síndico
+        const telefonesDestino = new Set()
+        telefonesDestino.add('558396885931') // Número oficial padrão da Alpha
+
+        if (allUsuarios && allUsuarios.length > 0) {
+          allUsuarios.forEach(u => {
+            const isAdm = u.role === 'Administrador' || u.role === 'Financeiro'
+            const isSindicoDesteCondo = u.role === 'Síndico' && (!form.condominio || u.condominio === form.condominio)
+            
+            if (isAdm || isSindicoDesteCondo) {
+              const rawTel = u.tel || u.telefone || u.whatsapp || u.celular || ''
+              const cleanTel = String(rawTel).replace(/\D/g, '')
+              if (cleanTel.length >= 8) {
+                telefonesDestino.add(cleanTel.length <= 11 ? `55${cleanTel}` : cleanTel)
+              }
+            }
+          })
+        }
+
+        const custoFmt = form.custoEstimado ? Number(form.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'
+        const msgWhats = `🔔 *NOVA ${tipoLabel.toUpperCase()} AGENDADA - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${form.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${form.titulo}\n📅 *Data Prevista:* ${dataFmt}\n👷 *Prestador / Empresa:* ${form.fornecedor || 'Não informado'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n🔄 *Recorrência:* ${form.recorrencia || 'Nenhuma'}\n📌 *Status:* ${form.status || 'Agendada'}${form.descricao ? `\n📝 *Observações:* ${form.descricao}` : ''}\n\n🔗 *Acesse o cronograma completo:*\nhttps://alpha-solucoes-condominiais.vercel.app/manutencoes`
+
+        for (const numero of telefonesDestino) {
+          try {
+            fetch('/api/whatsapp-send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                number: numero,
+                text: msgWhats,
+                instance: 'InstanciaAlpha'
+              })
+            }).catch(e => console.warn('Erro envio WhatsApp manutenção:', e))
+          } catch(e) {}
+        }
+
+        alert(`🎉 Agendamento salvo com sucesso!\n\n🔔 Notificação adicionada no sininho.\n📲 Disparo de WhatsApp enviado aos administradores.\n⏰ Lembretes automáticos agendados para a véspera e o dia.`)
+      } else {
+        alert('🎉 Agendamento atualizado com sucesso!')
       }
-
-      // Executa verificação em background de lembretes
-      setTimeout(() => {
-        verificarEDispararLembretesManutencao().catch(() => {})
-      }, 1000)
-
-      alert(`🎉 Manutenção salva com sucesso!\n\n🔔 Notificação adicionada no sininho.\n📲 Disparo de WhatsApp enviado para os administradores.\n⏰ Lembretes automáticos agendados para 1 dia antes e no próprio dia.`)
     } catch(err) {
       console.error('Erro ao salvar manutenção:', err)
       alert('Erro ao salvar: ' + err.message)
@@ -379,22 +394,34 @@ export default function Manutencoes() {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-cream-300 pb-2 print:hidden">
-        <button onClick={() => setTab('cronograma')} className={`px-5 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${tab==='cronograma'?'bg-brand-600 text-white shadow-md':'bg-white text-gray-500 hover:text-brand-700 border border-cream-400'}`}>
-          <Calendar size={16}/> Cronograma Preventivo
+      <div className="flex gap-2 border-b border-cream-300 pb-2 print:hidden flex-wrap">
+        <button 
+          onClick={() => setTab('cronograma')} 
+          className={`px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${tab==='cronograma'?'bg-brand-600 text-white shadow-md':'bg-white text-gray-600 hover:text-brand-700 border border-cream-400'}`}
+        >
+          <Calendar size={16}/> 🔧 Cronograma Preventivo ({viewPreventivas.length})
         </button>
-        <button onClick={() => setTab('cotacoes')} className={`px-5 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${tab==='cotacoes'?'bg-brand-600 text-white shadow-md':'bg-white text-gray-500 hover:text-brand-700 border border-cream-400'}`}>
+        <button 
+          onClick={() => setTab('visitas')} 
+          className={`px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${tab==='visitas'?'bg-purple-600 text-white shadow-md':'bg-white text-gray-600 hover:text-purple-700 border border-cream-400'}`}
+        >
+          <Briefcase size={16}/> 📋 Visitas Técnicas ({viewVisitas.length})
+        </button>
+        <button 
+          onClick={() => setTab('cotacoes')} 
+          className={`px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${tab==='cotacoes'?'bg-brand-600 text-white shadow-md':'bg-white text-gray-600 hover:text-brand-700 border border-cream-400'}`}
+        >
           <ShoppingBag size={16}/> Central de Cotações / Licitações
         </button>
       </div>
 
       {/* Relatório de Impressão (Visível apenas na impressão) */}
       <div className="hidden print:block mb-6">
-        <h1 className="text-2xl font-black text-center mb-2">Relatório de Manutenções Preventivas</h1>
+        <h1 className="text-2xl font-black text-center mb-2">Relatório de Manutenções &amp; Visitas Técnicas</h1>
         <p className="text-center text-gray-500 mb-6">Gerado em: {new Date().toLocaleDateString('pt-BR')}</p>
         <div className="grid grid-cols-3 gap-4 mb-8">
           <div className="border border-gray-300 p-4 rounded text-center">
-            <p className="text-sm text-gray-500 uppercase">Total Agendadas</p>
+            <p className="text-sm text-gray-500 uppercase">Total Geral</p>
             <p className="text-2xl font-bold">{viewManutencoes.length}</p>
           </div>
           <div className="border border-gray-300 p-4 rounded text-center">
@@ -408,18 +435,19 @@ export default function Manutencoes() {
         </div>
       </div>
 
+      {/* ABA 1: CRONOGRAMA PREVENTIVO */}
       {tab === 'cronograma' && (
         <>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 print:hidden">
             <div className="flex items-center gap-4 bg-white p-3 rounded-xl border border-cream-200 shadow-sm">
               <div>
-                <p className="text-xs text-gray-500 uppercase font-bold">Total Previsto</p>
-                <p className="text-lg font-black text-brand-700">R$ {viewManutencoes.reduce((acc, m) => acc + (Number(m.custoEstimado)||0), 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                <p className="text-xs text-gray-500 uppercase font-bold">Total Preventivas</p>
+                <p className="text-lg font-black text-brand-700">R$ {viewPreventivas.reduce((acc, m) => acc + (Number(m.custoEstimado)||0), 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
               </div>
               <div className="w-px h-8 bg-cream-200"></div>
               <div>
                 <p className="text-xs text-gray-500 uppercase font-bold">Atrasadas</p>
-                <p className="text-lg font-black text-red-600">{viewManutencoes.filter(m=>m.statusVisual==='Atrasada').length}</p>
+                <p className="text-lg font-black text-red-600">{viewPreventivas.filter(m=>m.statusVisual==='Atrasada').length}</p>
               </div>
             </div>
             
@@ -437,21 +465,25 @@ export default function Manutencoes() {
                 <Printer size={14} /> Relatório PDF
               </button>
               {isAdminOrSindico && (
-                <button onClick={() => setModalManu({})} className="btn-primary py-2 px-4 text-xs font-bold flex items-center gap-1.5 shadow-sm">
-                  <Plus size={15} /> Agendar Manutenção
+                <button 
+                  onClick={() => setModalManu({ tipo: 'Manutenção Preventiva', condominio: condoFiltro !== 'Todos' ? condoFiltro : '' })} 
+                  className="btn-primary py-2 px-4 text-xs font-bold flex items-center gap-1.5 shadow-sm bg-brand-600 hover:bg-brand-700 cursor-pointer"
+                >
+                  <Plus size={15} /> + Agendar Manutenção Preventiva
                 </button>
               )}
             </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 print:grid-cols-2 print:gap-4">
-            {viewManutencoes.length === 0 && (
-              <div className="col-span-full card text-center py-12 text-gray-500">
+            {viewPreventivas.length === 0 && (
+              <div className="col-span-full card text-center py-12 text-gray-500 bg-white rounded-2xl border border-dashed border-gray-200">
                 <Wrench size={40} className="mx-auto mb-3 text-cream-400" />
-                <p>Nenhuma manutenção agendada.</p>
+                <p className="font-semibold text-gray-600">Nenhuma manutenção preventiva encontrada.</p>
+                <p className="text-xs text-gray-400 mt-1">As visitas técnicas estão separadas na aba "Visitas Técnicas".</p>
               </div>
             )}
-            {viewManutencoes.map(m => (
+            {viewPreventivas.map(m => (
               <div key={m.id} className="card p-5 hover:border-brand-300 transition-all group flex flex-col justify-between shadow-sm">
                 <div>
                   <div className="flex justify-between items-start mb-3">
@@ -460,14 +492,17 @@ export default function Manutencoes() {
                     </span>
                     {isAdminOrSindico && (
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => setModalManu(m)} className="text-gray-400 hover:text-brand-600" title="Editar"><Wrench size={14}/></button>
-                        <button onClick={() => { if (window.confirm(`Excluir manutenção "${m.titulo}"?`)) deleteItem(m.id) }} className="text-gray-400 hover:text-red-600" title="Excluir"><Trash2 size={14}/></button>
+                        <button onClick={() => setModalManu(m)} className="text-gray-400 hover:text-brand-600 cursor-pointer" title="Editar"><Wrench size={14}/></button>
+                        <button onClick={() => { if (window.confirm(`Excluir manutenção "${m.titulo}"?`)) deleteItem(m.id) }} className="text-gray-400 hover:text-red-600 cursor-pointer" title="Excluir"><Trash2 size={14}/></button>
                       </div>
                     )}
                   </div>
                   <h3 className="font-bold text-gray-800 text-lg leading-tight mb-1">{m.titulo}</h3>
                   <p className="text-sm text-gray-500 mb-2">{m.fornecedor || 'Fornecedor a definir'}</p>
                   <div className="mb-4 flex flex-wrap gap-1">
+                    <span className="inline-block px-2 py-1 rounded text-[10px] uppercase font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                      🔧 Manut. Preventiva
+                    </span>
                     <span className="inline-block px-2 py-1 bg-cream-200 text-gray-600 rounded text-[10px] uppercase font-bold">
                       {m.condominio ? `🏢 ${m.condominio}` : '🌐 Todos / Geral'}
                     </span>
@@ -483,7 +518,7 @@ export default function Manutencoes() {
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-500 flex items-center gap-1.5"><Calendar size={14}/> Prevista para</span>
                     <span className={`font-semibold ${m.statusVisual === 'Atrasada' ? 'text-red-600' : 'text-gray-700'}`}>
-                      {m.dataPrevista.split('-').reverse().join('/')}
+                      {m.dataPrevista ? m.dataPrevista.split('-').reverse().join('/') : 'A definir'}
                     </span>
                   </div>
                   {m.custoEstimado && (
@@ -496,6 +531,116 @@ export default function Manutencoes() {
                   {/* Badges de Lembretes Automáticos */}
                   {(m.notifD1 || m.notifD0) && (
                     <div className="flex flex-col gap-1 mt-1 pt-2 border-t border-gray-200 text-[10px]">
+                      {m.notifD1 && (
+                        <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-semibold">
+                          <Check size={11} className="text-amber-600" /> Lembrete 1 dia antes enviado ({m.notifD1.split('-').reverse().join('/')})
+                        </span>
+                      )}
+                      {m.notifD0 && (
+                        <span className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-semibold">
+                          <Check size={11} className="text-emerald-600" /> Lembrete do dia enviado ({m.notifD0.split('-').reverse().join('/')})
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ABA 2: VISITAS TÉCNICAS (TOTALMENTE SEPARADAS) */}
+      {tab === 'visitas' && (
+        <>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 print:hidden">
+            <div className="flex items-center gap-4 bg-white p-3 rounded-xl border border-cream-200 shadow-sm">
+              <div>
+                <p className="text-xs text-gray-500 uppercase font-bold">Total Visitas Técnicas</p>
+                <p className="text-lg font-black text-purple-700">R$ {viewVisitas.reduce((acc, m) => acc + (Number(m.custoEstimado)||0), 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+              </div>
+              <div className="w-px h-8 bg-cream-200"></div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase font-bold">Atrasadas</p>
+                <p className="text-lg font-black text-red-600">{viewVisitas.filter(m=>m.statusVisual==='Atrasada').length}</p>
+              </div>
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-2">
+              <button 
+                onClick={handleVerificarLembretes} 
+                disabled={isChecking}
+                className="btn-secondary py-2 px-3.5 text-xs bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 flex items-center gap-1.5 shadow-sm font-bold"
+                title="Verifica agendamentos de hoje e amanhã e envia lembretes automáticos"
+              >
+                <RefreshCw size={14} className={isChecking ? "animate-spin text-amber-600" : "text-amber-600"} />
+                {isChecking ? 'Verificando...' : 'Verificar Lembretes'}
+              </button>
+              <button onClick={handlePrint} className="btn-secondary py-2 px-3.5 text-xs bg-white border-cream-300 flex items-center gap-1.5">
+                <Printer size={14} /> Relatório PDF
+              </button>
+              {isAdminOrSindico && (
+                <button 
+                  onClick={() => setModalManu({ tipo: 'Visita Técnica', condominio: condoFiltro !== 'Todos' ? condoFiltro : '' })} 
+                  className="btn-primary py-2 px-4 text-xs font-bold flex items-center gap-1.5 shadow-sm bg-purple-600 hover:bg-purple-700 cursor-pointer"
+                >
+                  <Plus size={15} /> + Agendar Visita Técnica
+                </button>
+              )}
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 print:grid-cols-2 print:gap-4">
+            {viewVisitas.length === 0 && (
+              <div className="col-span-full card text-center py-12 text-gray-500 bg-white rounded-2xl border border-dashed border-gray-200">
+                <Briefcase size={40} className="mx-auto mb-3 text-purple-300" />
+                <p className="font-semibold text-gray-600">Nenhuma visita técnica ou vistoria agendada.</p>
+                <p className="text-xs text-gray-400 mt-1">Clique no botão acima para agendar uma nova visita técnica.</p>
+              </div>
+            )}
+            {viewVisitas.map(m => (
+              <div key={m.id} className="card p-5 border-purple-100 hover:border-purple-300 transition-all group flex flex-col justify-between shadow-sm">
+                <div>
+                  <div className="flex justify-between items-start mb-3">
+                    <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase border ${getStatusStyle(m.statusVisual)}`}>
+                      {m.statusVisual}
+                    </span>
+                    {isAdminOrSindico && (
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => setModalManu(m)} className="text-gray-400 hover:text-purple-600 cursor-pointer" title="Editar"><Wrench size={14}/></button>
+                        <button onClick={() => { if (window.confirm(`Excluir visita "${m.titulo}"?`)) deleteItem(m.id) }} className="text-gray-400 hover:text-red-600 cursor-pointer" title="Excluir"><Trash2 size={14}/></button>
+                      </div>
+                    )}
+                  </div>
+                  <h3 className="font-bold text-gray-800 text-lg leading-tight mb-1">{m.titulo}</h3>
+                  <p className="text-sm text-gray-500 mb-2">{m.fornecedor || 'Técnico / Empresa a definir'}</p>
+                  <div className="mb-4 flex flex-wrap gap-1">
+                    <span className="inline-block px-2 py-1 rounded text-[10px] uppercase font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                      📋 Visita Técnica
+                    </span>
+                    <span className="inline-block px-2 py-1 bg-cream-200 text-gray-600 rounded text-[10px] uppercase font-bold">
+                      {m.condominio ? `🏢 ${m.condominio}` : '🌐 Todos / Geral'}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="bg-purple-50/50 p-3 rounded-lg border border-purple-100 flex flex-col gap-2">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-500 flex items-center gap-1.5"><Calendar size={14}/> Prevista para</span>
+                    <span className={`font-semibold ${m.statusVisual === 'Atrasada' ? 'text-red-600' : 'text-gray-700'}`}>
+                      {m.dataPrevista ? m.dataPrevista.split('-').reverse().join('/') : 'A definir'}
+                    </span>
+                  </div>
+                  {m.custoEstimado && (
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-500 flex items-center gap-1.5"><AlertCircle size={14}/> Custo Previsto</span>
+                      <span className="font-semibold text-gray-700">R$ {Number(m.custoEstimado).toLocaleString('pt-BR', {minimumFractionDigits:2})}</span>
+                    </div>
+                  )}
+
+                  {/* Badges de Lembretes Automáticos */}
+                  {(m.notifD1 || m.notifD0) && (
+                    <div className="flex flex-col gap-1 mt-1 pt-2 border-t border-purple-100 text-[10px]">
                       {m.notifD1 && (
                         <span className="inline-flex items-center gap-1 text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-semibold">
                           <Check size={11} className="text-amber-600" /> Lembrete 1 dia antes enviado ({m.notifD1.split('-').reverse().join('/')})

@@ -17,6 +17,24 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
     setTimeout(() => setCopiadoId(null), 2500)
   }
 
+  // Abre PDF sem tela em branco: converte base64 → Blob URL
+  const abrirArquivo = (url) => {
+    if (!url) return
+    if (url.startsWith('data:')) {
+      try {
+        const [header, base64] = url.split(',')
+        const mime = header.match(/:(.*?);/)[1]
+        const bytes = atob(base64)
+        const arr = new Uint8Array(bytes.length)
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+        const blob = new Blob([arr], { type: mime })
+        window.open(URL.createObjectURL(blob), '_blank')
+      } catch { window.open(url, '_blank') }
+    } else {
+      window.open(url, '_blank')
+    }
+  }
+
   let contasPagar = lancamentos.filter(t => t.tipo === 'Despesa')
 
   if (statusFilter !== 'Todas') {
@@ -162,38 +180,46 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                       <td className="p-3.5 font-black text-rose-600 whitespace-nowrap">R$ {fmt(t.valor)}</td>
 
                       <td className="p-3.5">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {t.arquivoUrl ? (
-                            <a
-                              href={t.arquivoUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold flex items-center gap-1 text-[10px]"
-                              title="Visualizar Boleto / Comprovante"
-                            >
-                              <Eye size={12} /> Boleto
-                            </a>
-                          ) : null}
-
-                          {temCodigo ? (
-                            <button
-                              onClick={() => handleCopiarCodigo(t.id, t.linhaDigitavel || t.pix)}
-                              className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold flex items-center gap-1 text-[10px] cursor-pointer"
-                              title="Copiar Linha Digitável / PIX"
-                            >
-                              {copiadoId === t.id ? (
-                                <>
-                                  <Check size={12} className="text-emerald-600" /> Copiado!
-                                </>
-                              ) : (
-                                <>
-                                  <Copy size={12} /> Copiar Código
-                                </>
-                              )}
-                            </button>
-                          ) : (
-                            <span className="text-[10px] text-gray-300">—</span>
+                        <div className="flex flex-col gap-1 min-w-[140px]">
+                          {/* Código visível (truncado) */}
+                          {(t.linhaDigitavel || t.pix) && (
+                            <span className="font-mono text-[10px] text-gray-500 bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[160px]" title={t.linhaDigitavel || t.pix}>
+                              {(t.linhaDigitavel || t.pix || '').substring(0, 22)}…
+                            </span>
                           )}
+
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {/* Botão abrir PDF (corrigido para não abrir em branco) */}
+                            {t.arquivoUrl && (
+                              <button
+                                onClick={() => abrirArquivo(t.arquivoUrl)}
+                                className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold flex items-center gap-1 text-[10px] cursor-pointer"
+                                title="Visualizar Boleto / Comprovante"
+                              >
+                                <Eye size={12} /> Boleto
+                              </button>
+                            )}
+
+                            {/* Botão copiar código */}
+                            {temCodigo && (
+                              <button
+                                onClick={() => handleCopiarCodigo(t.id, t.linhaDigitavel || t.pix)}
+                                className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold flex items-center gap-1 text-[10px] cursor-pointer"
+                                title="Copiar Linha Digitável / PIX"
+                              >
+                                {copiadoId === t.id ? (
+                                  <><Check size={12} className="text-emerald-600" /> Copiado!</>
+                                ) : (
+                                  <><Copy size={12} /> Copiar</>
+                                )}
+                              </button>
+                            )}
+
+                            {/* Sem código e sem arquivo */}
+                            {!temCodigo && !t.arquivoUrl && (
+                              <span className="text-[10px] text-gray-300">—</span>
+                            )}
+                          </div>
                         </div>
                       </td>
 

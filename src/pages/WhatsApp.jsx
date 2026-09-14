@@ -129,9 +129,17 @@ export default function WhatsApp() {
     setSending(true)
     let uploadedFileRef = null
     try {
-      let mediaUrl = null
+      let base64ToSend = arquivoPdfBase64
+      if (arquivoPdfFile && !base64ToSend) {
+        base64ToSend = await new Promise((resolve) => {
+          const reader = new FileReader()
+          reader.onload = (ev) => resolve(ev.target.result)
+          reader.onerror = () => resolve(null)
+          reader.readAsDataURL(arquivoPdfFile)
+        })
+      }
 
-      // Fazer upload rápido do PDF para o Firebase Storage para contornar limites de tamanho
+      // Fazer upload de backup do PDF para o Firebase Storage se possível
       if (arquivoPdfFile) {
         try {
           const cleanName = (arquivoPdfNome || 'documento.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')
@@ -139,7 +147,7 @@ export default function WhatsApp() {
           const snap = await uploadBytes(uploadedFileRef, arquivoPdfFile)
           mediaUrl = await getDownloadURL(snap.ref)
         } catch (storageErr) {
-          console.warn('Upload direto no Storage falhou, usando base64:', storageErr)
+          console.warn('Upload direto no Storage falhou, usando base64 direto:', storageErr)
         }
       }
 
@@ -149,9 +157,9 @@ export default function WhatsApp() {
         body: JSON.stringify({
           number: tel,
           text: mensagem,
-          mediaUrl: mediaUrl,
-          mediaBase64: !mediaUrl ? arquivoPdfBase64 : undefined,
-          fileName: arquivoPdfNome || 'Boleto_Condominial.pdf',
+          mediaBase64: base64ToSend || undefined,
+          mediaUrl: mediaUrl || undefined,
+          fileName: arquivoPdfNome || 'Documento_Condominial.pdf',
           instance: instance
         })
       })
@@ -222,6 +230,16 @@ export default function WhatsApp() {
     }
 
     setSending(true)
+    let base64Lote = arquivoPdfBase64
+    if (arquivoPdfFile && !base64Lote) {
+      base64Lote = await new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onload = (ev) => resolve(ev.target.result)
+        reader.onerror = () => resolve(null)
+        reader.readAsDataURL(arquivoPdfFile)
+      })
+    }
+
     let enviados = 0
     for (const m of listaAlvo) {
       const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || ''
@@ -238,7 +256,7 @@ export default function WhatsApp() {
           body: JSON.stringify({
             number: tel,
             text: msgPersonalizada,
-            mediaBase64: arquivoPdfBase64,
+            mediaBase64: base64Lote || undefined,
             fileName: arquivoPdfNome || 'Comunicado_Condominio.pdf',
             instance: instance
           })

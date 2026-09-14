@@ -1,9 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
+import { useAuth } from '../context/AuthContext'
+
+const LOCK_STORAGE_KEY = 'alpha_manu_lembretes_last_check'
 
 // Função centralizada para verificar e disparar lembretes automáticos de manutenção (D-1 e D-0)
-export async function verificarEDispararLembretesManutencao() {
+export async function verificarEDispararLembretesManutencao(isManual = false) {
   try {
     const hoje = new Date()
     const ano = hoje.getFullYear()
@@ -11,6 +14,17 @@ export async function verificarEDispararLembretesManutencao() {
     const dia = String(hoje.getDate()).padStart(2, '0')
     const hojeStr = `${ano}-${mes}-${dia}`
     const hojeDate = new Date(ano, hoje.getMonth(), hoje.getDate())
+
+    // Verificação de intervalo (apenas se for execução automática em background)
+    if (!isManual) {
+      const lastCheck = Number(localStorage.getItem(LOCK_STORAGE_KEY) || 0)
+      const now = Date.now()
+      // Não reexecutar automaticamente com menos de 2 horas de intervalo
+      if (now - lastCheck < 2 * 60 * 60 * 1000) {
+        return { success: true, disparos: 0, ignoradoPorIntervalo: true }
+      }
+      localStorage.setItem(LOCK_STORAGE_KEY, String(now))
+    }
 
     // 1. Busca manutenções e usuários do Firestore
     const [manutencoesSnap, usuariosSnap] = await Promise.all([
@@ -53,21 +67,36 @@ export async function verificarEDispararLembretesManutencao() {
       })
 
       // CASO 1: Lembrete de Véspera (1 dia antes / D-1)
-      if (diffDays === 1 && m.notifD1 !== hojeStr) {
-        // Grava no Sininho
-        await addDoc(collection(db, 'notificacoes'), {
-          text: `⚠️ LEMBRETE DE VÉSPERA: Manutenção "${m.titulo}" agendada para AMANHÃ (${dataFmt}) no ${m.condominio || 'Condomínio'}.`,
-          titulo: `⚠️ Lembrete Amanhã: ${m.titulo}`,
-          time: new Date().toISOString(),
-          tipo: 'manutencao_vespera',
-          condominio: m.condominio || 'Todos',
-          lida: false,
-          link: '/manutencoes',
-          _createdAt: serverTimestamp()
-        })
+      const jaEnviouD1 = m.notifD1 === hojeStr || m.lembreteVesperaEnviadoEm === hojeStr
+      if (diffDays === 1 && !jaEnviouD1) {
+        // 1. Atualiza flag no Firestore ANTES do envio para evitar disparos duplicados em concorrência
+        try {
+          await updateDoc(doc(db, 'manutencoes', m.id), {
+            notifD1: hojeStr,
+            lembreteVesperaEnviadoEm: hojeStr
+          })
+        } catch (errUpd) {
+          console.warn('Permissão insuficiente ou falha ao atualizar flag notifD1:', errUpd)
+          continue // Se não conseguiu marcar no banco, não dispara o WhatsApp para evitar repetição
+        }
 
-        // Mensagem de WhatsApp D-1
-        const msgWhats = `⚠️ *LEMBRETE PREVENTIVO - MANUTENÇÃO AMANHÃ!*\n\n🏢 *Condomínio:* ${m.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${m.titulo}\n📅 *Data Prevista:* Amanhã (${dataFmt})\n👷 *Prestador / Empresa:* ${m.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${m.status || 'Agendada'}${m.descricao ? `\n📝 *Observações:* ${m.descricao}` : ''}\n\n🔔 *Lembrete automático enviado 1 dia antes pela Alpha Gestão.*\n🔗 *Acesse o painel:* https://alpha-solucoes-condominiais.vercel.app/manutencoes`
+        // 2. Grava no Sininho
+        try {
+          await addDoc(collection(db, 'notificacoes'), {
+            text: `⚠️ LEMBRETE DE VÉSPERA: Manutenção "${m.titulo}" agendada para AMANHÃ (${dataFmt}) no ${m.condominio || 'Condomínio'}.`,
+            titulo: `⚠️ Lembrete Amanhã: ${m.titulo}`,
+            time: new Date().toISOString(),
+            tipo: 'manutencao_vespera',
+            condominio: m.condominio || 'Todos',
+            lida: false,
+            link: '/manutencoes',
+            _createdAt: serverTimestamp()
+          })
+        } catch(e) {}
+
+        // 3. Mensagem de WhatsApp D-1
+        const tipoLabel = m.tipo || 'Manutenção Preventiva'
+        const msgWhats = `⚠️ *LEMBRETE - ${tipoLabel.toUpperCase()} AMANHÃ!*\n\n🏢 *Condomínio:* ${m.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${m.titulo}\n📅 *Data Prevista:* Amanhã (${dataFmt})\n👷 *Prestador / Empresa:* ${m.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${m.status || 'Agendada'}${m.descricao ? `\n📝 *Observações:* ${m.descricao}` : ''}\n\n🔔 *Lembrete automático enviado 1 dia antes pela Alpha Gestão.*\n🔗 *Acesse o painel:* https://alpha-solucoes-condominiais.vercel.app/manutencoes`
 
         for (const numero of telefonesDestino) {
           try {
@@ -79,31 +108,40 @@ export async function verificarEDispararLembretesManutencao() {
           } catch(e) {}
         }
 
-        // Atualiza flag no Firestore para não reenviar no mesmo dia
-        await updateDoc(doc(db, 'manutencoes', m.id), {
-          notifD1: hojeStr,
-          lembreteVesperaEnviadoEm: hojeStr
-        })
-
         disparosRealizados++
       }
 
       // CASO 2: Lembrete do Dia (Hoje / D-0)
-      if (diffDays === 0 && m.notifD0 !== hojeStr) {
-        // Grava no Sininho
-        await addDoc(collection(db, 'notificacoes'), {
-          text: `🚨 MANUTENÇÃO HOJE: "${m.titulo}" está programada para execução HOJE (${dataFmt}) no ${m.condominio || 'Condomínio'}.`,
-          titulo: `🚨 Manutenção Hoje: ${m.titulo}`,
-          time: new Date().toISOString(),
-          tipo: 'manutencao_hoje',
-          condominio: m.condominio || 'Todos',
-          lida: false,
-          link: '/manutencoes',
-          _createdAt: serverTimestamp()
-        })
+      const jaEnviouD0 = m.notifD0 === hojeStr || m.lembreteHojeEnviadoEm === hojeStr
+      if (diffDays === 0 && !jaEnviouD0) {
+        // 1. Atualiza flag no Firestore ANTES do envio para evitar disparos duplicados em concorrência
+        try {
+          await updateDoc(doc(db, 'manutencoes', m.id), {
+            notifD0: hojeStr,
+            lembreteHojeEnviadoEm: hojeStr
+          })
+        } catch (errUpd) {
+          console.warn('Permissão insuficiente ou falha ao atualizar flag notifD0:', errUpd)
+          continue // Se não conseguiu marcar no banco, não dispara o WhatsApp
+        }
 
-        // Mensagem de WhatsApp D-0
-        const msgWhats = `🚨 *ATENÇÃO - MANUTENÇÃO PROGRAMADA PARA HOJE!*\n\n🏢 *Condomínio:* ${m.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${m.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${m.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${m.status || 'Agendada'}${m.descricao ? `\n📝 *Observações:* ${m.descricao}` : ''}\n\n🔔 *Lembrete automático da Alpha Gestão. Favor acompanhar a execução do serviço.*\n🔗 *Acesse o painel:* https://alpha-solucoes-condominiais.vercel.app/manutencoes`
+        // 2. Grava no Sininho
+        try {
+          await addDoc(collection(db, 'notificacoes'), {
+            text: `🚨 MANUTENÇÃO HOJE: "${m.titulo}" está programada para execução HOJE (${dataFmt}) no ${m.condominio || 'Condomínio'}.`,
+            titulo: `🚨 Manutenção Hoje: ${m.titulo}`,
+            time: new Date().toISOString(),
+            tipo: 'manutencao_hoje',
+            condominio: m.condominio || 'Todos',
+            lida: false,
+            link: '/manutencoes',
+            _createdAt: serverTimestamp()
+          })
+        } catch(e) {}
+
+        // 3. Mensagem de WhatsApp D-0
+        const tipoLabel = m.tipo || 'Manutenção Preventiva'
+        const msgWhats = `🚨 *ATENÇÃO - ${tipoLabel.toUpperCase()} HOJE!*\n\n🏢 *Condomínio:* ${m.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${m.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${m.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${m.status || 'Agendada'}${m.descricao ? `\n📝 *Observações:* ${m.descricao}` : ''}\n\n🔔 *Lembrete automático da Alpha Gestão. Favor acompanhar a execução do serviço.*\n🔗 *Acesse o painel:* https://alpha-solucoes-condominiais.vercel.app/manutencoes`
 
         for (const numero of telefonesDestino) {
           try {
@@ -114,12 +152,6 @@ export async function verificarEDispararLembretesManutencao() {
             }).catch(e => console.warn('Erro envio WhatsApp lembrete D-0:', e))
           } catch(e) {}
         }
-
-        // Atualiza flag no Firestore para não reenviar no mesmo dia
-        await updateDoc(doc(db, 'manutencoes', m.id), {
-          notifD0: hojeStr,
-          lembreteHojeEnviadoEm: hojeStr
-        })
 
         disparosRealizados++
       }
@@ -132,22 +164,24 @@ export async function verificarEDispararLembretesManutencao() {
   }
 }
 
-// Hook React para manter verificação automática ativa em background no Layout
+// Hook React para manter verificação automática ativa em background no Layout apenas para Administradores
 export function useMaintenanceAutoReminder() {
+  const { user } = useAuth()
   const hasRun = useRef(false)
 
   useEffect(() => {
-    // Executa uma vez ao carregar a aplicação
-    if (!hasRun.current) {
-      hasRun.current = true
-      verificarEDispararLembretesManutencao()
+    // Executa apenas se o usuário for Administrador ou Financeiro
+    if (!user || (user.role !== 'Administrador' && user.role !== 'Financeiro')) {
+      return
     }
 
-    // Intervalo de verificação a cada 30 minutos em background
-    const timer = setInterval(() => {
-      verificarEDispararLembretesManutencao()
-    }, 30 * 60 * 1000)
-
-    return () => clearInterval(timer)
-  }, [])
+    if (!hasRun.current) {
+      hasRun.current = true
+      // Espera 3 segundos após o carregamento para não travar a inicialização
+      const t = setTimeout(() => {
+        verificarEDispararLembretesManutencao(false)
+      }, 3000)
+      return () => clearTimeout(t)
+    }
+  }, [user])
 }
