@@ -39,7 +39,9 @@ export default function VotacaoPublica() {
     return () => unsubscribe()
   }, [])
 
-  // Se o morador já tiver sessão no ERP ou dados no localStorage deste condomínio
+  // Se o morador tiver sessão ativa no ERP (admin/síndico), identifica automaticamente.
+  // Para moradores públicos via WhatsApp: NUNCA auto-identifica pelo localStorage.
+  // Cada pessoa precisa preencher seus próprios dados para garantir isolamento de votos.
   useEffect(() => {
     if (loggedUser) {
       const uKey = loggedUser.id || loggedUser.uid || loggedUser.email
@@ -50,16 +52,21 @@ export default function VotacaoPublica() {
       return
     }
 
-    const savedMorador = localStorage.getItem(`morador_ident_${id}`) || localStorage.getItem('morador_ident_global')
+    // Remove o identificador global que causava contaminação entre moradores no mesmo dispositivo
+    localStorage.removeItem('morador_ident_global')
+
+    // Apenas pré-preenche o formulário (NÃO auto-identifica) para conveniência do mesmo morador
+    // que já votou e quer ver o resultado — mas ele ainda precisa clicar em "Prosseguir"
+    const savedMorador = localStorage.getItem(`morador_ident_${id}`)
     if (savedMorador) {
       try {
         const parsed = JSON.parse(savedMorador)
-        if (parsed?.key && parsed?.nome) {
-          setMoradorKey(parsed.key)
+        if (parsed?.nome) {
           setMoradorNome(parsed.nome)
           setMoradorUnidade(parsed.unidade || '')
           setMoradorDoc(parsed.documento || '')
-          setIdentificado(true)
+          // NÃO define moradorKey nem identificado=true aqui
+          // O morador precisa clicar em "Prosseguir para Votação"
         }
       } catch (e) {}
     }
@@ -130,8 +137,10 @@ export default function VotacaoPublica() {
       documento: moradorDoc.trim()
     }
 
+    // Salva APENAS com chave por enquete (nunca global) — conveniência para rever resultados
+    // no mesmo dispositivo, sem contaminar outros moradores que venham a votar depois
     localStorage.setItem(`morador_ident_${id}`, JSON.stringify(moradorObj))
-    localStorage.setItem('morador_ident_global', JSON.stringify(moradorObj))
+    localStorage.removeItem('morador_ident_global')
 
     setMoradorKey(generatedKey)
     setIdentificado(true)

@@ -49,5 +49,13 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if isAuthenticated();
     }
+
+    // Enquetes: leitura pública (qualquer um pode ver), escrita exige auth (anônima inclusa)
+    // Isso permite que moradores votem via link do WhatsApp sem precisar de conta no ERP.
+    // O controle de voto único é feito pelo código (chave por unidade/nome), não por bloqueio de acesso.
+    match /enquetes/{enqueteId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
   }
 }
