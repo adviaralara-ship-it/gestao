@@ -51,3 +51,46 @@ export async function enviarBoletoWhatsAppAuto(boleto, morador, condoDoc, custom
     return { success: false, error: err.message || 'Tempo limite esgotado no envio' }
   }
 }
+
+/**
+ * Envia a notificacao de uma NOVA ENQUETE para o grupo de WhatsApp do condominio.
+ * A votacao oficial continua 100% dentro do ERP (Firestore); o WhatsApp serve
+ * apenas para notificar e direcionar os moradores para a pagina de enquetes.
+ * @param {Object} enquete - { pergunta, opcoes: [], dataFim }
+ * @param {Object} condoDoc - documento do condominio (deve conter grupoWhatsapp)
+ */
+export async function enviarEnqueteWhatsAppGrupo(enquete, condoDoc) {
+  const grupo = String(condoDoc?.grupoWhatsapp || '').trim()
+  if (!grupo) {
+    return { success: false, error: 'Condominio sem grupo de WhatsApp cadastrado (campo grupoWhatsapp).' }
+  }
+  const pergunta = String(enquete?.pergunta || '').trim()
+  const opcoes = Array.isArray(enquete?.opcoes) ? enquete.opcoes.map(o => String(o || '').trim()).filter(Boolean) : []
+  if (!pergunta || opcoes.length === 0) {
+    return { success: false, error: 'Enquete sem pergunta ou opcoes validas.' }
+  }
+  const dataFmt = enquete?.dataFim
+    ? (String(enquete.dataFim).includes('-') ? String(enquete.dataFim).split('-').reverse().join('/') : String(enquete.dataFim))
+    : 'a definir'
+  const listaOpcoes = opcoes.map((op, i) => `${i + 1}. ${op}`).join('\n')
+  const linkEnquetes = (typeof window !== 'undefined' && window.location?.origin)
+    ? `${window.location.origin}/enquetes`
+    : 'https://alpha-solucoes-condominiais.vercel.app/enquetes'
+  const textoFinal = `\u{1F4CA} *NOVA ENQUETE NO CONDOMINIO!*\n\n\u{1F3E2} *Condominio:* ${condoDoc?.nome || '—'}\n\u2753 *Pergunta:* ${pergunta}\n\n\u{1F5F3}\uFE0F *Opcoes de voto:*\n${listaOpcoes}\n\n\u23F0 *Votacao ate:* ${dataFmt}\n\n\u{1F449} *Vote pelo sistema (registro oficial):*\n${linkEnquetes}\n\n_Respostas neste grupo NAO sao computadas. O voto valido e apenas pelo link acima._\n\nAtenciosamente,\n*Alpha Solucoes Condominiais*`
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
+    const res = await fetch('/api/whatsapp-send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: grupo, text: textoFinal, instance: 'InstanciaAlpha' }),
+      signal: controller.signal
+    })
+    clearTimeout(timeoutId)
+    const data = await res.json()
+    return data
+  } catch (err) {
+    console.error('Erro no envio de enquete via WhatsApp:', err)
+    return { success: false, error: err.message || 'Tempo limite esgotado no envio' }
+  }
+}

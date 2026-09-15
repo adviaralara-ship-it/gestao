@@ -17,8 +17,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Número e mensagem ou documento PDF são obrigatórios.' });
   }
 
-  const cleanNumber = String(number).replace(/\D/g, '');
-  const finalNumber = cleanNumber.startsWith('55') ? cleanNumber : `55${cleanNumber}`;
+  // Suporte a JID de grupo do WhatsApp (ex: 120363012345678901@g.us):
+  // grupos nao devem ser limpos/prefixados como numeros de telefone comuns.
+  const rawNumber = String(number).trim();
+  const isGroupJid = rawNumber.includes('@g.us');
+  const cleanNumber = isGroupJid ? rawNumber : rawNumber.replace(/\D/g, '');
+  const finalNumber = isGroupJid ? cleanNumber : (cleanNumber.startsWith('55') ? cleanNumber : `55${cleanNumber}`);
 
   const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live';
   const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb';

@@ -1,0 +1,6 @@
+textnode_modules/
+dist/
+.git/
+.env
+.env.vercel
+*.log

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { PieChart, ListChecks, Plus, Trash2, CheckCircle2, AlertCircle, BarChart3, Clock, X } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
+import { enviarEnqueteWhatsAppGrupo } from '../utils/whatsappAutomacao'
 
 const statusBadge = s => ({ 'Aberta': 'badge-green', 'Encerrada': 'badge-red' }[s] || 'badge-blue')
 
@@ -9,6 +10,7 @@ export default function Enquetes() {
   const { user } = useAuth()
   const isAdminOrSindico = ['Administrador', 'Síndico'].includes(user?.role)
   const { items: enquetes, addItem, deleteItem, updateItem } = useFirestore('enquetes')
+  const { items: condominios } = useFirestore('condominios')
   
   const [modal, setModal] = useState(false)
 
@@ -24,10 +26,21 @@ export default function Enquetes() {
     } else {
       await addItem({ 
         ...form, 
+        condominio: form.condominio || user?.condominio || '',
+        criadoPor: user?.nome || user?.email || '',
         status: 'Aberta',
         votos: {}, // mapa de userId -> opcaoIndex
         _createdAt: new Date().toISOString()
       })
+      try {
+        const alvo = form.condominio || user?.condominio || ''
+        const alvos = alvo === 'Todos'
+          ? condominios.filter(c => c.grupoWhatsapp)
+          : condominios.filter(c => (alvo ? c.nome === alvo : true) && c.grupoWhatsapp)
+        for (const condoDoc of alvos) {
+          enviarEnqueteWhatsAppGrupo(form, condoDoc).catch(e => console.warn('Falha no disparo WhatsApp da enquete:', e))
+        }
+      } catch (e) { console.warn('Falha no disparo WhatsApp da enquete:', e) }
     }
     setModal(false)
   }
@@ -143,13 +156,14 @@ export default function Enquetes() {
         </div>
       )}
 
-      {modal && <ModalEnqueteForm data={modal} onClose={() => setModal(false)} onSave={handleSave} />}
+      {modal && <ModalEnqueteForm data={modal} user={user} condominios={condominios} onClose={() => setModal(false)} onSave={handleSave} />}
     </div>
   )
 }
 
-function ModalEnqueteForm({ data, onClose, onSave }) {
-  const [form, setForm] = useState(data.id ? data : { pergunta: '', dataFim: '', opcoes: ['', ''] })
+function ModalEnqueteForm({ data, user, condominios = [], onClose, onSave }) {
+  const isAdmin = user?.role === 'Administrador'
+  const [form, setForm] = useState(data.id ? data : { pergunta: '', dataFim: '', opcoes: ['', ''], condominio: isAdmin ? 'Todos' : (user?.condominio || '') })
 
   const addOpcao = () => setForm(f => ({ ...f, opcoes: [...f.opcoes, ''] }))
   const updateOpcao = (i, val) => {
@@ -167,6 +181,11 @@ function ModalEnqueteForm({ data, onClose, onSave }) {
           <button onClick={onClose}><X size={18} className="text-gray-400 hover:text-gray-700" /></button>
         </div>
         <div className="p-6 flex flex-col gap-4">
+          {isAdmin ? (
+            <div><label className="label">Condomínio *</label><select className="input w-full" value={form.condominio || 'Todos'} onChange={e => setForm(f => ({ ...f, condominio: e.target.value }))}><option value="Todos">Todos os Condomínios</option>{condominios.map(c => (<option key={c.id} value={c.nome}>{c.nome}</option>))}</select></div>
+          ) : (
+            <div><label className="label">Condomínio</label><input className="input w-full" value={form.condominio || user?.condominio || ''} disabled /></div>
+          )}
           <div><label className="label">Pergunta em pauta *</label><textarea className="input w-full min-h-[80px]" value={form.pergunta} onChange={e => setForm(f => ({ ...f, pergunta: e.target.value }))} placeholder="Insira o tema da votação..." autoFocus /></div>
           <div><label className="label">Data de Encerramento *</label><input type="date" className="input w-full" value={form.dataFim} onChange={e => setForm(f => ({ ...f, dataFim: e.target.value }))} /></div>
           
@@ -187,6 +206,7 @@ function ModalEnqueteForm({ data, onClose, onSave }) {
           <button onClick={onClose} className="btn-secondary">Cancelar</button>
           <button onClick={() => { 
             if(!form.pergunta || !form.dataFim || form.opcoes.some(v => !v.trim())) return alert('Preecha pergunta, encerramento e todos os campos de opção.')
+            if(isAdmin && !form.condominio) return alert('Selecione o condomínio da enquete.')
             onSave(form) 
           }} className="btn-primary">Criar Votação</button>
         </div>
