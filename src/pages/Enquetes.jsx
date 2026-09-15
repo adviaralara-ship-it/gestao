@@ -1,5 +1,8 @@
 import React, { useState } from 'react'
-import { PieChart, ListChecks, Plus, Trash2, CheckCircle2, AlertCircle, BarChart3, Clock, X } from 'lucide-react'
+import {
+  PieChart, ListChecks, Plus, Trash2, CheckCircle2, AlertCircle,
+  BarChart3, Clock, X, ExternalLink, Share2, MessageCircle
+} from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { enviarEnqueteWhatsAppGrupo } from '../utils/whatsappAutomacao'
@@ -24,25 +27,60 @@ export default function Enquetes() {
     if (form.id) {
       await updateItem(form.id, form)
     } else {
-      await addItem({ 
+      const docCriado = await addItem({ 
         ...form, 
         condominio: form.condominio || user?.condominio || '',
         criadoPor: user?.nome || user?.email || '',
         status: 'Aberta',
         votos: {}, // mapa de userId -> opcaoIndex
+        votosDetalhes: {},
         _createdAt: new Date().toISOString()
       })
+      const novoId = docCriado?.id || ''
+      const enqueteCompleta = { ...form, id: novoId }
+
       try {
         const alvo = form.condominio || user?.condominio || ''
         const alvos = alvo === 'Todos'
           ? condominios.filter(c => c.grupoWhatsapp)
           : condominios.filter(c => (alvo ? c.nome === alvo : true) && c.grupoWhatsapp)
         for (const condoDoc of alvos) {
-          enviarEnqueteWhatsAppGrupo(form, condoDoc).catch(e => console.warn('Falha no disparo WhatsApp da enquete:', e))
+          enviarEnqueteWhatsAppGrupo(enqueteCompleta, condoDoc).catch(e => console.warn('Falha no disparo WhatsApp da enquete:', e))
         }
       } catch (e) { console.warn('Falha no disparo WhatsApp da enquete:', e) }
     }
     setModal(false)
+  }
+
+  const handleReenviarWhatsApp = async (enquete) => {
+    const alvo = enquete.condominio || user?.condominio || ''
+    const alvos = alvo === 'Todos'
+      ? condominios.filter(c => c.grupoWhatsapp)
+      : condominios.filter(c => (alvo ? c.nome === alvo : true) && c.grupoWhatsapp)
+
+    if (alvos.length === 0) {
+      alert('Nenhum condomínio com grupo de WhatsApp configurado para esta enquete.')
+      return
+    }
+
+    if (!confirm(`Deseja disparar o link oficial desta enquete para o WhatsApp do condomínio?`)) return
+
+    let enviados = 0
+    for (const c of alvos) {
+      const res = await enviarEnqueteWhatsAppGrupo(enquete, c)
+      if (res?.success) enviados++
+    }
+    alert(`Link disparado com sucesso para ${enviados} condomínio(s)!`)
+  }
+
+  const handleCopiarLink = (enqueteId) => {
+    const url = `${window.location.origin}/votacao/${enqueteId}`
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url)
+      alert('Link público da enquete copiado para a área de transferência:\n' + url)
+    } else {
+      prompt('Copie o link público:', url)
+    }
   }
 
   const handleVotar = async (enquete, opcaoIndex) => {
@@ -51,7 +89,17 @@ export default function Enquetes() {
     if (!confirmacao) return
     
     const novosVotos = { ...enquete.votos, [user.id]: opcaoIndex }
-    await updateItem(enquete.id, { votos: novosVotos })
+    const novosDetalhes = {
+      ...(enquete.votosDetalhes || {}),
+      [user.id]: {
+        opcaoIndex,
+        opcaoTexto: enquete.opcoes[opcaoIndex],
+        nome: user?.nome || user?.email || 'Morador',
+        unidade: user?.unidade || user?.apartamento || '',
+        dataVoto: new Date().toISOString()
+      }
+    }
+    await updateItem(enquete.id, { votos: novosVotos, votosDetalhes: novosDetalhes })
   }
 
   const encerrar = async (enquete) => {
@@ -149,6 +197,43 @@ export default function Enquetes() {
                        {jaVotou && <div className="mt-2 p-3 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-center gap-2 text-emerald-700 text-sm font-medium"><CheckCircle2 size={16}/> Voto computado com sucesso!</div>}
                      </div>
                   )}
+                </div>
+
+                {/* Rodapé do Card com Ações Públicas e Compartilhamento */}
+                <div className="px-5 py-3 bg-gray-50 border-t border-cream-200 flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold text-gray-400 truncate">
+                    Condomínio: {e.condominio || 'Geral'}
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => handleCopiarLink(e.id)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 hover:border-brand-400 text-gray-700 text-xs font-semibold transition-all shadow-xs"
+                      title="Copiar link público para compartilhar"
+                    >
+                      <Share2 size={13} className="text-brand-600" />
+                      <span className="hidden sm:inline">Copiar Link</span>
+                    </button>
+                    <a
+                      href={`/votacao/${e.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 hover:border-brand-400 text-gray-700 text-xs font-semibold transition-all shadow-xs"
+                      title="Abrir tela pública de votação (Aba Independente)"
+                    >
+                      <ExternalLink size={13} className="text-brand-600" />
+                      <span className="hidden sm:inline">Abrir</span>
+                    </a>
+                    {isAdminOrSindico && (
+                      <button
+                        onClick={() => handleReenviarWhatsApp(e)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold transition-all shadow-xs"
+                        title="Disparar link desta enquete no grupo do WhatsApp"
+                      >
+                        <MessageCircle size={13} />
+                        <span className="hidden sm:inline">WhatsApp</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )

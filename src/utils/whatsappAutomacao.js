@@ -73,9 +73,11 @@ export async function enviarEnqueteWhatsAppGrupo(enquete, condoDoc) {
     ? (String(enquete.dataFim).includes('-') ? String(enquete.dataFim).split('-').reverse().join('/') : String(enquete.dataFim))
     : 'a definir'
   const listaOpcoes = opcoes.map((op, i) => `${i + 1}. ${op}`).join('\n')
-  const linkEnquetes = (typeof window !== 'undefined' && window.location?.origin)
-    ? `${window.location.origin}/enquetes`
-    : 'https://alpha-solucoes-condominiais.vercel.app/enquetes'
+  const origin = (typeof window !== 'undefined' && window.location?.origin)
+    ? window.location.origin
+    : 'https://alpha-solucoes-condominiais.vercel.app'
+  const enqueteId = enquete?.id || enquete?._id || ''
+  const linkEnquetes = enqueteId ? `${origin}/votacao/${enqueteId}` : `${origin}/votacao`
   const textoFinal = `\u{1F4CA} *NOVA ENQUETE NO CONDOMINIO!*\n\n\u{1F3E2} *Condominio:* ${condoDoc?.nome || '—'}\n\u2753 *Pergunta:* ${pergunta}\n\n\u{1F5F3}\uFE0F *Opcoes de voto:*\n${listaOpcoes}\n\n\u23F0 *Votacao ate:* ${dataFmt}\n\n\u{1F449} *Vote pelo sistema (registro oficial):*\n${linkEnquetes}\n\n_Respostas neste grupo NAO sao computadas. O voto valido e apenas pelo link acima._\n\nAtenciosamente,\n*Alpha Solucoes Condominiais*`
   try {
     const controller = new AbortController()

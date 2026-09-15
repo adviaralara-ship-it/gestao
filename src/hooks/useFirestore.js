@@ -127,6 +127,7 @@ export function useFirestore(colName) {
         _createdAt: serverTimestamp()
       })
       await logAudit('CREATE', docRef.id)
+      return docRef
     } catch (err) {
       console.error(`[Firestore] Erro ao adicionar em "${colName}":`, err)
       if (err.code === 'permission-denied') {

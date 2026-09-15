@@ -34,6 +34,7 @@ import PlanoContas from './pages/PlanoContas'
 import ValidaVisitante from './pages/ValidaVisitante'
 import ValidaConvidado from './pages/ValidaConvidado'
 import Enquetes from './pages/Enquetes'
+import VotacaoPublica from './pages/VotacaoPublica'
 import Classificados from './pages/Classificados'
 import Tarefas from './pages/Tarefas'
 import Cadastro from './pages/Cadastro'
@@ -152,6 +153,9 @@ function AppRoutes() {
         <Route path="/checkin-prestador" element={<CheckinPrestador />} />
         {/* Rota pública para o morador acessar e assinar o termo de mediação ODR */}
         <Route path="/mediacao/sala/:id" element={<MediacaoSalaExterna />} />
+        {/* Rotas públicas de votação isolada (blank layout) para WhatsApp */}
+        <Route path="/votacao/:id" element={<VotacaoPublica />} />
+        <Route path="/enquetes/:id" element={<VotacaoPublica />} />
         
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<AuthorizedRoute module=""><span /></AuthorizedRoute>} />
