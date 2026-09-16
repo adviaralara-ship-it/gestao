@@ -14,6 +14,7 @@ import { useFirestore } from '../hooks/useFirestore'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { format, parseISO, differenceInDays } from 'date-fns'
+import { isAlphaInterno } from './Financeiro'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -715,9 +716,16 @@ export default function Dashboard() {
   // 3. GESTÃO / SÍNDICO / ADMINISTRADOR / CONSELHO (100% DADOS REAIS DO FIRESTORE)
   // =========================================================================
   const [condoFiltro, setCondoFiltro] = useState(user?.role === 'Síndico' || user?.role === 'Conselheiro' ? (user.condominio || 'Todos') : 'Todos')
+  
+  const hoje = new Date()
+  const mesAtualStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
+  const [mesFiltro, setMesFiltro] = useState(mesAtualStr)
 
   const filterByCondo = (items) => {
     if (!condoFiltro || condoFiltro === 'Todos') return items
+    if (condoFiltro === 'Alpha (Interno)') {
+      return items.filter(it => isAlphaInterno(it.condominio))
+    }
     return items.filter(it => !it.condominio || it.condominio === condoFiltro)
   }
 
@@ -728,22 +736,23 @@ export default function Dashboard() {
   const apoFiltradas = useMemo(() => filterByCondo(apolices), [apolices, condoFiltro])
   const ocFiltradas = useMemo(() => filterByCondo(ocorrencias), [ocorrencias, condoFiltro])
 
-  const { saldoAtual, aReceber, aPagar, inadimplenciaTotal, contasVencidas, chartData } = useMemo(() => {
-    let recPagas = 0
-    let desPagas = 0
-    let recPendentes = 0
-    let desPendentes = 0
+  const { saldoAtual, capitalDeGiro, aReceber, aPagar, inadimplenciaTotal, contasVencidas, chartData } = useMemo(() => {
+    let recPagasTotal = 0
+    let desPagasTotal = 0
+    let recPendentesMes = 0
+    let desPendentesMes = 0
     let inadimp = 0
     let vencidas = []
 
-    const hoje = new Date()
-    hoje.setHours(0, 0, 0, 0)
+    const refHoje = new Date()
+    refHoje.setHours(0, 0, 0, 0)
     const histMeses = {}
 
+    // Processamento de Boletos (Receitas de Cotas Condominiais)
     bolFiltrado.forEach(b => {
       const val = parseFloat(b.valor) || 0
       const dStr = b.vencimento || b.data || ''
-      let dObj = hoje
+      let dObj = refHoje
       if (dStr) {
         try { dObj = parseISO(dStr) } catch(e) {}
       }
@@ -755,14 +764,17 @@ export default function Dashboard() {
       }
 
       if (b.status === 'Pago') {
-        recPagas += val
+        recPagasTotal += val
         histMeses[mesKey].receitas += val
       } else {
-        recPendentes += val
+        // A Receber no Mês Selecionado
+        if (!mesFiltro || mesKey === mesFiltro) {
+          recPendentesMes += val
+        }
         if (dStr) {
           try {
             const d = parseISO(dStr)
-            if (differenceInDays(d, hoje) < 0) {
+            if (differenceInDays(d, refHoje) < 0) {
               inadimp += val
             }
           } catch(e) {}
@@ -770,11 +782,12 @@ export default function Dashboard() {
       }
     })
 
+    // Processamento de Lançamentos Financeiros (Despesas e Receitas Avulsas)
     finFiltrado.forEach(f => {
       const val = parseFloat(f.valor) || 0
       const isDespesa = f.tipo === 'Despesa' || f.categoria?.toLowerCase().includes('despesa')
       const dStr = f.vencimento || f.data || ''
-      let dObj = hoje
+      let dObj = refHoje
       if (dStr) {
         try { dObj = parseISO(dStr) } catch(e) {}
       }
@@ -787,14 +800,17 @@ export default function Dashboard() {
 
       if (isDespesa) {
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.pago) {
-          desPagas += val
+          desPagasTotal += val
           histMeses[mesKey].despesas += val
         } else {
-          desPendentes += val
+          // A Pagar no Mês Selecionado
+          if (!mesFiltro || mesKey === mesFiltro) {
+            desPendentesMes += val
+          }
           if (dStr) {
             try {
               const d = parseISO(dStr)
-              const diff = differenceInDays(d, hoje)
+              const diff = differenceInDays(d, refHoje)
               if (diff < 0) {
                 vencidas.push({ ...f, diasAtraso: Math.abs(diff) })
               }
@@ -802,11 +818,13 @@ export default function Dashboard() {
           }
         }
       } else {
-        if (f.status === 'Pago' || f.status === 'Liquidado' || f.pago) {
-          recPagas += val
+        if (f.status === 'Pago' || f.status === 'Liquidado' || f.status === 'Recebido' || f.pago) {
+          recPagasTotal += val
           histMeses[mesKey].receitas += val
         } else {
-          recPendentes += val
+          if (!mesFiltro || mesKey === mesFiltro) {
+            recPendentesMes += val
+          }
         }
       }
     })
@@ -815,17 +833,21 @@ export default function Dashboard() {
       .sort((a, b) => a.order - b.order)
       .slice(-6)
 
+    const saldoEmCaixaAcumulado = recPagasTotal - desPagasTotal
+    const giroDoMes = saldoEmCaixaAcumulado + recPendentesMes - desPendentesMes
+
     return {
-      saldoAtual: recPagas - desPagas,
-      aReceber: recPendentes,
-      aPagar: desPendentes,
+      saldoAtual: saldoEmCaixaAcumulado,
+      capitalDeGiro: giroDoMes,
+      aReceber: recPendentesMes,
+      aPagar: desPendentesMes,
       inadimplenciaTotal: inadimp,
       contasVencidas: vencidas,
       chartData: sortedChart.length > 0 ? sortedChart : [
         { mes: format(new Date(), 'MMM'), receitas: 0, despesas: 0 }
       ]
     }
-  }, [bolFiltrado, finFiltrado])
+  }, [bolFiltrado, finFiltrado, mesFiltro])
 
   const statsCotacoes = useMemo(() => {
     let emAndamento = 0
@@ -1206,16 +1228,29 @@ export default function Dashboard() {
 
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-500">Mês:</span>
+            <input
+              type="month"
+              value={mesFiltro}
+              onChange={e => setMesFiltro(e.target.value)}
+              className="input py-1.5 text-xs font-bold text-gray-800 bg-slate-50 border-gray-300 rounded-xl"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-gray-500">Condomínio:</span>
             <select
               className="input py-2 text-xs font-bold text-gray-800 bg-slate-50 border-gray-300 rounded-xl"
               value={condoFiltro}
               onChange={e => setCondoFiltro(e.target.value)}
             >
-              <option value="Todos">Todos os Condomínios</option>
-              {condominios.map(c => (
-                <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
-              ))}
+              <option value="Todos">🌐 Todos os Condomínios + Alpha</option>
+              <option value="Alpha (Interno)">👑 Alpha Soluções (Financeiro Interno / Matriz)</option>
+              <optgroup label="Condomínios">
+                {condominios.map(c => (
+                  <option key={c.id || c.nome} value={c.nome}>🏢 {c.nome}</option>
+                ))}
+              </optgroup>
             </select>
           </div>
 
@@ -1229,8 +1264,8 @@ export default function Dashboard() {
       </div>
 
       {/* 1. VISÃO FINANCEIRA */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* Saldo Atual */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Saldo Atual / Saldo em Caixa */}
         <div 
           onClick={() => navigate('/financeiro')}
           className="bg-white p-5 rounded-2xl border border-pale-300 shadow-sm hover:shadow-md hover:border-brand-400 transition-all cursor-pointer group flex flex-col justify-between"
@@ -1247,12 +1282,34 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-bold">
-            <span>Saldo Operacional</span>
+            <span>Saldo em Caixa</span>
             <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
           </div>
         </div>
 
-        {/* A Receber */}
+        {/* Capital de Giro (Saúde do Mês) */}
+        <div 
+          onClick={() => navigate('/financeiro')}
+          className={`bg-white p-5 rounded-2xl border ${capitalDeGiro >= 0 ? 'border-emerald-200' : 'border-rose-200'} shadow-sm hover:shadow-md hover:border-brand-400 transition-all cursor-pointer group flex flex-col justify-between`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Capital de Giro</span>
+            <div className={`w-8 h-8 rounded-xl ${capitalDeGiro >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+              <Layers size={18} />
+            </div>
+          </div>
+          <div className="my-2">
+            <span className={`text-2xl font-black ${capitalDeGiro >= 0 ? 'text-emerald-600' : 'text-rose-600'} transition-colors`}>
+              R$ {capitalDeGiro.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 text-[11px] text-gray-500 font-bold">
+            <span>Saúde do Mês</span>
+            <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+          </div>
+        </div>
+
+        {/* A Receber (Mês Selecionado) */}
         <div 
           onClick={() => navigate('/boletos')}
           className="bg-white p-5 rounded-2xl border border-pale-300 shadow-sm hover:shadow-md hover:border-brand-400 transition-all cursor-pointer group flex flex-col justify-between"
@@ -1274,7 +1331,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* A Pagar */}
+        {/* A Pagar (Mês Selecionado) */}
         <div 
           onClick={() => navigate('/financeiro')}
           className="bg-white p-5 rounded-2xl border border-pale-300 shadow-sm hover:shadow-md hover:border-brand-400 transition-all cursor-pointer group flex flex-col justify-between"
@@ -1291,7 +1348,7 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-amber-600 font-bold">
-            <span>Contas a Pagar</span>
+            <span>Contas do Mês</span>
             <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
           </div>
         </div>

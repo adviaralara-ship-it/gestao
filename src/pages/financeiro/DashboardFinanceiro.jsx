@@ -3,7 +3,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, L
 import { Wallet, TrendingUp, TrendingDown, DollarSign, Activity, AlertTriangle, ShieldCheck } from 'lucide-react'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 
-export default function DashboardFinanceiro({ lancamentos, contas }) {
+export default function DashboardFinanceiro({ lancamentos = [], contas = [] }) {
   const hoje = new Date()
   const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`
   const [mesDe, setMesDe] = useState(mesAtual)
@@ -11,17 +11,20 @@ export default function DashboardFinanceiro({ lancamentos, contas }) {
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-  // 1. Saldo em Caixa (Soma das contas correntes/poupança)
-  const saldoCaixa = contas.reduce((acc, c) => acc + Number(c.saldo || 0), 0)
+  // 1. Saldo em Caixa Total Acumulado (Entradas reais liquidadas menos saídas pagas de todo o histórico da entidade)
+  const totalRecebidoHistorico = lancamentos
+    .filter(t => t.tipo === 'Receita' && (t.status === 'Recebido' || t.status === 'Pago'))
+    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
 
-  // 2. Contas a Pagar e Receber Pendentes
-  const pagarPendente = lancamentos.filter(t => t.tipo === 'Despesa' && t.status === 'Pendente').reduce((acc, c) => acc + Number(c.valor || 0), 0)
-  const receberPendente = lancamentos.filter(t => t.tipo === 'Receita' && t.status === 'Pendente').reduce((acc, c) => acc + Number(c.valor || 0), 0)
+  const totalPagoHistorico = lancamentos
+    .filter(t => t.tipo === 'Despesa' && (t.status === 'Pago' || t.status === 'Liquidado' || t.pago))
+    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
 
-  // 3. Capital de Giro = Ativo Circulante (Caixa + Receber) - Passivo Circulante (Pagar)
-  const capitalDeGiro = saldoCaixa + receberPendente - pagarPendente
+  // Saldo real em caixa: diferença de entradas e saídas liquidadas (se houver contas cadastradas, somam-se)
+  const saldoContasBancarias = contas.reduce((acc, c) => acc + Number(c.saldo || 0), 0)
+  const saldoCaixa = (totalRecebidoHistorico - totalPagoHistorico) + saldoContasBancarias
 
-  // 4. Lançamentos Realizados no período selecionado (De ... Até ...)
+  // 2. Filtragem estrita dos lançamentos pelo período selecionado (Mês Selecionado)
   const lancamentosPeriodo = lancamentos.filter(t => {
     if (!t.data) return false
     const mes = t.data.substring(0, 7)
@@ -30,14 +33,36 @@ export default function DashboardFinanceiro({ lancamentos, contas }) {
     if (mesAte) return mes <= mesAte
     return true
   })
-  
-  const receitasMes = lancamentosPeriodo.filter(t => t.tipo === 'Receita' && t.status === 'Recebido').reduce((acc, c) => acc + Number(c.valor || 0), 0)
-  const despesasMes = lancamentosPeriodo.filter(t => t.tipo === 'Despesa' && t.status === 'Pago').reduce((acc, c) => acc + Number(c.valor || 0), 0)
-  const lucroMes = receitasMes - despesasMes
+
+  // 3. Contas a Pagar e a Receber estritamente do mês/período selecionado
+  const pagarPendenteMes = lancamentosPeriodo
+    .filter(t => t.tipo === 'Despesa' && (t.status === 'Pendente' || t.status === 'Aguardando Aprovação'))
+    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
+
+  const receberPendenteMes = lancamentosPeriodo
+    .filter(t => t.tipo === 'Receita' && (t.status === 'Pendente' || t.status === 'Vencido'))
+    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
+
+  const despesasPagasMes = lancamentosPeriodo
+    .filter(t => t.tipo === 'Despesa' && (t.status === 'Pago' || t.status === 'Liquidado' || t.pago))
+    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
+
+  const receitasRecebidasMes = lancamentosPeriodo
+    .filter(t => t.tipo === 'Receita' && (t.status === 'Recebido' || t.status === 'Pago'))
+    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
+
+  // Saldo Real do Mês (Entradas liquidadas - Despesas pagas no mês)
+  const saldoLiquidoMes = receitasRecebidasMes - despesasPagasMes
+
+  // 4. Capital de Giro Operacional do Mês = Recursos Disponíveis / Saúde do Mês:
+  // Saldo em Caixa Acumulado + A Receber do Mês - A Pagar do Mês
+  const capitalDeGiro = saldoCaixa + receberPendenteMes - pagarPendenteMes
+
+  const lucroMes = receitasRecebidasMes - despesasPagasMes
 
   // Margem de Lucro = (Lucro Líquido / Receitas) * 100
-  const margemLucro = receitasMes > 0 ? (lucroMes / receitasMes) * 100 : 0
-  const margemContribuicao = receitasMes > 0 ? ((receitasMes - despesasMes) / receitasMes) * 100 : 0
+  const margemLucro = receitasRecebidasMes > 0 ? (lucroMes / receitasRecebidasMes) * 100 : 0
+  const margemContribuicao = receitasRecebidasMes > 0 ? ((receitasRecebidasMes - despesasPagasMes) / receitasRecebidasMes) * 100 : 0
 
   // Gráfico de Despesas (Pie)
   const despesasPorCategoria = lancamentosPeriodo.filter(t => t.tipo === 'Despesa').reduce((acc, t) => {
@@ -49,7 +74,7 @@ export default function DashboardFinanceiro({ lancamentos, contas }) {
 
   // Gráfico de Inadimplência / Arrecadação
   const inadimplenciaData = [
-    { name: 'Recebimentos', Recebido: receitasMes, Pendente: lancamentosPeriodo.filter(t => t.tipo === 'Receita' && t.status === 'Pendente').reduce((acc, c) => acc + Number(c.valor || 0), 0) }
+    { name: 'Recebimentos', Recebido: receitasRecebidasMes, Pendente: receberPendenteMes }
   ]
 
   return (
@@ -64,6 +89,7 @@ export default function DashboardFinanceiro({ lancamentos, contas }) {
             <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Saldo em Caixa</p>
           </div>
           <p className="text-3xl font-black text-gray-800">R$ {fmt(saldoCaixa)}</p>
+          <p className="text-xs text-gray-400 mt-1">Total acumulado em caixa</p>
         </div>
 
         {/* Capital de Giro */}
@@ -75,27 +101,27 @@ export default function DashboardFinanceiro({ lancamentos, contas }) {
             <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Capital de Giro</p>
           </div>
           <p className={`text-3xl font-black ${capitalDeGiro >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>R$ {fmt(capitalDeGiro)}</p>
-          <p className="text-xs text-gray-400 mt-1">Sobra para honrar compromissos</p>
+          <p className="text-xs text-gray-400 mt-1">Saúde e cobertura do mês</p>
         </div>
 
-        {/* Inadimplência (A Receber) */}
+        {/* A Receber do Mês */}
         <div className="card border-l-4 border-l-orange-500">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-orange-100 rounded-lg text-orange-600"><AlertTriangle size={18} /></div>
-            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">A Receber</p>
+            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">A Receber (Mês)</p>
           </div>
-          <p className="text-3xl font-black text-orange-500">R$ {fmt(receberPendente)}</p>
-          <p className="text-xs text-gray-400 mt-1">Inadimplência acumulada</p>
+          <p className="text-3xl font-black text-orange-500">R$ {fmt(receberPendenteMes)}</p>
+          <p className="text-xs text-gray-400 mt-1">Receitas pendentes no período</p>
         </div>
 
-        {/* Contas a Pagar */}
+        {/* Contas a Pagar do Mês */}
         <div className="card border-l-4 border-l-red-500">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-red-100 rounded-lg text-red-600"><TrendingDown size={18} /></div>
-            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">A Pagar</p>
+            <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">A Pagar (Mês)</p>
           </div>
-          <p className="text-3xl font-black text-red-500">R$ {fmt(pagarPendente)}</p>
-          <p className="text-xs text-gray-400 mt-1">Compromissos pendentes</p>
+          <p className="text-3xl font-black text-red-500">R$ {fmt(pagarPendenteMes)}</p>
+          <p className="text-xs text-gray-400 mt-1">Compromissos pendentes no período</p>
         </div>
       </div>
 

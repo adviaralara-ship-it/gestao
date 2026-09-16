@@ -5,8 +5,10 @@ import { isAlphaInterno } from '../Financeiro'
 
 export default function ContasPagar({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
   const [search, setSearch] = useState('')
-  const [mesDe, setMesDe] = useState('')
-  const [mesAte, setMesAte] = useState('')
+  const hoje = new Date()
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`
+  const [mesDe, setMesDe] = useState(mesAtual)
+  const [mesAte, setMesAte] = useState(mesAtual)
   const [statusFilter, setStatusFilter] = useState('Todas')
   const [copiadoId, setCopiadoId] = useState(null)
 
@@ -62,10 +64,19 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
 
   contasPagar.sort((a, b) => new Date(b.data) - new Date(a.data))
 
-  const totalPendente = lancamentos.filter(t => t.tipo === 'Despesa' && t.status === 'Pendente').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
-  const totalPago = lancamentos.filter(t => t.tipo === 'Despesa' && t.status === 'Pago').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
+  // Lançamentos de despesa filtrados pelo período selecionado para os cards de resumo
+  const despesasPeriodo = lancamentos.filter(t => {
+    if (t.tipo !== 'Despesa') return false
+    const m = t.data?.substring(0, 7)
+    if (mesDe && mesAte) return m >= mesDe && m <= mesAte
+    if (mesDe) return m >= mesDe
+    if (mesAte) return m <= mesAte
+    return true
+  })
+
+  const totalPendente = despesasPeriodo.filter(t => t.status === 'Pendente' || t.status === 'Aguardando Aprovação').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
+  const totalPago = despesasPeriodo.filter(t => t.status === 'Pago' || t.status === 'Liquidado' || t.pago).reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
   const totalExibido = contasPagar.reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
-  const hoje = new Date()
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 

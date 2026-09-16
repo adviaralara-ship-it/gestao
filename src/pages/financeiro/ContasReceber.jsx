@@ -5,8 +5,10 @@ import { isAlphaInterno } from '../Financeiro'
 
 export default function ContasReceber({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
   const [search, setSearch] = useState('')
-  const [mesDe, setMesDe] = useState('')
-  const [mesAte, setMesAte] = useState('')
+  const hoje = new Date()
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`
+  const [mesDe, setMesDe] = useState(mesAtual)
+  const [mesAte, setMesAte] = useState(mesAtual)
   const [statusFilter, setStatusFilter] = useState('Todas')
 
   let contasReceber = lancamentos.filter(t => t.tipo === 'Receita')
@@ -34,10 +36,19 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
 
   contasReceber.sort((a, b) => new Date(b.data) - new Date(a.data))
 
-  const totalPendente = lancamentos.filter(t => t.tipo === 'Receita' && t.status === 'Pendente').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
-  const totalRecebido = lancamentos.filter(t => t.tipo === 'Receita' && t.status === 'Recebido').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
+  // Lançamentos de receita filtrados pelo período selecionado para os cards de resumo
+  const receitasPeriodo = lancamentos.filter(t => {
+    if (t.tipo !== 'Receita') return false
+    const m = t.data?.substring(0, 7)
+    if (mesDe && mesAte) return m >= mesDe && m <= mesAte
+    if (mesDe) return m >= mesDe
+    if (mesAte) return m <= mesAte
+    return true
+  })
+
+  const totalPendente = receitasPeriodo.filter(t => t.status === 'Pendente' || t.status === 'Vencido').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
+  const totalRecebido = receitasPeriodo.filter(t => t.status === 'Recebido' || t.status === 'Pago').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
   const totalExibido = contasReceber.reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
-  const hoje = new Date()
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 

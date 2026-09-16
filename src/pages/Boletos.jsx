@@ -1193,6 +1193,7 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
 export default function Boletos() {
   const { user } = useAuth()
   const { items: allBoletos, addItem, updateItem, deleteItem } = useFirestore('boletos')
+  const { items: allLancamentos, addItem: addFinanceiroLancamento, updateItem: updateFinanceiroLancamento } = useFirestore('financeiro_lancamentos')
   const { items: allCondominios, updateItem: updateCondominio } = useFirestore('condominios')
   const { items: allMoradoresDocs } = useFirestore('moradores')
   const { items: allUsuariosDocs } = useFirestore('usuarios')
@@ -1650,8 +1651,35 @@ export default function Boletos() {
     const msg = `*Alpha Soluções Condominiais*\nOlá *${b.morador}* (Apt ${b.apt}), segue sua fatura referente a *${b.competencia || 'Taxa Condominial'}*:\n\n💰 *Valor:* R$ ${valorFormatado}\n📅 *Vencimento:* ${dataVenc}\n\n💠 *PIX Copia e Cola:*\n\`\`\`${pix}\`\`\`\n\nAbra o aplicativo do seu banco, escolha *PIX Copia e Cola* e cole o código acima para efetuar o pagamento.`
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }
-  const marcarPago  = async b => updateItem(b.id,{...b,status:'Pago'})
-  
+
+  const marcarPago = async b => {
+    const novoStatus = b.status === 'Pago' ? 'Pendente' : 'Pago'
+    await updateItem(b.id, { ...b, status: novoStatus })
+
+    // Sincronização automática com financeiro_lancamentos (Zero digitação manual)
+    if (novoStatus === 'Pago') {
+      const jaExiste = (allLancamentos || []).find(l => l.boletoId === b.id || (l.fitid && l.fitid === b.id))
+      if (!jaExiste) {
+        await addFinanceiroLancamento({
+          descricao: `Recebimento Cota: ${b.morador || 'Morador'} - Apt ${b.apt || ''}`,
+          tipo: 'Receita',
+          categoria: 'Taxa Condominial',
+          valor: Number(b.valor || 0),
+          data: new Date().toISOString().split('T')[0],
+          status: 'Recebido',
+          condominio: b.condominio || 'Alpha Condomínios',
+          boletoId: b.id
+        })
+      } else {
+        await updateFinanceiroLancamento(jaExiste.id, { ...jaExiste, status: 'Recebido' })
+      }
+    } else {
+      const jaExiste = (allLancamentos || []).find(l => l.boletoId === b.id)
+      if (jaExiste) {
+        await updateFinanceiroLancamento(jaExiste.id, { ...jaExiste, status: 'Pendente' })
+      }
+    }
+  }
   const handleSaveBoleto = async form => {
     const val = Number(form.valor) || 0
     const mor = (moradores || []).find(m => m && m.nome && form?.morador && m.nome.trim().toLowerCase() === String(form.morador).trim().toLowerCase())
@@ -1857,6 +1885,21 @@ export default function Boletos() {
 
               if (boletoMatch) {
                 await updateItem(boletoMatch.id, { ...boletoMatch, status: 'Pago' });
+                const jaExiste = (allLancamentos || []).find(l => l.boletoId === boletoMatch.id || (l.fitid && l.fitid === boletoMatch.id))
+                if (!jaExiste) {
+                  await addFinanceiroLancamento({
+                    descricao: `Recebimento Cota (OFX): ${boletoMatch.morador || 'Morador'} - Apt ${boletoMatch.apt || ''}`,
+                    tipo: 'Receita',
+                    categoria: 'Taxa Condominial',
+                    valor: Number(boletoMatch.valor || 0),
+                    data: new Date().toISOString().split('T')[0],
+                    status: 'Recebido',
+                    condominio: boletoMatch.condominio || 'Alpha Condomínios',
+                    boletoId: boletoMatch.id
+                  })
+                } else {
+                  await updateFinanceiroLancamento(jaExiste.id, { ...jaExiste, status: 'Recebido' })
+                }
                 pendentes.splice(pendentes.indexOf(boletoMatch), 1);
                 baixados++;
               }
@@ -1900,6 +1943,21 @@ export default function Boletos() {
 
             if (boletoMatch) {
               await updateItem(boletoMatch.id, { ...boletoMatch, status: 'Pago' });
+              const jaExiste = (allLancamentos || []).find(l => l.boletoId === boletoMatch.id || (l.fitid && l.fitid === boletoMatch.id))
+              if (!jaExiste) {
+                await addFinanceiroLancamento({
+                  descricao: `Recebimento Cota (CSV): ${boletoMatch.morador || 'Morador'} - Apt ${boletoMatch.apt || ''}`,
+                  tipo: 'Receita',
+                  categoria: 'Taxa Condominial',
+                  valor: Number(boletoMatch.valor || 0),
+                  data: new Date().toISOString().split('T')[0],
+                  status: 'Recebido',
+                  condominio: boletoMatch.condominio || 'Alpha Condomínios',
+                  boletoId: boletoMatch.id
+                })
+              } else {
+                await updateFinanceiroLancamento(jaExiste.id, { ...jaExiste, status: 'Recebido' })
+              }
               pendentes.splice(pendentes.indexOf(boletoMatch), 1);
               baixados++;
             }
