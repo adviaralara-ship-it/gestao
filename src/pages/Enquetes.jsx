@@ -1,7 +1,7 @@
-import React, { useState } from 'react'
+﻿import React, { useState } from 'react'
 import {
   PieChart, ListChecks, Plus, Trash2, CheckCircle2, AlertCircle,
-  BarChart3, Clock, X, ExternalLink, Share2, MessageCircle
+  BarChart3, Clock, X, ExternalLink, Share2, MessageCircle, Users, ChevronDown, ChevronUp
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
@@ -16,6 +16,7 @@ export default function Enquetes() {
   const { items: condominios } = useFirestore('condominios')
   
   const [modal, setModal] = useState(false)
+  const [verDetalhesId, setVerDetalhesId] = useState(null)
 
   // Auto encerra votações cuja data limite já passou (visualmente)
   const viewEnquetes = enquetes.map(e => ({
@@ -134,8 +135,12 @@ export default function Enquetes() {
             const jaVotou = e.votos && e.votos[user?.id] !== undefined
             const meuVoto = jaVotou ? e.opcoes[e.votos[user.id]] : null
             
-            // Computa percentuais
+            // Computa contagem de votos por opcao
             const contagem = e.opcoes.map((_, i) => Object.values(e.votos || {}).filter(v => v === i).length)
+            
+            // Lista detalhada de moradores que votaram
+            const listaVotantes = Object.values(e.votosDetalhes || {})
+            const mostrandoDetalhes = verDetalhesId === e.id
 
             return (
               <div key={e.id} className="card p-0 overflow-hidden flex flex-col">
@@ -156,7 +161,89 @@ export default function Enquetes() {
                 </div>
                 
                 <div className="p-5 flex-1 bg-gray-50/50">
-                  {(!jaVotou && e.status === 'Aberta') ? (
+                  {/* Para quem é Admin/Síndico OU se já votou OU se tem votos registrados: Exibe Parciais e Apuração */}
+                  {(isAdminOrSindico || jaVotou || totalVotos > 0 || e.status === 'Encerrada') ? (
+                     <div className="flex flex-col gap-4">
+                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex justify-between items-center">
+                         <span>Resultados em Tempo Real</span>
+                         <span className="flex items-center gap-1 text-brand-600 font-bold bg-brand-50 px-2 py-0.5 rounded-md">
+                           <BarChart3 size={13}/> {totalVotos} {totalVotos === 1 ? 'voto' : 'votos'}
+                         </span>
+                       </p>
+                       
+                       <div className="flex flex-col gap-3">
+                         {e.opcoes.map((opcao, i) => {
+                           const votosCrt = contagem[i] || 0
+                           const pct = totalVotos === 0 ? 0 : Math.round((votosCrt / totalVotos) * 100)
+                           const isVencedor = pct > 0 && votosCrt === Math.max(...contagem)
+
+                           return (
+                             <div key={i} className="relative">
+                               <div className="flex justify-between text-xs font-semibold mb-1 relative z-10 px-1">
+                                 <span className={isVencedor ? 'text-gray-800 font-bold' : 'text-gray-600'}>
+                                   {opcao} {jaVotou && e.votos[user?.id] === i && ' (Seu Voto)'}
+                                 </span>
+                                 <span className={isVencedor ? 'text-brand-700 font-bold' : 'text-gray-400'}>
+                                   {pct}% ({votosCrt})
+                                 </span>
+                               </div>
+                               <div className="w-full bg-cream-300 rounded-full h-2.5 overflow-hidden">
+                                 <div className={`h-2.5 rounded-full transition-all duration-1000 ${isVencedor ? 'bg-brand-500' : 'bg-gray-400'}`} style={{ width: `${pct}%` }} />
+                               </div>
+                             </div>
+                           )
+                         })}
+                       </div>
+
+                       {/* Se o usuário logado ainda não votou e a enquete está aberta, permite que ele vote também pelo painel */}
+                       {!jaVotou && e.status === 'Aberta' && (
+                         <div className="mt-2 pt-3 border-t border-cream-200">
+                           <p className="text-xs font-semibold text-gray-500 mb-2">Selecione para registrar seu voto:</p>
+                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                             {e.opcoes.map((opcao, i) => (
+                               <button key={i} onClick={() => handleVotar(e, i)} className="text-left px-3 py-2 rounded-lg border border-cream-300 bg-white hover:border-brand-500 hover:bg-brand-50/30 text-xs font-medium text-gray-700 transition-all">
+                                 {opcao}
+                               </button>
+                             ))}
+                           </div>
+                         </div>
+                       )}
+
+                       {/* Lista de Votos Nominais para Síndico e Administrador */}
+                       {isAdminOrSindico && totalVotos > 0 && (
+                         <div className="mt-2 pt-2 border-t border-cream-200">
+                           <button
+                             onClick={() => setVerDetalhesId(mostrandoDetalhes ? null : e.id)}
+                             className="flex items-center justify-between w-full text-xs font-bold text-gray-600 hover:text-brand-600 py-1 transition-colors"
+                           >
+                             <span className="flex items-center gap-1.5">
+                               <Users size={13} /> {listaVotantes.length} morador(es) identificado(s)
+                             </span>
+                             {mostrandoDetalhes ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                           </button>
+
+                           {mostrandoDetalhes && (
+                             <div className="mt-2 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                               {listaVotantes.map((v, idx) => (
+                                 <div key={idx} className="flex items-center justify-between text-[11px] bg-white p-2 rounded-lg border border-cream-200 shadow-xs">
+                                   <div>
+                                     <span className="font-bold text-gray-800">{v.nome}</span>
+                                     {v.unidade && <span className="text-gray-400 ml-1">({v.unidade})</span>}
+                                   </div>
+                                   <span className="font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded">
+                                     {v.opcaoTexto || e.opcoes[v.opcaoIndex]}
+                                   </span>
+                                 </div>
+                               ))}
+                             </div>
+                           )}
+                         </div>
+                       )}
+                       
+                       {jaVotou && <div className="mt-1 p-2 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-center gap-2 text-emerald-700 text-xs font-medium"><CheckCircle2 size={14}/> Seu voto está computado!</div>}
+                     </div>
+                  ) : (
+                     /* Caso seja um morador comum que ainda não votou e a enquete está aberta sem votos */
                      <div className="flex flex-col gap-3">
                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Escolha sua opção:</p>
                        {e.opcoes.map((opcao, i) => (
@@ -164,37 +251,6 @@ export default function Enquetes() {
                            {opcao}
                          </button>
                        ))}
-                     </div>
-                  ) : (
-                     <div className="flex flex-col gap-4">
-                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex justify-between">
-                         <span>Resultados Parciais</span>
-                         <span className="flex items-center gap-1 text-brand-600"><BarChart3 size={12}/> {totalVotos} votos</span>
-                       </p>
-                       
-                       <div className="flex flex-col gap-3">
-                         {e.opcoes.map((opcao, i) => {
-                           const votosCrt = contagem[i]
-                           const pct = totalVotos === 0 ? 0 : Math.round((votosCrt / totalVotos) * 100)
-                           const isVencedor = pct > 0 && pct === Math.max(...contagem.map((v,j) => totalVotos ? Math.round((v/totalVotos)*100) : 0))
-
-                           return (
-                             <div key={i} className="relative">
-                               <div className="flex justify-between text-xs font-semibold mb-1 relative z-10 px-1">
-                                 <span className={isVencedor ? 'text-gray-800' : 'text-gray-500'}>
-                                   {opcao} {jaVotou && e.votos[user.id] === i && ' (Seu Voto)'}
-                                 </span>
-                                 <span className={isVencedor ? 'text-brand-700 font-bold' : 'text-gray-400'}>{pct}%</span>
-                               </div>
-                               <div className="w-full bg-cream-300 rounded-full h-2">
-                                 <div className={`h-2 rounded-full transition-all duration-1000 ${isVencedor ? 'bg-brand-500' : 'bg-gray-400'}`} style={{ width: `${pct}%` }} />
-                               </div>
-                             </div>
-                           )
-                         })}
-                       </div>
-                       
-                       {jaVotou && <div className="mt-2 p-3 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-center gap-2 text-emerald-700 text-sm font-medium"><CheckCircle2 size={16}/> Voto computado com sucesso!</div>}
                      </div>
                   )}
                 </div>
@@ -248,53 +304,110 @@ export default function Enquetes() {
 
 function ModalEnqueteForm({ data, user, condominios = [], onClose, onSave }) {
   const isAdmin = user?.role === 'Administrador'
-  const [form, setForm] = useState(data.id ? data : { pergunta: '', dataFim: '', opcoes: ['', ''], condominio: isAdmin ? 'Todos' : (user?.condominio || '') })
+  const [form, setForm] = useState({
+    id: data.id || null,
+    pergunta: data.pergunta || '',
+    condominio: data.condominio || user?.condominio || (condominios[0]?.nome || ''),
+    dataFim: data.dataFim || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+    opcoes: data.opcoes || ['CONCORDO', 'NÃO CONCORDO']
+  })
 
-  const addOpcao = () => setForm(f => ({ ...f, opcoes: [...f.opcoes, ''] }))
-  const updateOpcao = (i, val) => {
-    const newOp = [...form.opcoes]
-    newOp[i] = val
-    setForm(f => ({ ...f, opcoes: newOp }))
+  const addOpcao = () => setForm({ ...form, opcoes: [...form.opcoes, ''] })
+  const removeOpcao = i => setForm({ ...form, opcoes: form.opcoes.filter((_, idx) => idx !== i) })
+  const updateOpcao = (val, i) => {
+    const novas = [...form.opcoes]
+    novas[i] = val
+    setForm({ ...form, opcoes: novas })
   }
-  const removeOpcao = (i) => setForm(f => ({ ...f, opcoes: f.opcoes.filter((_, idx) => idx !== i) }))
+
+  const submit = e => {
+    e.preventDefault()
+    if (!form.pergunta.trim()) return alert('Informe a pergunta da enquete.')
+    if (form.opcoes.filter(o => o.trim()).length < 2) return alert('Informe ao menos duas opções.')
+    onSave(form)
+  }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-lg" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">Criar Nova Enquete</h3>
-          <button onClick={onClose}><X size={18} className="text-gray-400 hover:text-gray-700" /></button>
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl animate-scale-up">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="font-bold text-lg text-gray-800">{form.id ? 'Editar Enquete' : 'Nova Enquete'}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
         </div>
-        <div className="p-6 flex flex-col gap-4">
-          {isAdmin ? (
-            <div><label className="label">Condomínio *</label><select className="input w-full" value={form.condominio || 'Todos'} onChange={e => setForm(f => ({ ...f, condominio: e.target.value }))}><option value="Todos">Todos os Condomínios</option>{condominios.map(c => (<option key={c.id} value={c.nome}>{c.nome}</option>))}</select></div>
-          ) : (
-            <div><label className="label">Condomínio</label><input className="input w-full" value={form.condominio || user?.condominio || ''} disabled /></div>
-          )}
-          <div><label className="label">Pergunta em pauta *</label><textarea className="input w-full min-h-[80px]" value={form.pergunta} onChange={e => setForm(f => ({ ...f, pergunta: e.target.value }))} placeholder="Insira o tema da votação..." autoFocus /></div>
-          <div><label className="label">Data de Encerramento *</label><input type="date" className="input w-full" value={form.dataFim} onChange={e => setForm(f => ({ ...f, dataFim: e.target.value }))} /></div>
-          
-          <div className="border-t border-cream-300 pt-4 mt-2">
-            <label className="label mb-2">Opções de Voto</label>
-            <div className="flex flex-col gap-2">
-              {form.opcoes.map((op, i) => (
-                <div key={i} className="flex gap-2">
-                  <input className="input flex-1" value={op} onChange={e => updateOpcao(i, e.target.value)} placeholder={`Opção ${i+1}`} />
-                  {form.opcoes.length > 2 && <button onClick={() => removeOpcao(i)} className="btn-secondary px-2 text-red-500 hover:bg-red-50 hover:border-red-200"><X size={14}/></button>}
+
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 block mb-1">Condomínio</label>
+            {isAdmin ? (
+              <select
+                className="input-field"
+                value={form.condominio}
+                onChange={e => setForm({ ...form, condominio: e.target.value })}
+              >
+                <option value="Todos">Todos os Condomínios (Geral)</option>
+                {condominios.map(c => (
+                  <option key={c.id} value={c.nome}>{c.nome}</option>
+                ))}
+              </select>
+            ) : (
+              <input type="text" className="input-field bg-gray-100" value={form.condominio} disabled />
+            )}
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-600 block mb-1">Pergunta / Assunto</label>
+            <input 
+              type="text" 
+              className="input-field" 
+              placeholder="Ex: Aprovação da pintura das faixas da garagem?"
+              value={form.pergunta}
+              onChange={e => setForm({ ...form, pergunta: e.target.value })}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-600 block mb-1">Data Limite de Votação</label>
+            <input 
+              type="date" 
+              className="input-field" 
+              value={form.dataFim}
+              onChange={e => setForm({ ...form, dataFim: e.target.value })}
+              required
+            />
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-xs font-semibold text-gray-600">Opções de Voto</label>
+              <button type="button" onClick={addOpcao} className="text-xs text-brand-600 font-semibold hover:underline">+ Adicionar Opção</button>
+            </div>
+            <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-1">
+              {form.opcoes.map((opcao, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <input 
+                    type="text" 
+                    className="input-field flex-1" 
+                    placeholder={`Opção ${i + 1}`}
+                    value={opcao}
+                    onChange={e => updateOpcao(e.target.value, i)}
+                    required
+                  />
+                  {form.opcoes.length > 2 && (
+                    <button type="button" onClick={() => removeOpcao(i)} className="text-red-400 hover:text-red-600">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
-            <button onClick={addOpcao} className="text-sm font-semibold text-brand-600 mt-3 hover:underline">+ Adicionar Opção</button>
           </div>
-        </div>
-        <div className="p-6 border-t border-cream-300 flex gap-3 justify-end bg-gray-50/50 rounded-b-2xl">
-          <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={() => { 
-            if(!form.pergunta || !form.dataFim || form.opcoes.some(v => !v.trim())) return alert('Preecha pergunta, encerramento e todos os campos de opção.')
-            if(isAdmin && !form.condominio) return alert('Selecione o condomínio da enquete.')
-            onSave(form) 
-          }} className="btn-primary">Criar Votação</button>
-        </div>
+
+          <div className="flex justify-end gap-3 mt-4">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
+            <button type="submit" className="btn-primary">Salvar Enquete</button>
+          </div>
+        </form>
       </div>
     </div>
   )

@@ -24,14 +24,9 @@ export default function VotacaoPublica() {
   const [identificado, setIdentificado] = useState(false)
   const [moradorNome, setMoradorNome] = useState('')
   const [moradorUnidade, setMoradorUnidade] = useState('')
-  const [moradorDoc, setMoradorDoc] = useState('')
   const [moradorKey, setMoradorKey] = useState('')
 
   // PASSO 1: Autenticacao resiliente para moradores publicos
-  // 1. Se ja houver usuario conectado no Firebase, utiliza-o.
-  // 2. Se nao, tenta login anonimo.
-  // 3. Se o login anonimo for bloqueado nas configs do console Firebase (admin-restricted-operation),
-  //    faz autenticacao transparente com a conta de servico publica para liberar leitura/escrita no Firestore.
   useEffect(() => {
     let isMounted = true
 
@@ -53,7 +48,6 @@ export default function VotacaoPublica() {
           if (isMounted) setAuthReady(true)
         } catch (errFallback) {
           console.error('Falha na autenticacao publica:', errFallback)
-          // Mesmo com erro de auth, marca como pronto para tentar ler
           if (isMounted) setAuthReady(true)
         }
       }
@@ -76,10 +70,8 @@ export default function VotacaoPublica() {
       return
     }
 
-    // Limpa tokens antigos
     localStorage.removeItem('morador_ident_global')
 
-    // Pre-preenche formulario caso o mesmo morador retorne na mesma maquina
     const savedMorador = localStorage.getItem(`morador_ident_${id}`)
     if (savedMorador) {
       try {
@@ -87,7 +79,6 @@ export default function VotacaoPublica() {
         if (parsed?.nome) {
           setMoradorNome(parsed.nome)
           setMoradorUnidade(parsed.unidade || '')
-          setMoradorDoc(parsed.documento || '')
         }
       } catch (e) {}
     }
@@ -140,14 +131,14 @@ export default function VotacaoPublica() {
     }
   }, [authReady, carregarEnquete])
 
-  // Confirmacao de Identificacao pelo morador
+  // Confirmacao de Identificacao pelo morador (apenas Nome e Unidade/Bloco)
   const handleConfirmarIdentificacao = (e) => {
     e.preventDefault()
     const nomeLimpo = moradorNome.trim()
     const unidLimpa = moradorUnidade.trim()
 
     if (!nomeLimpo || !unidLimpa) {
-      alert('Por favor, informe seu nome completo e unidade/apartamento para validacao do voto.')
+      alert('Por favor, informe seu nome e unidade/bloco para validacao do voto.')
       return
     }
 
@@ -157,8 +148,7 @@ export default function VotacaoPublica() {
     const moradorObj = {
       key: generatedKey,
       nome: nomeLimpo,
-      unidade: unidLimpa,
-      documento: moradorDoc.trim()
+      unidade: unidLimpa
     }
 
     localStorage.setItem(`morador_ident_${id}`, JSON.stringify(moradorObj))
@@ -178,7 +168,7 @@ export default function VotacaoPublica() {
     }
 
     if (!identificado || !moradorKey) {
-      alert('Por favor, identifique-se com seu Nome e Unidade antes de votar.')
+      alert('Por favor, informe seu Nome e Unidade/Bloco antes de votar.')
       return
     }
 
@@ -191,7 +181,6 @@ export default function VotacaoPublica() {
     }
 
     // Verifica voto duplicado APENAS para este morador individualmente
-    // NUNCA bloqueia outros moradores de votarem no mesmo link
     const jaVotouEste = enquete.votos && enquete.votos[moradorKey] !== undefined
     if (jaVotouEste) {
       alert('Voce ja registrou seu voto nesta enquete. Cada morador tem direito a 1 voto.')
@@ -228,7 +217,6 @@ export default function VotacaoPublica() {
         votosDetalhes: novosDetalhes
       })
 
-      // Atualiza o estado local com os novos votos
       setEnquete(prev => ({
         ...prev,
         votos: novosVotos,
@@ -384,7 +372,7 @@ export default function VotacaoPublica() {
             </div>
           </div>
 
-          {/* ETAPA 1: Identificacao do Morador */}
+          {/* ETAPA 1: Identificacao do Morador (Apenas Nome e Unidade/Bloco) */}
           {!identificado ? (
             <div className="p-6 pt-0">
               <div className="bg-brand-50/50 border border-brand-200/70 rounded-2xl p-5 mb-2">
@@ -399,44 +387,30 @@ export default function VotacaoPublica() {
                 <form onSubmit={handleConfirmarIdentificacao} className="space-y-3">
                   <div>
                     <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                      Seu Nome Completo *
+                      Seu Nome *
                     </label>
                     <input
                       type="text"
-                      className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-                      placeholder="Ex: Carlos Eduardo Silva"
+                      className="w-full px-3 py-2.5 text-xs font-medium rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      placeholder="Ex: Carlos Silva"
                       value={moradorNome}
                       onChange={e => setMoradorNome(e.target.value)}
                       required
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                        Unidade / Bloco *
-                      </label>
-                      <input
-                        type="text"
-                        className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-                        placeholder="Ex: Apt 402 - Bloco B"
-                        value={moradorUnidade}
-                        onChange={e => setMoradorUnidade(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                        CPF / Doc (Opcional)
-                      </label>
-                      <input
-                        type="text"
-                        className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-                        placeholder="000.000.000-00"
-                        value={moradorDoc}
-                        onChange={e => setMoradorDoc(e.target.value)}
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                      Unidade / Bloco *
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2.5 text-xs font-medium rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      placeholder="Ex: Apt 102 - Bloco A"
+                      value={moradorUnidade}
+                      onChange={e => setMoradorUnidade(e.target.value)}
+                      required
+                    />
                   </div>
 
                   <button
