@@ -96,3 +96,45 @@ export async function enviarEnqueteWhatsAppGrupo(enquete, condoDoc) {
     return { success: false, error: err.message || 'Tempo limite esgotado no envio' }
   }
 }
+
+/**
+ * Consulta a lista de grupos disponíveis na InstanciaAlpha conectada.
+ * Retorna [{ id: '...@g.us', subject: 'Nome do Grupo' }]
+ */
+export async function buscarGruposWhatsApp(instance = 'InstanciaAlpha') {
+  try {
+    // 1. Tenta rota serverless /api/whatsapp-groups
+    const res = await fetch(`/api/whatsapp-groups?instance=${encodeURIComponent(instance)}`)
+    if (res.ok) {
+      const data = await res.json()
+      if (data.success && Array.isArray(data.groups) && data.groups.length > 0) {
+        return data.groups
+      }
+    }
+  } catch (e) {
+    console.warn('Tentando fallback direto na Evolution API para buscar grupos:', e)
+  }
+
+  // 2. Fallback direto para Evolution API
+  try {
+    const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live'
+    const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb'
+    const resDirect = await fetch(`${EVOLUTION_URL}/group/fetchAllGroups/${instance}?getParticipants=false`, {
+      method: 'GET',
+      headers: { 'apikey': API_KEY }
+    })
+    if (resDirect.ok) {
+      const raw = await resDirect.json()
+      if (Array.isArray(raw)) {
+        return raw.map(g => ({
+          id: g.id,
+          subject: g.subject || g.name || 'Grupo sem nome'
+        }))
+      }
+    }
+  } catch (errDirect) {
+    console.error('Erro no fallback da Evolution API ao listar grupos:', errDirect)
+  }
+
+  return []
+}

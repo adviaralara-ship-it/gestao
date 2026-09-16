@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Vote, CheckCircle2, AlertCircle, BarChart3, Clock,
-  User, Building, ShieldCheck, ArrowLeft, Loader2
+  CheckCircle2, AlertCircle, BarChart3, Clock,
+  User, Building, ShieldCheck, ArrowLeft, Loader2, RefreshCw
 } from 'lucide-react'
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth'
@@ -14,34 +14,41 @@ export default function VotacaoPublica() {
   const navigate = useNavigate()
   const { user: loggedUser } = useAuth()
 
+  const [authReady, setAuthReady] = useState(false)
   const [loading, setLoading] = useState(true)
   const [enquete, setEnquete] = useState(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [votoSucesso, setVotoSucesso] = useState(false)
 
-  // Identificação do morador (quando não logado no ERP)
+  // Identificacao do morador (quando nao logado no ERP)
   const [identificado, setIdentificado] = useState(false)
   const [moradorNome, setMoradorNome] = useState('')
   const [moradorUnidade, setMoradorUnidade] = useState('')
-  const [moradorDoc, setMoradorDoc] = useState('') // Opcional / CPF ou RG
-  const [moradorKey, setMoradorKey] = useState('') // Chave única para registro de voto
+  const [moradorDoc, setMoradorDoc] = useState('')
+  const [moradorKey, setMoradorKey] = useState('')
 
-  // Garante autenticação anônima se o usuário não estiver logado
+  // PASSO 1: Garante autenticacao anonima ANTES de qualquer leitura no Firestore
+  // O getDoc so roda apos authReady=true para evitar erros de permissao quando
+  // a auth ainda nao resolveu e o Firestore rejeita a leitura.
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, currentUser => {
-      if (!currentUser) {
-        signInAnonymously(auth).catch(err => {
-          console.warn('Auth anônima na votação pública:', err)
-        })
+      if (currentUser) {
+        setAuthReady(true)
+      } else {
+        signInAnonymously(auth)
+          .then(() => setAuthReady(true))
+          .catch(err => {
+            console.warn('Auth anonima falhou na votacao publica:', err)
+            // Mesmo com falha na auth anonima, tenta carregar a enquete
+            // (a regra allow read: if true; garante acesso de leitura publico)
+            setAuthReady(true)
+          })
       }
     })
     return () => unsubscribe()
   }, [])
 
-  // Se o morador tiver sessão ativa no ERP (admin/síndico), identifica automaticamente.
-  // Para moradores públicos via WhatsApp: NUNCA auto-identifica pelo localStorage.
-  // Cada pessoa precisa preencher seus próprios dados para garantir isolamento de votos.
+  // PASSO 2: Se o morador tiver sessao ativa no ERP, identifica automaticamente
   useEffect(() => {
     if (loggedUser) {
       const uKey = loggedUser.id || loggedUser.uid || loggedUser.email
@@ -52,11 +59,10 @@ export default function VotacaoPublica() {
       return
     }
 
-    // Remove o identificador global que causava contaminação entre moradores no mesmo dispositivo
+    // Remove o identificador global que causava contaminacao entre moradores no mesmo dispositivo
     localStorage.removeItem('morador_ident_global')
 
-    // Apenas pré-preenche o formulário (NÃO auto-identifica) para conveniência do mesmo morador
-    // que já votou e quer ver o resultado — mas ele ainda precisa clicar em "Prosseguir"
+    // Apenas pre-preenche o formulario (NAO auto-identifica) para conveniencia do mesmo morador
     const savedMorador = localStorage.getItem(`morador_ident_${id}`)
     if (savedMorador) {
       try {
@@ -65,68 +71,70 @@ export default function VotacaoPublica() {
           setMoradorNome(parsed.nome)
           setMoradorUnidade(parsed.unidade || '')
           setMoradorDoc(parsed.documento || '')
-          // NÃO define moradorKey nem identificado=true aqui
-          // O morador precisa clicar em "Prosseguir para Votação"
         }
       } catch (e) {}
     }
   }, [id, loggedUser])
 
-  // Busca APENAS a enquete correspondente ao ID da URL
-  useEffect(() => {
-    async function carregarEnquete() {
-      if (!id) {
-        setErrorMsg('Identificador da enquete não informado na URL.')
+  // PASSO 3: Carrega a enquete SOMENTE apos auth estar pronta
+  const carregarEnquete = useCallback(async () => {
+    if (!id) {
+      setErrorMsg('Identificador da enquete nao informado na URL.')
+      setLoading(false)
+      return
+    }
+
+    try {
+      setLoading(true)
+      setErrorMsg('')
+
+      const docRef = doc(db, 'enquetes', id)
+      const snap = await getDoc(docRef)
+
+      if (!snap.exists()) {
+        setErrorMsg('Enquete nao encontrada. Verifique o link ou entre em contato com a administracao do condominio.')
         setLoading(false)
         return
       }
 
-      try {
-        setLoading(true)
-        const docRef = doc(db, 'enquetes', id)
-        const snap = await getDoc(docRef)
+      const data = snap.data()
+      const statusReal = (data.dataFim && new Date(data.dataFim + 'T23:59:59') < new Date())
+        ? 'Encerrada'
+        : (data.status || 'Aberta')
 
-        if (!snap.exists()) {
-          setErrorMsg('Enquete não encontrada ou já encerrada/removida.')
-          setLoading(false)
-          return
-        }
-
-        const data = snap.data()
-        const statusReal = (data.dataFim && new Date(data.dataFim + 'T23:59:59') < new Date())
-          ? 'Encerrada'
-          : (data.status || 'Aberta')
-
-        setEnquete({
-          id: snap.id,
-          ...data,
-          status: statusReal,
-          votos: data.votos || {},
-          votosDetalhes: data.votosDetalhes || {}
-        })
-      } catch (err) {
-        console.error('Erro ao buscar enquete:', err)
-        setErrorMsg('Não foi possível carregar a enquete. Verifique sua conexão com a internet.')
-      } finally {
-        setLoading(false)
-      }
+      setEnquete({
+        id: snap.id,
+        ...data,
+        status: statusReal,
+        votos: data.votos || {},
+        votosDetalhes: data.votosDetalhes || {}
+      })
+    } catch (err) {
+      console.error('Erro ao buscar enquete:', err)
+      setErrorMsg('Nao foi possivel carregar a enquete. Verifique sua conexao e tente novamente.')
+    } finally {
+      setLoading(false)
     }
-
-    carregarEnquete()
   }, [id])
 
-  // Salvar identificação rápida do morador
+  // Dispara o carregamento apenas quando a autenticacao estiver pronta
+  useEffect(() => {
+    if (authReady) {
+      carregarEnquete()
+    }
+  }, [authReady, carregarEnquete])
+
+  // Confirmacao de Identificacao
   const handleConfirmarIdentificacao = (e) => {
     e.preventDefault()
     const nomeLimpo = moradorNome.trim()
     const unidLimpa = moradorUnidade.trim()
 
     if (!nomeLimpo || !unidLimpa) {
-      alert('Por favor, informe seu nome completo e unidade/apartamento para validação do voto.')
+      alert('Por favor, informe seu nome completo e unidade/apartamento para validacao do voto.')
       return
     }
 
-    // Cria uma chave única estável para este morador neste condomínio
     const safeStr = `${unidLimpa.toLowerCase().replace(/[^a-z0-9]/g, '')}_${nomeLimpo.toLowerCase().replace(/[^a-z0-9]/g, '')}`
     const generatedKey = `pub_${safeStr}`
 
@@ -137,8 +145,6 @@ export default function VotacaoPublica() {
       documento: moradorDoc.trim()
     }
 
-    // Salva APENAS com chave por enquete (nunca global) — conveniência para rever resultados
-    // no mesmo dispositivo, sem contaminar outros moradores que venham a votar depois
     localStorage.setItem(`morador_ident_${id}`, JSON.stringify(moradorObj))
     localStorage.removeItem('morador_ident_global')
 
@@ -146,11 +152,12 @@ export default function VotacaoPublica() {
     setIdentificado(true)
   }
 
-  // Ação de Votar
+  // Acao de Votar
   const handleVotar = async (opcaoIndex) => {
     if (!enquete) return
+
     if (enquete.status === 'Encerrada') {
-      alert('Esta enquete já foi encerrada e não aceita novos votos.')
+      alert('Esta enquete ja foi encerrada e nao aceita novos votos.')
       return
     }
 
@@ -159,29 +166,31 @@ export default function VotacaoPublica() {
       return
     }
 
-    // Validação Multi-tenant (se morador logado tiver condomínio incompatível)
+    // Validacao Multi-tenant (se morador logado tiver condominio incompativel)
     if (loggedUser?.condominio && enquete.condominio && enquete.condominio !== 'Todos') {
       if (loggedUser.condominio.trim().toLowerCase() !== enquete.condominio.trim().toLowerCase()) {
-        alert(`Acesso Restrito: Esta enquete pertence ao condomínio "${enquete.condominio}". Seu usuário está vinculado ao condomínio "${loggedUser.condominio}".`)
+        alert(`Acesso Restrito: Esta enquete pertence ao condominio "${enquete.condominio}". Seu usuario esta vinculado ao condominio "${loggedUser.condominio}".`)
         return
       }
     }
 
-    const jaVotou = enquete.votos && enquete.votos[moradorKey] !== undefined
-    if (jaVotou) {
-      alert('Você já registrou seu voto nesta enquete!')
+    // Verifica voto duplicado APENAS para este morador individualmente
+    // NAO bloqueia nem afeta outros moradores que acessam o mesmo link
+    const jaVotouEste = enquete.votos && enquete.votos[moradorKey] !== undefined
+    if (jaVotouEste) {
+      alert('Voce ja registrou seu voto nesta enquete. Cada morador pode votar apenas uma vez.')
       return
     }
 
     const confirmou = window.confirm(
-      `Confirmar seu voto na opção:\n\n"${enquete.opcoes[opcaoIndex]}"?\n\nEsta ação é definitiva e não poderá ser alterada.`
+      `Confirmar seu voto na opcao:\n\n"${enquete.opcoes[opcaoIndex]}"?\n\nEsta acao e definitiva e nao podera ser alterada.`
     )
     if (!confirmou) return
 
     try {
       setSubmitting(true)
       const docRef = doc(db, 'enquetes', enquete.id)
-      
+
       const novosVotos = {
         ...(enquete.votos || {}),
         [moradorKey]: opcaoIndex
@@ -203,13 +212,12 @@ export default function VotacaoPublica() {
         votosDetalhes: novosDetalhes
       })
 
+      // Atualiza o estado local com os novos votos (nao recarrega a pagina inteira)
       setEnquete(prev => ({
         ...prev,
         votos: novosVotos,
         votosDetalhes: novosDetalhes
       }))
-
-      setVotoSucesso(true)
     } catch (err) {
       console.error('Erro ao computar voto:', err)
       alert('Erro ao registrar voto: ' + (err.message || 'Tente novamente.'))
@@ -218,33 +226,39 @@ export default function VotacaoPublica() {
     }
   }
 
-  // Renderização de Carregando
-  if (loading) {
+  // Aguardando autenticacao ou carregando enquete
+  if (!authReady || loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
         <div className="flex flex-col items-center gap-3">
           <Loader2 size={36} className="animate-spin text-brand-600" />
           <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">
-            Carregando Enquete Oficial...
+            {!authReady ? 'Verificando acesso...' : 'Carregando Enquete Oficial...'}
           </p>
         </div>
       </div>
     )
   }
 
-  // Renderização de Erro / Não Encontrada
-  if (errorMsg || !enquete) {
+  // Erro de carregamento — COM botao de retry, nunca bloqueia permanentemente
+  if (errorMsg && !enquete) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-6 font-sans">
         <div className="max-w-md w-full bg-white rounded-3xl border border-gray-200 shadow-xl p-6 sm:p-8 text-center animate-fade-in">
-          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-red-100 shadow-sm">
+          <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-100 shadow-sm">
             <AlertCircle size={32} />
           </div>
-          <h2 className="text-xl font-black text-gray-900 mb-2">Votação Indisponível</h2>
+          <h2 className="text-xl font-black text-gray-900 mb-2">Nao foi possivel carregar</h2>
           <p className="text-xs text-gray-600 mb-6 leading-relaxed">
-            {errorMsg || 'A enquete solicitada não foi localizada ou já encerrou o período de votação.'}
+            {errorMsg}
           </p>
           <div className="pt-4 border-t border-gray-100 flex flex-col gap-2">
+            <button
+              onClick={carregarEnquete}
+              className="w-full py-3 bg-brand-600 hover:bg-brand-500 text-white font-black text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <RefreshCw size={14} /> Tentar Novamente
+            </button>
             <button
               onClick={() => {
                 if (window.opener || window.history.length <= 1) {
@@ -263,8 +277,12 @@ export default function VotacaoPublica() {
     )
   }
 
-  // Cálculos de votos
+  if (!enquete) return null
+
+  // Calculos de votos
   const totalVotos = Object.keys(enquete.votos || {}).length
+  // jaVotou e calculado APENAS para o morador atual (chave individual)
+  // Nao impede outros moradores de verem ou votarem na enquete
   const jaVotou = moradorKey && enquete.votos && enquete.votos[moradorKey] !== undefined
   const meuVotoIndex = jaVotou ? enquete.votos[moradorKey] : null
   const contagem = (enquete.opcoes || []).map((_, i) =>
@@ -276,11 +294,9 @@ export default function VotacaoPublica() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 sm:p-6 font-sans">
       <div className="w-full max-w-md animate-fade-in my-auto">
-        
-        {/* Card Principal */}
+
         <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden relative">
-          
-          {/* Topbar com Botão Voltar/Fechar e Tag do Sistema */}
+
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-slate-50/70">
             <button
               onClick={() => {
@@ -296,32 +312,26 @@ export default function VotacaoPublica() {
               <ArrowLeft size={14} /> Voltar
             </button>
             <span className="text-[11px] font-bold text-gray-400 flex items-center gap-1">
-              <ShieldCheck size={14} className="text-brand-600" /> Votação Oficial
+              <ShieldCheck size={14} className="text-brand-600" /> Votacao Oficial
             </span>
           </div>
 
-          {/* Cabeçalho com Logo da Alpha Soluções Condominiais */}
           <div className="p-6 text-center border-b border-gray-100 bg-white">
             <img
               src="/logo.png"
-              alt="Alpha Soluções Condominiais"
+              alt="Alpha Solucoes Condominiais"
               className="h-12 w-auto max-w-[180px] object-contain mx-auto mb-3 drop-shadow-sm"
-              onError={(e) => {
-                e.target.src = '/logo-alpha.png'
-              }}
+              onError={(e) => { e.target.src = '/logo-alpha.png' }}
             />
             <p className="text-[10px] font-black uppercase tracking-widest text-brand-600 mb-1">
-              Alpha Soluções Condominiais
+              Alpha Solucoes Condominiais
             </p>
-            
-            {/* Vínculo de Isolamento Multi-Tenant do Condomínio */}
             <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200 text-amber-900 rounded-full text-xs font-bold mt-1">
               <Building size={13} className="text-amber-700" />
-              <span>Condomínio: {enquete.condominio || 'Residencial'}</span>
+              <span>Condominio: {enquete.condominio || 'Residencial'}</span>
             </div>
           </div>
 
-          {/* Informações da Pergunta e Status */}
           <div className="p-6 pb-4">
             <div className="flex items-center justify-between mb-3">
               <span
@@ -331,13 +341,13 @@ export default function VotacaoPublica() {
                     : 'bg-red-50 text-red-700 border-red-200'
                 }`}
               >
-                {isAberta ? 'Votação Aberta' : 'Votação Encerrada'}
+                {isAberta ? 'Votacao Aberta' : 'Votacao Encerrada'}
               </span>
 
               {enquete.dataFim && (
                 <span className="text-xs text-gray-500 font-medium flex items-center gap-1">
                   <Clock size={13} />
-                  Até {enquete.dataFim.split('-').reverse().join('/')}
+                  Ate {enquete.dataFim.split('-').reverse().join('/')}
                 </span>
               )}
             </div>
@@ -352,25 +362,24 @@ export default function VotacaoPublica() {
               </p>
             )}
 
-            {/* Aviso de Isolamento / Multi-Tenant */}
             <div className="text-[11px] text-gray-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex items-center gap-2 mb-4">
               <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
               <span>
-                Esta cédula é restrita aos moradores do <b>{enquete.condominio || 'Condomínio'}</b>. Cada unidade possui direito a 1 voto registrado.
+                Esta cedula e restrita aos moradores do <b>{enquete.condominio || 'Condominio'}</b>. Cada unidade possui direito a 1 voto registrado.
               </span>
             </div>
           </div>
 
-          {/* ETAPA 1: Identificação do Morador (Multi-Tenant & Acesso Rápido Limpo) */}
+          {/* ETAPA 1: Identificacao do Morador */}
           {!identificado ? (
             <div className="p-6 pt-0">
               <div className="bg-brand-50/50 border border-brand-200/70 rounded-2xl p-5 mb-2">
                 <div className="flex items-center gap-2 text-brand-900 font-bold text-sm mb-1">
                   <User size={16} className="text-brand-600" />
-                  Identificação do Morador
+                  Identificacao do Morador
                 </div>
                 <p className="text-xs text-gray-600 mb-4">
-                  Identifique-se para computar seu voto oficial. Não é necessário login de administrador.
+                  Identifique-se para computar seu voto oficial. Nao e necessario login de administrador.
                 </p>
 
                 <form onSubmit={handleConfirmarIdentificacao} className="space-y-3">
@@ -420,15 +429,14 @@ export default function VotacaoPublica() {
                     type="submit"
                     className="w-full mt-2 py-3 bg-brand-600 hover:bg-brand-500 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <CheckCircle2 size={16} /> Prosseguir para Votação
+                    <CheckCircle2 size={16} /> Prosseguir para Votacao
                   </button>
                 </form>
               </div>
             </div>
           ) : (
-            /* ETAPA 2: Morador Identificado - Opções de Voto ou Resultados */
+            /* ETAPA 2: Morador Identificado */
             <div className="p-6 pt-0 space-y-5">
-              {/* Badge de Identificação */}
               <div className="flex items-center justify-between bg-slate-100/80 px-3.5 py-2 rounded-xl border border-gray-200">
                 <div className="flex items-center gap-2 text-xs text-gray-700">
                   <User size={14} className="text-brand-600" />
@@ -438,7 +446,7 @@ export default function VotacaoPublica() {
                 {!loggedUser && (
                   <button
                     onClick={() => {
-                      if (window.confirm('Deseja alterar a identificação deste morador?')) {
+                      if (window.confirm('Deseja alterar a identificacao deste morador?')) {
                         setIdentificado(false)
                       }
                     }}
@@ -449,19 +457,27 @@ export default function VotacaoPublica() {
                 )}
               </div>
 
-              {/* Se o morador ainda NÃO votou e a enquete está aberta: Lista de Botões de Voto */}
-              {!jaVotou && isAberta ? (
+              {/* Confirmacao de voto registrado — visivel APENAS para quem ja votou */}
+              {jaVotou && (
+                <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-center gap-2.5 text-emerald-800 text-xs font-bold shadow-sm">
+                  <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                  <span>Seu voto foi registrado com sucesso e oficializado!</span>
+                </div>
+              )}
+
+              {/* Opcoes de Voto: exibidas quando enquete aberta E este morador ainda nao votou */}
+              {!jaVotou && isAberta && (
                 <div className="space-y-3">
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">
-                    Selecione a sua opção de voto:
+                    Selecione a sua opcao de voto:
                   </p>
-                  
+
                   {(enquete.opcoes || []).map((opcao, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleVotar(idx)}
                       disabled={submitting}
-                      className="w-full text-left p-4 rounded-2xl border-2 border-gray-200 bg-white hover:border-brand-500 hover:shadow-md active:scale-[0.99] transition-all group cursor-pointer flex items-center justify-between"
+                      className="w-full text-left p-4 rounded-2xl border-2 border-gray-200 bg-white hover:border-brand-500 hover:shadow-md active:scale-[0.99] transition-all group cursor-pointer flex items-center justify-between disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-7 h-7 rounded-xl bg-slate-100 group-hover:bg-brand-50 text-gray-600 group-hover:text-brand-600 font-black text-xs flex items-center justify-center border border-gray-200 group-hover:border-brand-300">
@@ -483,16 +499,19 @@ export default function VotacaoPublica() {
                     </div>
                   )}
                 </div>
-              ) : (
-                /* Resultados Parciais / Finais da Votação */
-                <div className="space-y-4">
-                  {jaVotou && (
-                    <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-center gap-2.5 text-emerald-800 text-xs font-bold shadow-sm">
-                      <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
-                      <span>Seu voto foi registrado com sucesso e oficializado!</span>
-                    </div>
-                  )}
+              )}
 
+              {/* Enquete encerrada: aviso para quem ainda nao votou */}
+              {!jaVotou && !isAberta && (
+                <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200 flex items-center gap-2.5 text-gray-600 text-xs font-bold">
+                  <Clock size={16} className="shrink-0" />
+                  <span>Esta enquete foi encerrada. Confira os resultados finais abaixo.</span>
+                </div>
+              )}
+
+              {/* Resultados Parciais / Finais */}
+              {(jaVotou || !isAberta) && (
+                <div className="space-y-4">
                   <div className="flex items-center justify-between text-xs font-bold text-gray-500 uppercase tracking-wide">
                     <span>{isAberta ? 'Resultados em Tempo Real' : 'Resultado Final'}</span>
                     <span className="flex items-center gap-1 text-brand-700 bg-brand-50 px-2.5 py-1 rounded-lg">
@@ -531,7 +550,7 @@ export default function VotacaoPublica() {
                               {pct}% ({votosCrt})
                             </span>
                           </div>
-                          
+
                           <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
                             <div
                               className={`h-full rounded-full transition-all duration-1000 ${
@@ -553,17 +572,15 @@ export default function VotacaoPublica() {
             </div>
           )}
 
-          {/* Rodapé Seguro e Institucional */}
           <div className="p-4 bg-slate-50 border-t border-gray-100 text-center">
             <p className="text-[10px] text-gray-400 font-medium">
-              Ambiente Seguro • Alpha Soluções Condominiais LTDA
+              Ambiente Seguro • Alpha Solucoes Condominiais LTDA
             </p>
           </div>
         </div>
 
-        {/* Nota Informativa fora do Card */}
         <p className="text-center text-[11px] text-gray-400 mt-4">
-          Para dúvidas sobre a pauta ou ata, entre em contato com a administração do seu condomínio.
+          Para duvidas sobre a pauta ou ata, entre em contato com a administracao do seu condominio.
         </p>
 
       </div>
