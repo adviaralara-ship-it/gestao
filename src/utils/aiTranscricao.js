@@ -1,10 +1,37 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-// Mesmo modelo/chave usada no AlphaAI
-const API_KEY = "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
-const genAI = new GoogleGenerativeAI(API_KEY)
-// Para áudio, o gemini-flash-latest é excelente e rápido
-const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
+// Chaves de API e modelos suportados com fallback
+const API_KEYS = [
+  import.meta.env?.VITE_GEMINI_API_KEY,
+  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA",
+  "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA"
+].filter(Boolean)
+
+const GEMINI_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-flash-latest"
+]
+
+async function generateContentWithFallback(contents) {
+  let lastError = null
+
+  for (const modelName of GEMINI_MODELS) {
+    for (const key of API_KEYS) {
+      try {
+        const genAI = new GoogleGenerativeAI(key)
+        const model = genAI.getGenerativeModel({ model: modelName })
+        const result = await model.generateContent(contents)
+        return result
+      } catch (err) {
+        lastError = err
+        console.warn(`[aiTranscricao fallback] Falha no modelo ${modelName}:`, err?.message || err)
+      }
+    }
+  }
+
+  console.error('[aiTranscricao] Falha em todas as chaves/modelos:', lastError)
+  throw lastError || new Error('Falha ao conectar com o serviço de IA.')
+}
 
 /**
  * Converte um Blob de áudio para uma string Base64 limpa
@@ -68,7 +95,7 @@ Se o áudio estiver vazio ou inaudível, avise amigavelmente.
       }
     }
 
-    const result = await model.generateContent([
+    const result = await generateContentWithFallback([
       prompt,
       {
         inlineData: {
@@ -105,7 +132,7 @@ Exemplo:
 {"nomeCompleto": "João da Silva", "nomeMae": "Maria da Silva", "dataNascimento": "1990-05-25"}
     `
 
-    const result = await model.generateContent([
+    const result = await generateContentWithFallback([
       prompt,
       {
         inlineData: {

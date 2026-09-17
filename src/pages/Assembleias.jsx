@@ -11,10 +11,43 @@ import { gerarAtaPorAudio } from '../utils/aiTranscricao'
 import { jsPDF } from 'jspdf'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-// Chave da API e Instância do Gemini
-const API_KEY = "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA"
-const genAI = new GoogleGenerativeAI(API_KEY)
-const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
+// Chaves de API suportadas (variáveis de ambiente Vite + fallbacks seguros)
+const API_KEYS = [
+  import.meta.env?.VITE_GEMINI_API_KEY,
+  "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA",
+  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
+].filter(Boolean)
+
+// Modelos suportados em ordem de preferência
+const GEMINI_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-flash-latest"
+]
+
+// Função utilitária para gerar texto com Gemini utilizando fallback de chaves e modelos
+async function gerarConteudoGemini(prompt) {
+  let lastError = null
+
+  for (const modelName of GEMINI_MODELS) {
+    for (const key of API_KEYS) {
+      try {
+        const genAI = new GoogleGenerativeAI(key)
+        const genModel = genAI.getGenerativeModel({ model: modelName })
+        const res = await genModel.generateContent(prompt)
+        const texto = res?.response?.text()?.trim()
+        if (texto) {
+          return texto
+        }
+      } catch (err) {
+        lastError = err
+        console.warn(`[Gemini fallback] Falha no modelo ${modelName} com chave terminada em ${key.slice(-4)}:`, err?.message || err)
+      }
+    }
+  }
+
+  console.error('[Gemini] Todas as tentativas de conexão falharam:', lastError)
+  throw lastError || new Error('Não foi possível conectar com o serviço de IA.')
+}
 
 function ModalAssembleia({ onClose, onSave }) {
   const [form, setForm] = useState({ titulo:'', data:'', hora:'', local:'', tipo:'Ordinária', pauta:'' })
@@ -31,12 +64,14 @@ function ModalAssembleia({ onClose, onSave }) {
       const prompt = `Você é um especialista em Direito Condominial Brasileiro. 
 Com base no título "${form.titulo || 'Assembleia Condominial'}" e nas anotações: "${form.pauta || form.titulo}", elabore uma pauta formal, numerada e profissional para o edital de convocação de assembleia condominial. Seja direto e estruturado.`
       
-      const res = await model.generateContent(prompt)
-      const textoGerado = res.response.text().trim()
+      const textoGerado = await gerarConteudoGemini(prompt)
       set('pauta', textoGerado)
     } catch (e) {
-      console.error(e)
-      alert('Erro ao conectar com a IA. Tente novamente.')
+      console.error('[Assembleias] Erro ao elaborar pauta com IA:', e)
+      const msgErro = e?.message?.includes('API_KEY') || e?.message?.includes('404')
+        ? 'Serviço de IA temporariamente indisponível. Verifique as credenciais ou tente novamente em instantes.'
+        : 'Erro ao conectar com a IA. Tente novamente.'
+      alert(msgErro)
     } finally {
       setIaLoading(false)
     }
@@ -112,12 +147,14 @@ Anotações / Resumo informado: ${texto || 'Pautas aprovadas por unanimidade dos
 
 Estruture a ata com abertura, verificação de quórum, presidente e secretário da mesa, deliberações de cada item da pauta e encerramento com espaço para assinaturas.`
 
-      const res = await model.generateContent(prompt)
-      const textoGerado = res.response.text().trim()
+      const textoGerado = await gerarConteudoGemini(prompt)
       setTexto(textoGerado)
     } catch (e) {
-      console.error(e)
-      alert('Erro ao redigir ata com IA. Tente novamente.')
+      console.error('[Assembleias] Erro ao redigir ata com IA:', e)
+      const msgErro = e?.message?.includes('API_KEY') || e?.message?.includes('404')
+        ? 'Serviço de IA temporariamente indisponível. Verifique as credenciais ou tente novamente em instantes.'
+        : 'Erro ao redigir ata com IA. Tente novamente.'
+      alert(msgErro)
     } finally {
       setIaLoading(false)
     }
