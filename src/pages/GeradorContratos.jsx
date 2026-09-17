@@ -3,10 +3,43 @@ import { FileText, Printer, CheckCircle, Bot, Zap, Loader2, Sparkles, AlertCircl
 import { useAuth } from '../context/AuthContext'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-// Chave da API e Instância do Gemini
-const API_KEY = "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA"
-const genAI = new GoogleGenerativeAI(API_KEY)
-const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
+// Chaves de API e Instâncias com Fallback Resiliente
+const API_KEYS = [
+  import.meta.env?.VITE_GEMINI_API_KEY,
+  "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA",
+  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
+].filter(Boolean)
+
+const GEMINI_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-flash-latest",
+  "gemini-1.5-flash",
+  "gemini-2.0-flash"
+]
+
+async function gerarDocumentoIA(systemPrompt, userPrompt) {
+  let lastError = null
+  for (const modelName of GEMINI_MODELS) {
+    for (const key of API_KEYS) {
+      try {
+        const genAI = new GoogleGenerativeAI(key)
+        const model = genAI.getGenerativeModel({ model: modelName })
+        const chat = model.startChat({
+          history: [
+            { role: 'user', parts: [{ text: systemPrompt }] },
+            { role: 'model', parts: [{ text: "<div style='font-family: Arial;'>Entendido. Enviarei apenas código HTML pronto para impressão.</div>" }] }
+          ],
+        })
+        const result = await chat.sendMessage(userPrompt)
+        const text = result?.response?.text()
+        if (text) return text
+      } catch (err) {
+        lastError = err
+      }
+    }
+  }
+  throw lastError || new Error("Falha ao conectar com o serviço de IA.")
+}
 
 const modelos = [
   {
@@ -201,19 +234,8 @@ REGRAS DE FORMATAÇÃO:
 4. Use <h2>, <h3>, <p>, <strong>, e <br/> para formatar o texto, deixando espaço para assinaturas no final usando <div> e _________________.
 5. Nunca adicione comentários fora do HTML, sua resposta inteira será injetada em um documento para impressão.
 `
-      const chat = model.startChat({
-        history: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: "<div style='font-family: Arial;'>Entendido. Enviarei apenas código HTML pronto para impressão.</div>" }] }
-        ],
-      })
-
-      const result = await chat.sendMessage(iaPrompt)
-      let aiResponse = result.response.text()
-      
-      // Limpeza caso a IA coloque aspas de markdown
-      aiResponse = aiResponse.replace(/^\`\`\`html/gm, '').replace(/^\`\`\`/gm, '').trim()
-      
+      const rawResponse = await gerarDocumentoIA(systemPrompt, iaPrompt)
+      let aiResponse = rawResponse.replace(/^```html/gm, '').replace(/^```/gm, '').trim()
       setIaDocHtml(aiResponse)
     } catch (e) {
       console.error(e)

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { Video, Copy, CheckCircle, Plus, Users, Clock, AlertCircle, FileText, Download } from 'lucide-react'
+import { Video, Copy, CheckCircle, Plus, Users, Clock, AlertCircle, FileText, Download, Tv, Radio } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import { gerarAtaPorAudio } from '../utils/aiTranscricao'
 
@@ -7,6 +7,8 @@ export default function Conferencias() {
   const [roomName, setRoomName] = useState('')
   const [inRoom, setInRoom] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [youtubeLiveUrl, setYoutubeLiveUrl] = useState('')
+  const [viewMode, setViewMode] = useState('meet') // 'meet' | 'youtube'
 
   // Estados de Gravação
   const [isRecording, setIsRecording] = useState(false)
@@ -116,10 +118,27 @@ export default function Conferencias() {
     if (roomName) setInRoom(true)
   }
 
+  const getYoutubeEmbed = (url) => {
+    if (!url) return null
+    try {
+      if (url.includes('embed/')) return url
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/
+      const match = url.match(regExp)
+      if (match && match[2].length === 11) {
+        return `https://www.youtube.com/embed/${match[2]}?autoplay=1&rel=0`
+      }
+      return url
+    } catch {
+      return url
+    }
+  }
+
+  const embedLiveUrl = getYoutubeEmbed(youtubeLiveUrl)
+
   if (inRoom) {
     return (
       <div className="h-[80vh] flex flex-col gap-4 animate-fade-in">
-        <div className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-cream-300">
+        <div className="flex flex-wrap items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-cream-300 gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center text-brand-600">
               <Video size={20} />
@@ -129,8 +148,34 @@ export default function Conferencias() {
               <p className="text-xs text-gray-500">ID da Sala: {roomName}</p>
             </div>
           </div>
+
+          <div className="flex items-center gap-2">
+            {/* Chaveador de modo de transmissão */}
+            <div className="bg-gray-100 p-1 rounded-lg flex items-center gap-1 border border-cream-200 text-xs">
+              <button
+                onClick={() => setViewMode('meet')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all flex items-center gap-1.5 ${
+                  viewMode === 'meet' 
+                    ? 'bg-white text-brand-700 shadow-sm font-bold' 
+                    : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                <Video size={13}/> Interativa
+              </button>
+              <button
+                onClick={() => setViewMode('youtube')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all flex items-center gap-1.5 ${
+                  viewMode === 'youtube' 
+                    ? 'bg-red-600 text-white shadow-sm font-bold' 
+                    : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                <Tv size={13}/> YouTube Live (100+ pessoas)
+              </button>
+            </div>
+          </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {!isRecording && !isTranscribing && !summary && (
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-2">
@@ -199,13 +244,50 @@ export default function Conferencias() {
           </div>
         )}
         
-        <div className="flex-1 bg-gray-900 rounded-2xl overflow-hidden shadow-lg border border-gray-800">
-          <iframe 
-            src={`https://meet.jit.si/${roomName}`} 
-            allow="camera; microphone; fullscreen; display-capture; autoplay"
-            className="w-full h-full border-0"
-            title="Sala de Conferência Alpha"
-          />
+        <div className="flex-1 bg-gray-900 rounded-2xl overflow-hidden shadow-lg border border-gray-800 relative">
+          {viewMode === 'youtube' ? (
+            embedLiveUrl ? (
+              <iframe 
+                src={embedLiveUrl} 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                allowFullScreen
+                className="w-full h-full border-0 absolute inset-0"
+                title="Transmissão ao Vivo YouTube Live"
+              />
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center p-6 text-center text-white space-y-4">
+                <Radio className="text-red-500 animate-pulse" size={48} />
+                <h3 className="text-lg font-bold">Transmissão em Massa (100+ Pessoas)</h3>
+                <p className="text-sm text-gray-300 max-w-md">
+                  Informe a URL da live do YouTube para transmitir para múltiplos espectadores sem limite de conexões:
+                </p>
+                <div className="flex w-full max-w-md gap-2">
+                  <input
+                    type="text"
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    value={youtubeLiveUrl}
+                    onChange={e => setYoutubeLiveUrl(e.target.value)}
+                    className="input bg-gray-800 border-gray-700 text-white text-xs flex-1"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!youtubeLiveUrl) alert("Insira o link da live do YouTube")
+                    }}
+                    className="btn-primary bg-red-600 hover:bg-red-700 border-none text-xs"
+                  >
+                    Exibir Live
+                  </button>
+                </div>
+              </div>
+            )
+          ) : (
+            <iframe 
+              src={`https://meet.jit.si/${roomName}`} 
+              allow="camera; microphone; fullscreen; display-capture; autoplay"
+              className="w-full h-full border-0 absolute inset-0"
+              title="Sala de Conferência Alpha"
+            />
+          )}
         </div>
       </div>
     )
@@ -281,15 +363,15 @@ export default function Conferencias() {
             <ul className="space-y-3 text-sm text-gray-300">
               <li className="flex items-start gap-2">
                 <Clock size={16} className="text-emerald-400 mt-0.5 shrink-0" />
-                <span>Sem limite de tempo nas ligações. Pode fazer reuniões longas.</span>
+                <span>Sem limite de tempo nas ligações e reuniões.</span>
               </li>
               <li className="flex items-start gap-2">
                 <Users size={16} className="text-blue-400 mt-0.5 shrink-0" />
-                <span>Permite até 100 participantes na mesma sala.</span>
+                <span>Suporte híbrido: até 100 participantes interativos ou audiência ilimitada via YouTube Live.</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle size={16} className="text-brand-400 mt-0.5 shrink-0" />
-                <span>Os convidados não precisam baixar aplicativo nem criar conta.</span>
+                <span>Sem necessidade de instalação ou cadastro pelos moradores.</span>
               </li>
             </ul>
           </div>

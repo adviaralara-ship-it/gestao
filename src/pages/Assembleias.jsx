@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Gavel, Plus, Trash2, Download, FileText, Search, Video, X, BarChart3, Clock, CheckCircle2, Sparkles, Loader2, Bot } from 'lucide-react'
+import { Gavel, Plus, Trash2, Download, FileText, Search, Video, X, BarChart3, Clock, CheckCircle2, Sparkles, Loader2, Bot, Tv, Radio } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -18,10 +18,12 @@ const API_KEYS = [
   "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
 ].filter(Boolean)
 
-// Modelos suportados em ordem de preferência
+// Modelos suportados em ordem de preferência e estabilidade
 const GEMINI_MODELS = [
   "gemini-2.5-flash",
-  "gemini-flash-latest"
+  "gemini-flash-latest",
+  "gemini-1.5-flash",
+  "gemini-2.0-flash"
 ]
 
 // Função utilitária para gerar texto com Gemini utilizando fallback de chaves e modelos
@@ -97,6 +99,21 @@ Com base no título "${form.titulo || 'Assembleia Condominial'}" e nas anotaçõ
             <select className="input" value={form.tipo} onChange={e=>set('tipo',e.target.value)}>
               <option>Ordinária</option><option>Extraordinária</option>
             </select>
+          </div>
+          <div>
+            <label className="label font-bold text-gray-700 flex items-center justify-between">
+              <span>Transmissão / Streaming (Opcional - para 100+ Moradores)</span>
+              <span className="text-[10px] text-brand-600 font-normal">YouTube Live / HLS</span>
+            </label>
+            <input 
+              className="input" 
+              value={form.youtubeUrl || ''} 
+              onChange={e=>set('youtubeUrl', e.target.value)} 
+              placeholder="Ex: https://www.youtube.com/watch?v=XXXX ou link da transmissão ao vivo"
+            />
+            <p className="text-[10px] text-gray-400 mt-1">
+              Recomendado para assembleias de grande escala: transmita via YouTube Live com banda ilimitada e sem gargalos.
+            </p>
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -347,13 +364,16 @@ export default function Assembleias() {
                       <Gavel size={16} className="text-brand-500"/>
                       <p className="font-bold text-gray-800">{a.titulo}</p>
                       <span className="badge-blue">{a.tipo}</span>
+                      {a.youtubeUrl && <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><Tv size={10}/> YouTube Live</span>}
                       {a.status==='Realizada'&&<span className="badge-green">Realizada</span>}
                     </div>
                     <p className="text-xs text-gray-500">📅 {a.data} às {a.hora} · 📍 {a.local}</p>
                     {a.pauta&&<p className="text-xs text-gray-500 mt-1 line-clamp-2">Pauta: {a.pauta}</p>}
                   </div>
                   <div className="flex gap-2 items-center flex-wrap justify-end">
-                    <button onClick={()=>setSalaVirtual(a)} className="btn-primary py-1.5 text-xs bg-brand-600 hover:bg-brand-700 border-none"><Video size={12}/> Sala Virtual</button>
+                    <button onClick={()=>setSalaVirtual(a)} className="btn-primary py-1.5 text-xs bg-brand-600 hover:bg-brand-700 border-none flex items-center gap-1.5">
+                      <Video size={12}/> {a.youtubeUrl ? 'Entrar na Transmissão / Sala' : 'Sala Virtual'}
+                    </button>
                     {['Administrador', 'Síndico'].includes(user?.role) && (
                       <>
                         <button onClick={()=>setModal(a)} className="btn-secondary py-1.5 text-xs"><FileText size={12}/>Registrar Ata</button>
@@ -541,23 +561,126 @@ function SalaVirtualAssembleia({ assembleia, onClose }) {
     }
   }
 
+  // Suporte a Streaming de Alta Capacidade (YouTube Live / Jitsi)
+  const [fonteVideo, setFonteVideo] = useState(assembleia.youtubeUrl ? 'youtube' : 'interativo') // 'youtube' | 'interativo'
+  const [customYoutubeUrl, setCustomYoutubeUrl] = useState(assembleia.youtubeUrl || '')
+
+  const getYoutubeEmbedUrl = (url) => {
+    if (!url) return null
+    try {
+      if (url.includes('embed/')) return url
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/
+      const match = url.match(regExp)
+      if (match && match[2].length === 11) {
+        return `https://www.youtube.com/embed/${match[2]}?autoplay=1&rel=0`
+      }
+      if (url.includes('live') || url.includes('youtube.com')) {
+        return url
+      }
+    } catch {
+      return url
+    }
+    return url
+  }
+
+  const embedUrl = getYoutubeEmbedUrl(customYoutubeUrl)
+
   return (
     <div className="fixed inset-0 z-50 bg-gray-100 flex flex-col animate-fade-in">
-      <div className="bg-brand-700 text-white p-4 flex items-center justify-between shadow-md">
-        <div>
-          <h2 className="font-bold text-lg flex items-center gap-2"><Video size={20}/> Assembleia Virtual: {assembleia.titulo}</h2>
-          <p className="text-brand-100 text-sm">Pauta: {assembleia.pauta}</p>
+      <div className="bg-brand-700 text-white p-3 md:p-4 flex items-center justify-between shadow-md">
+        <div className="flex items-center gap-3">
+          <div>
+            <h2 className="font-bold text-base md:text-lg flex items-center gap-2">
+              <Video size={20}/> Assembleia Virtual: {assembleia.titulo}
+            </h2>
+            <p className="text-brand-100 text-xs line-clamp-1">Pauta: {assembleia.pauta}</p>
+          </div>
         </div>
-        <button onClick={onClose} className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors">Sair da Sala <X size={18}/></button>
+
+        {/* Chaveador de Transmissão de Alta Escala (YouTube Live x Sala Interativa) */}
+        <div className="flex items-center gap-2">
+          <div className="bg-brand-800/80 p-1 rounded-lg flex items-center gap-1 border border-brand-600 text-xs">
+            <button
+              onClick={() => setFonteVideo('interativo')}
+              className={`px-2.5 py-1 rounded-md font-medium transition-all flex items-center gap-1.5 ${
+                fonteVideo === 'interativo' 
+                  ? 'bg-white text-brand-700 shadow-sm font-bold' 
+                  : 'text-brand-200 hover:text-white'
+              }`}
+            >
+              <Video size={13}/> Sala Interativa
+            </button>
+            <button
+              onClick={() => setFonteVideo('youtube')}
+              className={`px-2.5 py-1 rounded-md font-medium transition-all flex items-center gap-1.5 ${
+                fonteVideo === 'youtube' 
+                  ? 'bg-red-600 text-white shadow-sm font-bold' 
+                  : 'text-brand-200 hover:text-white'
+              }`}
+            >
+              <Tv size={13}/> YouTube Live (100+ pessoas)
+            </button>
+          </div>
+
+          <button onClick={onClose} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors">
+            Sair <X size={15}/>
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        <div className="flex-1 bg-black relative">
-          <iframe 
-            src={`https://meet.jit.si/AlphaCondominio-${assembleia.id}`} 
-            allow="camera; microphone; fullscreen; display-capture"
-            className="absolute inset-0 w-full h-full border-0"
-          ></iframe>
+        <div className="flex-1 bg-black relative flex flex-col">
+          {fonteVideo === 'youtube' ? (
+            embedUrl ? (
+              <iframe
+                src={embedUrl}
+                title="Transmissão ao Vivo da Assembleia - YouTube"
+                className="absolute inset-0 w-full h-full border-0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              ></iframe>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center p-6 text-center text-white space-y-4">
+                <Radio className="text-red-500 animate-pulse" size={48} />
+                <div>
+                  <h3 className="text-lg font-bold">Transmissão de Alta Capacidade (100+ Pessoas)</h3>
+                  <p className="text-sm text-gray-300 max-w-md mt-1">
+                    Cole o link ou ID da live do YouTube abaixo para transmitir a assembleia sem limites de conexão simultânea:
+                  </p>
+                </div>
+                <div className="flex w-full max-w-md gap-2">
+                  <input
+                    type="text"
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    value={customYoutubeUrl}
+                    onChange={e => setCustomYoutubeUrl(e.target.value)}
+                    className="input bg-gray-900 border-gray-700 text-white text-xs flex-1"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!customYoutubeUrl) alert("Insira o link da transmissão do YouTube")
+                    }}
+                    className="btn-primary bg-red-600 hover:bg-red-700 border-none text-xs"
+                  >
+                    Transmitir
+                  </button>
+                </div>
+                <button
+                  onClick={() => setFonteVideo('interativo')}
+                  className="text-xs text-brand-300 underline hover:text-brand-100"
+                >
+                  Voltar para Sala de Videoconferência Padrão
+                </button>
+              </div>
+            )
+          ) : (
+            <iframe 
+              src={`https://meet.jit.si/AlphaCondominio-${assembleia.id}`} 
+              allow="camera; microphone; fullscreen; display-capture; autoplay"
+              className="absolute inset-0 w-full h-full border-0"
+              title="Sala de Videoconferência Interativa"
+            ></iframe>
+          )}
         </div>
         <div className="w-full lg:w-96 bg-white border-l border-cream-300 flex flex-col shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
           

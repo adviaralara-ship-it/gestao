@@ -1,15 +1,17 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-// Chaves de API e modelos suportados com fallback
+// Chaves de API e modelos suportados com fallback resiliente para alta disponibilidade
 const API_KEYS = [
   import.meta.env?.VITE_GEMINI_API_KEY,
-  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA",
-  "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA"
+  "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA",
+  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
 ].filter(Boolean)
 
 const GEMINI_MODELS = [
   "gemini-2.5-flash",
-  "gemini-flash-latest"
+  "gemini-flash-latest",
+  "gemini-1.5-flash",
+  "gemini-2.0-flash"
 ]
 
 async function generateContentWithFallback(contents) {
@@ -21,10 +23,12 @@ async function generateContentWithFallback(contents) {
         const genAI = new GoogleGenerativeAI(key)
         const model = genAI.getGenerativeModel({ model: modelName })
         const result = await model.generateContent(contents)
-        return result
+        if (result && result.response) {
+          return result
+        }
       } catch (err) {
         lastError = err
-        console.warn(`[aiTranscricao fallback] Falha no modelo ${modelName}:`, err?.message || err)
+        console.warn(`[aiTranscricao fallback] Falha no modelo ${modelName} com chave (...${key ? key.slice(-4) : ''}):`, err?.message || err)
       }
     }
   }

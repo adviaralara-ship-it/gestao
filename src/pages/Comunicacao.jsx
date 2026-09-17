@@ -6,9 +6,36 @@ import { db } from '../firebase'
 import { enviarEmail } from '../emailjs.config'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const API_KEY = "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
-const genAI = new GoogleGenerativeAI(API_KEY)
-const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" })
+const API_KEYS = [
+  import.meta.env?.VITE_GEMINI_API_KEY,
+  "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA",
+  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
+].filter(Boolean)
+
+const GEMINI_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-flash-latest",
+  "gemini-1.5-flash",
+  "gemini-2.0-flash"
+]
+
+async function gerarTextoComunicado(prompt) {
+  let lastError = null
+  for (const modelName of GEMINI_MODELS) {
+    for (const key of API_KEYS) {
+      try {
+        const genAI = new GoogleGenerativeAI(key)
+        const model = genAI.getGenerativeModel({ model: modelName })
+        const result = await model.generateContent(prompt)
+        const text = result?.response?.text()?.trim()
+        if (text) return text
+      } catch (err) {
+        lastError = err
+      }
+    }
+  }
+  throw lastError || new Error("Falha ao conectar com o serviço de IA.")
+}
 
 const tipoBadge = t=>({Aviso:'badge-blue',Comunicado:'badge-green',Convocação:'badge-purple',Urgente:'badge-red'}[t]||'badge-blue')
 
@@ -26,12 +53,11 @@ Escreva um comunicado ${form.tipo.toLowerCase()} com o título "${form.titulo}".
 ${form.texto ? `Use o seguinte rascunho/ideia como base: ${form.texto}` : ''}
 O tom deve ser respeitoso, claro, objetivo e amigável. Retorne apenas o texto final do comunicado, sem aspas, pronto para ser enviado aos ${form.destino}.`
       
-      const result = await model.generateContent(prompt)
-      const text = result.response.text()
+      const text = await gerarTextoComunicado(prompt)
       set('texto', text)
     } catch (e) {
       console.error(e)
-      alert("Erro ao gerar texto com IA.")
+      alert("Erro ao gerar texto com IA. Verifique a conexão e tente novamente.")
     } finally {
       setGerandoIA(false)
     }
