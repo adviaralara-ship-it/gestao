@@ -733,6 +733,11 @@ export default function Dashboard() {
     })
   }
 
+  const fmtVal = (v) => {
+    if (!saldoVisivel) return '••••••••'
+    return `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+
   const filterByCondo = (items) => {
     if (!condoFiltro || condoFiltro === 'Todos') return items
     if (condoFiltro === 'Alpha (Interno)') {
@@ -1230,9 +1235,19 @@ export default function Dashboard() {
       {/* Header Central de Comando */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-pale-300 shadow-sm">
         <div>
-          <h2 className="text-2xl font-black bg-gradient-to-r from-brand-700 to-brand-500 bg-clip-text text-transparent">
-            {saudacaoHora}, {user?.nome?.split(' ')[0] || 'Gestor'}.
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-black bg-gradient-to-r from-brand-700 to-brand-500 bg-clip-text text-transparent">
+              {saudacaoHora}, {user?.nome?.split(' ')[0] || 'Gestor'}.
+            </h2>
+            <button
+              type="button"
+              onClick={toggleSaldoVisivel}
+              className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-gray-600 transition-colors cursor-pointer"
+              title={saldoVisivel ? 'Ocultar todos os valores' : 'Mostrar todos os valores'}
+            >
+              {saldoVisivel ? <Eye size={18} /> : <EyeOff size={18} className="text-rose-600" />}
+            </button>
+          </div>
           <p className="text-gray-500 font-medium text-xs md:text-sm mt-0.5">
             Central de Comando e Decisões • {dataHojeFormatada}
           </p>
@@ -1289,9 +1304,9 @@ export default function Dashboard() {
                 type="button"
                 onClick={toggleSaldoVisivel}
                 className="text-gray-400 hover:text-gray-700 transition-colors p-0.5 rounded focus:outline-none"
-                title={saldoVisivel ? 'Ocultar saldo' : 'Mostrar saldo'}
+                title={saldoVisivel ? 'Ocultar valores' : 'Mostrar valores'}
               >
-                {saldoVisivel ? <Eye size={15} /> : <EyeOff size={15} />}
+                {saldoVisivel ? <Eye size={15} /> : <EyeOff size={15} className="text-rose-600" />}
               </button>
             </div>
             <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
@@ -1300,7 +1315,7 @@ export default function Dashboard() {
           </div>
           <div className="my-2">
             <span className="text-2xl font-black text-gray-900 group-hover:text-brand-700 transition-colors">
-              {saldoVisivel ? `R$ ${saldoAtual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'R$ ••••••••'}
+              {fmtVal(saldoAtual)}
             </span>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-bold">
@@ -1322,7 +1337,7 @@ export default function Dashboard() {
           </div>
           <div className="my-2">
             <span className={`text-2xl font-black ${capitalDeGiro >= 0 ? 'text-emerald-600' : 'text-rose-600'} transition-colors`}>
-              R$ {capitalDeGiro.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              {fmtVal(capitalDeGiro)}
             </span>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-gray-500 font-bold">
@@ -1344,7 +1359,7 @@ export default function Dashboard() {
           </div>
           <div className="my-2">
             <span className="text-2xl font-black text-gray-900 group-hover:text-brand-700 transition-colors">
-              R$ {aReceber.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              {fmtVal(aReceber)}
             </span>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-blue-600 font-bold">
@@ -1366,7 +1381,7 @@ export default function Dashboard() {
           </div>
           <div className="my-2">
             <span className="text-2xl font-black text-gray-900 group-hover:text-amber-700 transition-colors">
-              R$ {aPagar.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              {fmtVal(aPagar)}
             </span>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-amber-600 font-bold">
@@ -1388,7 +1403,7 @@ export default function Dashboard() {
           </div>
           <div className="my-2">
             <span className="text-2xl font-black text-rose-600">
-              R$ {inadimplenciaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              {fmtVal(inadimplenciaTotal)}
             </span>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-rose-600 font-bold">
@@ -1420,7 +1435,7 @@ export default function Dashboard() {
               <XAxis dataKey="mes" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
               <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={v => `R$ ${v/1000}k`} />
               <Tooltip 
-                formatter={(value) => [`R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, '']}
+                formatter={(value) => [fmtVal(value), '']}
                 contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
               />
               <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
@@ -1474,7 +1489,7 @@ export default function Dashboard() {
                 Status Geral de Arrecadação (Total)
               </h4>
               <span className="text-[11px] font-bold text-gray-500">
-                Total: R$ {(totalPagoGeral + totalAReceberGeral + totalEmAtrasoGeral).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                Total: {fmtVal(totalPagoGeral + totalAReceberGeral + totalEmAtrasoGeral)}
               </span>
             </div>
 
@@ -1495,7 +1510,7 @@ export default function Dashboard() {
                     ))}
                   </Pie>
                   <Tooltip 
-                    formatter={(val) => [`R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, '']}
+                    formatter={(val) => [fmtVal(val), '']}
                     contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
                   />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -1508,19 +1523,19 @@ export default function Dashboard() {
               <div className="bg-emerald-50/80 p-2 rounded-xl border border-emerald-100">
                 <span className="text-[10px] font-bold text-emerald-800 uppercase block">Recebido</span>
                 <span className="text-xs font-black text-emerald-700">
-                  R$ {totalPagoGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  {fmtVal(totalPagoGeral)}
                 </span>
               </div>
               <div className="bg-blue-50/80 p-2 rounded-xl border border-blue-100">
                 <span className="text-[10px] font-bold text-blue-800 uppercase block">A Receber</span>
                 <span className="text-xs font-black text-blue-700">
-                  R$ {totalAReceberGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  {fmtVal(totalAReceberGeral)}
                 </span>
               </div>
               <div className="bg-rose-50/80 p-2 rounded-xl border border-rose-100">
                 <span className="text-[10px] font-bold text-rose-800 uppercase block">Em Atraso</span>
                 <span className="text-xs font-black text-rose-700">
-                  R$ {totalEmAtrasoGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  {fmtVal(totalEmAtrasoGeral)}
                 </span>
               </div>
             </div>
@@ -1534,7 +1549,7 @@ export default function Dashboard() {
                 Distribuição de Atrasos por Condomínio
               </h4>
               <span className="text-[11px] font-bold text-rose-600">
-                Atraso Total: R$ {totalEmAtrasoGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                Atraso Total: {fmtVal(totalEmAtrasoGeral)}
               </span>
             </div>
 
@@ -1556,7 +1571,7 @@ export default function Dashboard() {
                       ))}
                     </Pie>
                     <Tooltip 
-                      formatter={(val) => [`R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Valor em Atraso']}
+                      formatter={(val) => [fmtVal(val), 'Valor em Atraso']}
                       contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
                     />
                     <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -1618,7 +1633,7 @@ export default function Dashboard() {
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-1.5">
                         <span className="font-bold text-blue-700">
-                          R$ {c.aReceber.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          {fmtVal(c.aReceber)}
                         </span>
                         {c.qtdAReceber > 0 && (
                           <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-md font-bold">
@@ -1631,7 +1646,7 @@ export default function Dashboard() {
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-1.5">
                         <span className={`font-black ${c.emAtraso > 0 ? 'text-rose-600' : 'text-gray-400'}`}>
-                          R$ {c.emAtraso.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          {fmtVal(c.emAtraso)}
                         </span>
                         {c.qtdEmAtraso > 0 && (
                           <span className="text-[10px] bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded-md font-bold">
@@ -1642,7 +1657,7 @@ export default function Dashboard() {
                     </td>
 
                     <td className="py-3.5 px-4 font-bold text-emerald-700">
-                      R$ {c.pago.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      {fmtVal(c.pago)}
                     </td>
 
                     <td className="py-3.5 px-4">
@@ -1728,7 +1743,7 @@ export default function Dashboard() {
           </div>
           <div className="bg-purple-50 p-3 rounded-xl border border-purple-200">
             <span className="text-[10px] font-bold text-purple-800 uppercase">Custo Total Previsto</span>
-            <p className="text-xl font-black text-purple-700 mt-0.5">R$ {statsManutencoes.totalCustoPrevisto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+            <p className="text-xl font-black text-purple-700 mt-0.5">{fmtVal(statsManutencoes.totalCustoPrevisto)}</p>
           </div>
         </div>
 
@@ -1790,7 +1805,7 @@ export default function Dashboard() {
                   </div>
                   {m.custoEstimado && Number(m.custoEstimado) > 0 && (
                     <span className="font-mono font-bold text-emerald-700">
-                      R$ {Number(m.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      {fmtVal(m.custoEstimado)}
                     </span>
                   )}
                 </div>
@@ -1843,7 +1858,7 @@ export default function Dashboard() {
                   <span>{statsCotacoes.destaque.codigo || 'Cotação'} — {statsCotacoes.destaque.titulo}</span>
                 </div>
                 <p className="text-gray-600">
-                  {statsCotacoes.destaque.fornecedores?.length || 0} fornecedor(es) • Menor: <b className="text-gray-900">R$ {(parseFloat(statsCotacoes.destaque.menorPreco) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</b>
+                  {statsCotacoes.destaque.fornecedores?.length || 0} fornecedor(es) • Menor: <b className="text-gray-900">{fmtVal(statsCotacoes.destaque.menorPreco)}</b>
                 </p>
                 <span className="inline-block mt-2 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-black text-[10px] uppercase">
                   {statsCotacoes.destaque.status || 'Em andamento'}
