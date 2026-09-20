@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, Users, Building2, AlertTriangle, CalendarCheck, Calendar,
   CreditCard, DollarSign, FileText, Bell, Clock, Wrench, Shield, Plus,
   FileSpreadsheet, ArrowRight, CheckCircle2, AlertCircle, Sparkles, ChevronRight,
-  ExternalLink, Layers, Eye, Bot, Megaphone, Car, QrCode, Gavel, FolderOpen, Check, User, Camera,
+  ExternalLink, Layers, Eye, EyeOff, Bot, Megaphone, Car, QrCode, Gavel, FolderOpen, Check, User, Camera,
   DoorOpen, Package, PhoneCall, AlertOctagon, Truck, BookOpen, RefreshCw, PawPrint, Home, Trash2,
   PieChart as PieIcon, Percent, ArrowUpRight, Filter
 } from 'lucide-react'
@@ -720,6 +720,18 @@ export default function Dashboard() {
   const hoje = new Date()
   const mesAtualStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
   const [mesFiltro, setMesFiltro] = useState(mesAtualStr)
+  const [saldoVisivel, setSaldoVisivel] = useState(() => {
+    return localStorage.getItem('dashboard_saldo_visivel') !== 'hidden'
+  })
+
+  const toggleSaldoVisivel = (e) => {
+    e?.stopPropagation()
+    setSaldoVisivel(prev => {
+      const next = !prev
+      localStorage.setItem('dashboard_saldo_visivel', next ? 'visible' : 'hidden')
+      return next
+    })
+  }
 
   const filterByCondo = (items) => {
     if (!condoFiltro || condoFiltro === 'Todos') return items
@@ -1271,14 +1283,24 @@ export default function Dashboard() {
           className="bg-white p-5 rounded-2xl border border-pale-300 shadow-sm hover:shadow-md hover:border-brand-400 transition-all cursor-pointer group flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Saldo Atual</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Saldo Atual</span>
+              <button
+                type="button"
+                onClick={toggleSaldoVisivel}
+                className="text-gray-400 hover:text-gray-700 transition-colors p-0.5 rounded focus:outline-none"
+                title={saldoVisivel ? 'Ocultar saldo' : 'Mostrar saldo'}
+              >
+                {saldoVisivel ? <Eye size={15} /> : <EyeOff size={15} />}
+              </button>
+            </div>
             <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
               <TrendingUp size={18} />
             </div>
           </div>
           <div className="my-2">
             <span className="text-2xl font-black text-gray-900 group-hover:text-brand-700 transition-colors">
-              R$ {saldoAtual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              {saldoVisivel ? `R$ ${saldoAtual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'R$ ••••••••'}
             </span>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-bold">

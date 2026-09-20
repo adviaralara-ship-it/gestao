@@ -54,6 +54,7 @@ export default function Cotacoes() {
   const [filtroCondominio, setFiltroCondominio] = useState(user?.role === 'Síndico' ? user.condominio : 'Todos')
   const [filtroStatus, setFiltroStatus] = useState('Todos')
   const [filtroCategoria, setFiltroCategoria] = useState('Todos')
+  const [selecionados, setSelecionados] = useState([])
 
   // Modais
   const [modalNovaAberto, setModalNovaAberto] = useState(false)
@@ -412,6 +413,89 @@ export default function Cotacoes() {
     doc.save(`Comparativo_${cot.numero}.pdf`)
   }
 
+  // Selecionar / desselecionar orçamento individual
+  const toggleSelecionar = (id) => {
+    setSelecionados(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    )
+  }
+
+  // Selecionar / desselecionar todos os orçamentos filtrados
+  const toggleSelecionarTodos = () => {
+    const idsVisiveis = cotacoesFiltradas.map(c => c.id)
+    const todosSelecionados = idsVisiveis.length > 0 && idsVisiveis.every(id => selecionados.includes(id))
+    if (todosSelecionados) {
+      setSelecionados(prev => prev.filter(id => !idsVisiveis.includes(id)))
+    } else {
+      setSelecionados(prev => Array.from(new Set([...prev, ...idsVisiveis])))
+    }
+  }
+
+  // Exportar relatório em PDF APENAS dos orçamentos selecionados
+  const exportarSelecionadosPDF = () => {
+    const itensParaExportar = cotacoes.filter(c => selecionados.includes(c.id))
+    if (itensParaExportar.length === 0) {
+      alert('Selecione ao menos um orçamento para exportar.')
+      return
+    }
+
+    const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.width
+
+    // Topo Oficial Alpha
+    doc.setFillColor(26, 43, 78)
+    doc.rect(0, 0, pageWidth, 28, 'F')
+    doc.setFontSize(16)
+    doc.setTextColor(255, 255, 255)
+    doc.text('ALPHA SOLUÇÕES CONDOMINIAIS', pageWidth / 2, 12, { align: 'center' })
+    doc.setFontSize(10)
+    doc.setTextColor(200, 220, 255)
+    doc.text(`Relatório de Orçamentos Selecionados (${itensParaExportar.length} itens)`, pageWidth / 2, 20, { align: 'center' })
+
+    let startY = 36
+    doc.setFontSize(9)
+    doc.setTextColor(80)
+    doc.text(`Emitido em: ${format(new Date(), 'dd/MM/yyyy HH:mm')} | Responsável: ${user?.nome || 'Administrador'}`, 14, startY)
+
+    const tableHeaders = ['Cotação', 'Condomínio', 'Objeto / Serviço', 'Status', 'Menor Proposta', 'Responsável']
+    const rows = itensParaExportar.map(cot => {
+      const comp = calcularComparativo(cot)
+      const menorVal = comp?.menorOrcamento?.vTotal || cot.valorEstimadoTotal || 0
+      const menorValStr = menorVal > 0 ? `R$ ${menorVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—'
+      return [
+        cot.numero || 'COT-0000',
+        cot.condominio || 'Geral',
+        cot.titulo || '-',
+        cot.status || 'Rascunho',
+        menorValStr,
+        cot.responsavel || '-'
+      ]
+    })
+
+    autoTable(doc, {
+      startY: startY + 4,
+      head: [tableHeaders],
+      body: rows,
+      theme: 'grid',
+      headStyles: { fillColor: [26, 43, 78], halign: 'center', fontSize: 9 },
+      styles: { fontSize: 8, halign: 'left' },
+      columnStyles: {
+        0: { fontStyle: 'bold', halign: 'center', cellWidth: 28 },
+        3: { halign: 'center', cellWidth: 28 },
+        4: { halign: 'right', fontStyle: 'bold', cellWidth: 32 },
+      }
+    })
+
+    const finalY = doc.lastAutoTable.finalY + 12
+    if (finalY > 260) doc.addPage()
+
+    doc.setFontSize(8)
+    doc.setTextColor(120)
+    doc.text(`Documento gerado automaticamente pelo Sistema de Gestão Alpha Soluções.`, 14, (finalY > 260 ? 30 : finalY))
+
+    doc.save(`Relatorio_Orcamentos_Selecionados_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`)
+  }
+
   // Integração: Lançar no Financeiro
   const handleLancarFinanceiro = async (cot) => {
     const vencedor = cot.fornecedores?.find(f => f.id === cot.fornecedorEscolhidoId || f.nome === cot.fornecedorEscolhidoId) || cot.fornecedores?.[0]
@@ -571,7 +655,7 @@ export default function Cotacoes() {
           />
         </div>
 
-        <div className="flex flex-wrap gap-2 w-full md:w-auto">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
           <select
             className="input text-xs py-1.5 w-full md:w-auto"
             value={filtroCondominio}
@@ -613,6 +697,20 @@ export default function Cotacoes() {
               Limpar
             </button>
           )}
+
+          <button
+            onClick={exportarSelecionadosPDF}
+            disabled={selecionados.length === 0}
+            className={`flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl transition-all shadow-sm ${
+              selecionados.length > 0
+                ? 'bg-brand-700 text-white hover:bg-brand-800 cursor-pointer'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+            }`}
+            title="Exportar apenas os orçamentos selecionados via checkbox"
+          >
+            <Download size={14} />
+            <span>Exportar Selecionados ({selecionados.length})</span>
+          </button>
         </div>
       </div>
 
@@ -622,6 +720,15 @@ export default function Cotacoes() {
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-[#2d3045] text-white border-b border-gray-200">
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                    checked={cotacoesFiltradas.length > 0 && cotacoesFiltradas.every(c => selecionados.includes(c.id))}
+                    onChange={toggleSelecionarTodos}
+                    title="Selecionar todos"
+                  />
+                </th>
                 <th className="py-3 px-4 font-bold">Cotação</th>
                 <th className="py-3 px-4 font-bold">Condomínio</th>
                 <th className="py-3 px-4 font-bold">Objeto / Serviço</th>
@@ -635,7 +742,7 @@ export default function Cotacoes() {
             <tbody className="divide-y divide-gray-100 bg-white">
               {cotacoesFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-gray-400 font-medium">
+                  <td colSpan={9} className="py-8 text-center text-gray-400 font-medium">
                     Nenhuma cotação encontrada com os filtros selecionados.
                   </td>
                 </tr>
@@ -643,9 +750,18 @@ export default function Cotacoes() {
                 cotacoesFiltradas.map(cot => {
                   const comp = calcularComparativo(cot)
                   const menorVal = comp?.menorOrcamento?.vTotal || cot.valorEstimadoTotal || 0
+                  const isChecked = selecionados.includes(cot.id)
 
                   return (
-                    <tr key={cot.id} className="hover:bg-slate-50 transition-colors">
+                    <tr key={cot.id} className={`hover:bg-slate-50 transition-colors ${isChecked ? 'bg-blue-50/40' : ''}`}>
+                      <td className="py-3 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                          checked={isChecked}
+                          onChange={() => toggleSelecionar(cot.id)}
+                        />
+                      </td>
                       <td className="py-3 px-4 font-black text-brand-700 whitespace-nowrap">
                         {cot.numero || 'COT-2026-0000'}
                       </td>
