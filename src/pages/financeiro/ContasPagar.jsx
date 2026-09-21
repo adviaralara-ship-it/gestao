@@ -77,21 +77,19 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
 
       msg += `🔗 *Acesse o módulo Financeiro:* https://alpha-solucoes-condominiais.vercel.app/financeiro`
 
-      const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live'
-      const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb'
       const telefones = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
 
       let enviados = 0
       for (const num of telefones) {
         try {
-          await fetch(`${EVOLUTION_URL}/message/sendText/InstanciaAlpha`, {
+          await fetch('/api/whatsapp-send', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', apikey: API_KEY },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ number: num, text: msg })
           })
           enviados++
         } catch (e) {
-          console.warn('Falha no envio direto:', num, e)
+          console.warn('Falha no envio:', num, e)
         }
       }
 
