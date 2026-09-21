@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Eye, Download, Copy, Check, ExternalLink, Sparkles, Building2, Crown } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Eye, Download, Copy, Check, ExternalLink, Sparkles, Building2, Crown, Send, Loader2 } from 'lucide-react'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 import { isAlphaInterno } from '../Financeiro'
 
@@ -11,6 +11,97 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
   const [mesAte, setMesAte] = useState(mesAtual)
   const [statusFilter, setStatusFilter] = useState('Todas')
   const [copiadoId, setCopiadoId] = useState(null)
+  const [disparandoAlertas, setDisparandoAlertas] = useState(false)
+
+  const handleDispararAlertasAgora = async () => {
+    if (!window.confirm('Deseja disparar agora a notificação no WhatsApp das Administradoras com todas as contas vencendo hoje?')) return
+    setDisparandoAlertas(true)
+
+    try {
+      // 1. Tenta acionar via backend cron endpoint
+      const resp = await fetch('/api/cron/alertas-vencimento').catch(() => null)
+      if (resp && resp.ok) {
+        const data = await resp.json()
+        alert(`✓ Notificação enviada com sucesso no WhatsApp!\nTotal de contas vencendo hoje: ${data.totalVencendoHoje || 0}`)
+        setDisparandoAlertas(false)
+        return
+      }
+
+      // 2. Se estiver rodando local (localhost) onde /api/cron não está ativo, monta o envio direto aqui
+      const hojeStr = new Date().toISOString().split('T')[0]
+      const dataFmt = hojeStr.split('-').reverse().join('/')
+      const contasHoje = lancamentos.filter(item => {
+        const isDespesa = item.tipo === 'Despesa' || (item.categoria && String(item.categoria).toLowerCase().includes('despesa'))
+        if (!isDespesa) return false
+        const pago = item.status === 'Pago' || item.status === 'Liquidado' || item.pago === true
+        if (pago) return false
+        const dtVenc = item.vencimento || item.data || ''
+        return dtVenc.startsWith(hojeStr)
+      })
+
+      if (contasHoje.length === 0) {
+        alert('Nenhuma conta com vencimento para a data de hoje encontrada.')
+        setDisparandoAlertas(false)
+        return
+      }
+
+      const alphaInterno = contasHoje.filter(c => isAlphaInterno(c.condominio))
+      const condominios = contasHoje.filter(c => !isAlphaInterno(c.condominio))
+
+      let msg = `🔔 *ALERTAS DE VENCIMENTO DO DIA (${dataFmt})*\n`
+      msg += `Total de contas vencendo hoje: ${contasHoje.length}\n\n`
+
+      msg += `🏢 *BLOCO A: ALPHA INTERNO*\n`
+      if (alphaInterno.length === 0) {
+        msg += `_Nenhuma conta da Alpha vencendo hoje._\n\n`
+      } else {
+        let tot = 0
+        alphaInterno.forEach(c => {
+          const val = parseFloat(c.valor) || 0
+          tot += val
+          msg += `• *${c.descricao || 'Despesa'}*: R$ ${fmt(val)}${c.categoria ? ` (${c.categoria})` : ''}\n`
+        })
+        msg += `*Total Alpha:* R$ ${fmt(tot)} (${alphaInterno.length} contas)\n\n`
+      }
+
+      msg += `🏘️ *BLOCO B: CONTAS DOS CONDOMÍNIOS*\n`
+      if (condominios.length === 0) {
+        msg += `_Nenhuma conta de condomínios vencendo hoje._\n\n`
+      } else {
+        condominios.forEach(c => {
+          const val = parseFloat(c.valor) || 0
+          msg += `• *${c.condominio || 'Geral'}* - ${c.descricao || 'Despesa'}: R$ ${fmt(val)}\n`
+        })
+        msg += `\n`
+      }
+
+      msg += `🔗 *Acesse o módulo Financeiro:* https://alpha-solucoes-condominiais.vercel.app/financeiro`
+
+      const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live'
+      const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb'
+      const telefones = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
+
+      let enviados = 0
+      for (const num of telefones) {
+        try {
+          await fetch(`${EVOLUTION_URL}/message/sendText/InstanciaAlpha`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: API_KEY },
+            body: JSON.stringify({ number: num, text: msg })
+          })
+          enviados++
+        } catch (e) {
+          console.warn('Falha no envio direto:', num, e)
+        }
+      }
+
+      alert(`✓ Notificação enviada para os WhatsApps das Administradoras!\n${contasHoje.length} conta(s) encontrada(s).`)
+    } catch (err) {
+      alert(`Erro ao disparar alertas: ${err.message}`)
+    } finally {
+      setDisparandoAlertas(false)
+    }
+  }
 
   const handleCopiarCodigo = (id, texto) => {
     if (!texto) return
@@ -99,9 +190,21 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
             Total Listado: <span className="font-black text-gray-900">R$ {fmt(totalExibido)}</span> ({contasPagar.length} lançamentos)
           </p>
         </div>
-        <button onClick={() => setModalLanc({ tipo: 'Despesa', status: 'Pendente', descricao: '', categoria: '', valor: '', data: new Date().toISOString().split('T')[0] })} className="btn-primary shrink-0 cursor-pointer">
-          <Plus size={16} /> Nova Conta / Despesa
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={handleDispararAlertasAgora} 
+            disabled={disparandoAlertas}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+            title="Dispara mensagem agora para os WhatsApps das Administradoras com as contas que vencem hoje"
+          >
+            {disparandoAlertas ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+            {disparandoAlertas ? 'Enviando Alertas...' : 'Disparar Alertas Hoje (WhatsApp)'}
+          </button>
+
+          <button onClick={() => setModalLanc({ tipo: 'Despesa', status: 'Pendente', descricao: '', categoria: '', valor: '', data: new Date().toISOString().split('T')[0] })} className="btn-primary shrink-0 cursor-pointer">
+            <Plus size={16} /> Nova Conta / Despesa
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}

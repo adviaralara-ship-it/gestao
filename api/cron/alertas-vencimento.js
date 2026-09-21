@@ -157,11 +157,16 @@ module.exports = async (req, res) => {
 
     // 7. Disparar via WhatsApp para Administradores / Financeiro
     const telefonesDestino = new Set();
-    telefonesDestino.add('558396885931'); // WhatsApp padrão da administração
+    telefonesDestino.add('558396885931'); // WhatsApp administrativo
+    telefonesDestino.add('5583996806325'); // 83 99680-6325
+    telefonesDestino.add('5583999797285'); // 83 99979-7285
+    telefonesDestino.add('5583998350321'); // 83 99835-0321
+    telefonesDestino.add('5583998468997'); // 83 99846-8997
 
     usuarios.forEach(u => {
-      if (u.role === 'Administrador' || u.role === 'Financeiro') {
-        const rawTel = u.tel || u.telefone || u.whatsapp || u.celular || '';
+      const cargo = String(u.role || '').toLowerCase();
+      if (cargo.includes('administrador') || cargo.includes('admin') || cargo.includes('financeiro') || cargo.includes('diretor')) {
+        const rawTel = u.telefone || u.tel || u.whatsapp || u.celular || '';
         const cleanTel = String(rawTel).replace(/\D/g, '');
         if (cleanTel.length >= 8) {
           telefonesDestino.add(cleanTel.length <= 11 ? `55${cleanTel}` : cleanTel);
