@@ -13,7 +13,7 @@ export default async function handler(req, res) {
 
   const instance = req.query.instance || 'InstanciaAlpha';
   const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://spiritualmacaw-evolution.cloudfy.live';
-  const API_KEY = process.env.EVOLUTION_API_KEY;
+  const API_KEY = process.env.EVOLUTION_API_KEY || 'Q1CguwvCa34nqB1936dHekPICikeSCHb';
 
   if (!API_KEY) {
     return res.status(500).json({ error: 'Chave da Evolution API não configurada no servidor.' });

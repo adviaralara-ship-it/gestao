@@ -13,6 +13,7 @@ export default function Mediacao() {
 
   const [busca, setBusca] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('Todos')
+  const [filtroCondominio, setFiltroCondominio] = useState(user?.role === 'Morador' ? user?.condominio : 'Todos')
   const [modalEdicaoAberto, setModalEdicaoAberto] = useState(false)
   const [mediacaoEmEdicao, setMediacaoEmEdicao] = useState(null)
 
@@ -24,9 +25,10 @@ export default function Mediacao() {
                           (m.morador || '').toLowerCase().includes(busca.toLowerCase()) ||
                           (m.assunto || '').toLowerCase().includes(busca.toLowerCase())
       const matchTipo = filtroTipo === 'Todos' || m.tipo === filtroTipo
-      return matchBusca && matchTipo
+      const matchCondo = filtroCondominio === 'Todos' || !m.condominio || m.condominio === filtroCondominio
+      return matchBusca && matchTipo && matchCondo
     })
-  }, [mediacoes, busca, filtroTipo])
+  }, [mediacoes, busca, filtroTipo, filtroCondominio])
 
   const handleDelete = async (id) => {
     if (window.confirm('Tem certeza que deseja apagar permanentemente esta mediação?')) {
@@ -93,8 +95,23 @@ export default function Mediacao() {
           />
         </div>
 
+        {/* Filtro por Condomínio */}
+        <div className="flex items-center gap-2">
+          <Building size={16} className="text-gray-400" />
+          <select
+            className="input text-xs py-2 w-full md:w-auto font-semibold bg-white"
+            value={filtroCondominio}
+            onChange={e => setFiltroCondominio(e.target.value)}
+          >
+            <option value="Todos">🏢 Todos os Condomínios</option>
+            {condominios?.map(c => (
+              <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+            ))}
+          </select>
+        </div>
+
         <select
-          className="input text-xs py-2 w-full md:w-auto"
+          className="input text-xs py-2 w-full md:w-auto bg-white"
           value={filtroTipo}
           onChange={e => setFiltroTipo(e.target.value)}
         >
