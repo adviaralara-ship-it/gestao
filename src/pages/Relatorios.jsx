@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { FileText, Download, Building, Loader2, DollarSign, Calendar, TrendingUp, TrendingDown, CheckCircle2, History, AlertCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { FileText, Download, Building, Loader2, DollarSign, Calendar, TrendingUp, TrendingDown, CheckCircle2, History, AlertCircle, ShieldAlert } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -10,6 +11,7 @@ import { ptBR } from 'date-fns/locale'
 
 export default function Relatorios() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [condominios, setCondominios] = useState([])
   const [selectedCondominio, setSelectedCondominio] = useState(user?.role === 'Síndico' ? user.condominio : (user?.condominio || 'Todos'))
   const [mes, setMes] = useState(() => {
@@ -399,7 +401,7 @@ export default function Relatorios() {
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in max-w-5xl mx-auto pb-10">
-      <div className="page-header">
+      <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="section-title text-2xl font-black bg-gradient-to-r from-brand-700 to-brand-500 bg-clip-text text-transparent">
             Central de Relatórios & Prestação de Contas
@@ -408,6 +410,13 @@ export default function Relatorios() {
             Consulte e baixe relatórios mensais completos de receitas, despesas, balanços e atividades operacionais.
           </p>
         </div>
+        <button
+          onClick={() => navigate('/seguranca')}
+          className="btn-secondary bg-red-50 text-red-700 border-red-200 hover:bg-red-100 flex items-center gap-1.5 font-bold shadow-xs whitespace-nowrap"
+          title="Acessar histórico de backups, restaurações e alarmes de segurança"
+        >
+          <ShieldAlert size={16} className="text-red-600" /> Segurança & Backups
+        </button>
       </div>
 
       {/* Card 1: Gerador Personalizado */}

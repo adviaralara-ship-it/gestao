@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { Users, Plus, Shield, Edit2, Trash2, Eye, EyeOff, KeyRound, Building, Layers, DoorOpen, Phone, Search, CheckSquare } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Users, Plus, Shield, Edit2, Trash2, Eye, EyeOff, KeyRound, Building, Layers, DoorOpen, Phone, Search, CheckSquare, ShieldAlert } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore'
 import { db, secondaryAuth } from '../firebase'
@@ -43,7 +44,8 @@ const allModules = [
   { id: 'comunicacao', label: 'Comunicação' },
   { id: 'tarefas', label: 'Tarefas & Agenda' },
   { id: 'calculadora', label: 'Calculadora (Comercial)' },
-  { id: 'propostas', label: 'Gerar Propostas' }
+  { id: 'propostas', label: 'Gerar Propostas' },
+  { id: 'seguranca', label: 'Segurança & Backups' }
 ]
 
 const getDefaultPerms = (r) => {
@@ -51,7 +53,7 @@ const getDefaultPerms = (r) => {
     return allModules.map(m => m.id)
   }
   if (r === 'Síndico' || r === 'Subsíndico') {
-    return ['dashboard', 'condominios', 'moradores', 'prestadores', 'usuarios', 'financeiro', 'boletos', 'notas-fiscais', 'assembleias', 'reservas', 'eventos', 'portaria', 'veiculos', 'cameras', 'seguro', 'regime', 'documentos', 'comunicacao', 'tarefas', 'calculadora', 'propostas']
+    return ['dashboard', 'condominios', 'moradores', 'prestadores', 'usuarios', 'financeiro', 'boletos', 'notas-fiscais', 'assembleias', 'reservas', 'eventos', 'portaria', 'veiculos', 'cameras', 'seguro', 'regime', 'documentos', 'comunicacao', 'tarefas', 'calculadora', 'propostas', 'seguranca']
   }
   if (r === 'Morador') {
     return ['dashboard', 'boletos', 'assembleias', 'reservas', 'portaria', 'veiculos', 'cameras', 'regime', 'documentos', 'comunicacao']
@@ -334,6 +336,7 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
 }
 
 export default function Usuarios() {
+  const navigate = useNavigate()
   const { items: users, addItem, updateItem, deleteItem } = useFirestore('usuarios')
   const { items: allCondominios } = useFirestore('condominios')
   const [modal, setModal] = useState(null)
@@ -531,9 +534,18 @@ export default function Usuarios() {
             {filteredUsers.length} de {users.length} usuários cadastrados
           </p>
         </div>
-        <button onClick={() => setModal('new')} className="btn-primary">
-          <Plus size={16} /> Novo Usuário
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => navigate('/seguranca')} 
+            className="btn-secondary bg-red-50 text-red-700 border-red-200 hover:bg-red-100 flex items-center gap-1.5 font-bold shadow-xs"
+            title="Acessar histórico de backups, restaurações e alarmes de segurança"
+          >
+            <ShieldAlert size={16} className="text-red-600" /> Segurança & Backups
+          </button>
+          <button onClick={() => setModal('new')} className="btn-primary">
+            <Plus size={16} /> Novo Usuário
+          </button>
+        </div>
       </div>
 
       {/* Barra de Filtros Inteligentes */}

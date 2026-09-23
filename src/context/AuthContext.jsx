@@ -11,7 +11,7 @@ import { auth, db } from '../firebase'
 const AuthContext = createContext(null)
 
 // ─── Permissões por role ───────────────────────────────────────────────────
-export const allModulesPerms = ['dashboard','whatsapp','email','condominios','moradores','rh','prestadores','usuarios','financeiro','boletos','notas-fiscais','assembleias','ocorrencias','reservas','eventos','portaria','veiculos','cameras','calculadora','encomendas','visitantes','enquetes','classificados','seguro','regime','documentos','comunicacao','tarefas','relatorios','propostas','cotacoes','recrutamento','conferencias','monitoramento-ia','radar','conviver','mediacao','locacao','manutencoes']
+export const allModulesPerms = ['dashboard','whatsapp','email','condominios','moradores','rh','prestadores','usuarios','financeiro','boletos','notas-fiscais','assembleias','ocorrencias','reservas','eventos','portaria','veiculos','cameras','calculadora','encomendas','visitantes','enquetes','classificados','seguro','regime','documentos','comunicacao','tarefas','relatorios','propostas','cotacoes','recrutamento','conferencias','monitoramento-ia','radar','conviver','mediacao','locacao','manutencoes','seguranca']
 export const sindicoPerms = [
   'dashboard', 'alpha-ai', 'moradores', 'pets', 'ocorrencias', 'conviver',
   'comunicacao', 'mural', 'enquetes', 'classificados', 'mediacao',

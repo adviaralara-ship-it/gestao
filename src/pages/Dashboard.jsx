@@ -8,7 +8,7 @@ import {
   FileSpreadsheet, ArrowRight, CheckCircle2, AlertCircle, Sparkles, ChevronRight,
   ExternalLink, Layers, Eye, EyeOff, Bot, Megaphone, Car, QrCode, Gavel, FolderOpen, Check, User, Camera,
   DoorOpen, Package, PhoneCall, AlertOctagon, Truck, BookOpen, RefreshCw, PawPrint, Home, Trash2,
-  PieChart as PieIcon, Percent, ArrowUpRight, Filter
+  PieChart as PieIcon, Percent, ArrowUpRight, Filter, ShieldAlert
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useNavigate } from 'react-router-dom'
@@ -1280,6 +1280,14 @@ export default function Dashboard() {
               </optgroup>
             </select>
           </div>
+
+          <button
+            onClick={() => navigate('/seguranca')}
+            className="btn-secondary py-2 px-3 text-xs font-bold flex items-center gap-1.5 bg-red-50 text-red-700 border-red-200 hover:bg-red-100 shadow-xs cursor-pointer"
+            title="Acessar painel de alarmes, segurança e restauração de backups"
+          >
+            <ShieldAlert size={15} className="text-red-600" /> Segurança &amp; Backups
+          </button>
 
           <button
             onClick={() => navigate('/cotacoes')}

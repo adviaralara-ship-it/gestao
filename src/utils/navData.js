@@ -173,6 +173,7 @@ export function getFilteredNavGroups(user) {
           { to: '/contratos',     label: 'Contratos & Seguros',       icon: FileSignature },
           { to: '/documentos',    label: 'Documentos & Regimentos',   icon: FolderOpen },
           { to: '/assembleias',   label: 'Assembleias & Atas',        icon: Gavel },
+          { to: '/seguranca',     label: 'Segurança & Backups',       icon: ShieldAlert },
           { to: '/relatorios',    label: 'Prestação de Contas',       icon: FileText }
         ]
       }
@@ -188,6 +189,7 @@ export function getFilteredNavGroups(user) {
         items: [
           { to: '/dashboard',    label: 'Dashboard',            icon: LayoutDashboard },
           { to: '/alpha-ai',     label: 'Alpha IA',             icon: Bot },
+          { to: '/seguranca',    label: 'Segurança & Backups',  icon: ShieldAlert },
           { to: '/radar',        label: 'Radar de Convivência', icon: Radar },
           { to: '/tarefas',      label: 'Agenda & Tarefas',     icon: CheckSquare },
         ]

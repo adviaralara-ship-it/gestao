@@ -98,7 +98,7 @@ function AuthorizedRoute({ module, children }) {
   }
 
   // Verifica se o usuário tem permissão para a rota específica
-  let hasPerm = user.permissoes?.includes(module) || user.role === 'Administrador' || module === 'pets' || module === 'mediacao' || module === 'alpha-ai' || module === 'cotacoes'
+  let hasPerm = user.permissoes?.includes(module) || user.role === 'Administrador' || module === 'pets' || module === 'mediacao' || module === 'alpha-ai' || module === 'cotacoes' || module === 'seguranca'
   if ((module === 'conferencias' || module === 'recrutamento') && user.permissoes?.includes('rh')) hasPerm = true
   
   if (!hasPerm) {
@@ -205,7 +205,7 @@ function AppRoutes() {
           <Route path="veiculos" element={<AuthorizedRoute module="veiculos"><Veiculos /></AuthorizedRoute>} />
           <Route path="cameras" element={<AuthorizedRoute module="cameras"><Cameras /></AuthorizedRoute>} />
           <Route path="calculadora" element={<AuthorizedRoute module="calculadora"><Calculadora /></AuthorizedRoute>} />
-          <Route path="seguranca" element={<AuthorizedRoute module="usuarios"><PainelSeguranca /></AuthorizedRoute>} />
+          <Route path="seguranca" element={<AuthorizedRoute module="seguranca"><PainelSeguranca /></AuthorizedRoute>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
