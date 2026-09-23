@@ -1,27 +1,41 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-
-// A chave deve ser fornecida pelo ambiente (Vercel Env Vars)
-const API_KEY = 'AQ.Ab8RN6LisZ8KdMGE-dFm_AGrkrJiB7U5pdx8CiJZq_lqxdSz8Q';
-const genAI = new GoogleGenerativeAI(API_KEY);
+import { applyCors, verifyUserAuth } from './_middleware/auth.js';
 
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb', // Permitir imagens maiores
+      sizeLimit: '10mb',
     },
   },
 };
 
+const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
 export default async function handler(req, res) {
+  if (applyCors(req, res, 'POST, OPTIONS')) return;
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  // Autenticação obrigatória
+  const user = await verifyUserAuth(req, res);
+  if (!user) return;
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: 'Chave da API Gemini não configurada no servidor.' });
+  }
+
   try {
-    const { file, mimeType, type } = req.body; // file is base64
+    const { file, mimeType, type } = req.body;
     
     if (!file || !mimeType) {
-      return res.status(400).json({ error: 'File and mimeType are required' });
+      return res.status(400).json({ error: 'File e mimeType são obrigatórios.' });
+    }
+
+    if (!ALLOWED_MIMES.includes(mimeType)) {
+      return res.status(400).json({ error: 'Tipo de arquivo não permitido para extração.' });
     }
 
     // Remover o prefixo do base64 se existir (ex: data:image/jpeg;base64,...)
@@ -51,6 +65,7 @@ export default async function handler(req, res) {
       }]`;
     }
 
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const result = await model.generateContent([
@@ -65,8 +80,6 @@ export default async function handler(req, res) {
 
     const response = await result.response;
     let text = response.text();
-    
-    // Limpar o texto para garantir que seja JSON (remover blocos de código markdown)
     text = text.replace(/```json/g, '').replace(/```/g, '').trim();
     
     const data = JSON.parse(text);

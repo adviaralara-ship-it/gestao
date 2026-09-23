@@ -1,12 +1,28 @@
+import { applyCors, verifyUserAuth } from './_middleware/auth.js';
+
 export default async function handler(req, res) {
+  if (applyCors(req, res, 'POST, OPTIONS')) return;
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { title, message, targetUrl, targetUserId, targetUserIds } = req.body;
+  // Autenticação obrigatória
+  const user = await verifyUserAuth(req, res);
+  if (!user) return;
 
-  const APP_ID = '94fc5c63-540e-479f-8866-ecc43fc7915c';
-  const REST_API_KEY = 'os_v2_app_st6fyy2ubzdz7cdg5tcd7r4rlqyemd4wtcyelffedyy5zqcxuu5pm2dgtwynijdzfsfnnhqvcjds5cmycjnavbxipsea5ls4c3j4nsa';
+  const { title, message, targetUrl, targetUserId, targetUserIds } = req.body || {};
+
+  if (!title || !message) {
+    return res.status(400).json({ error: 'Título e mensagem são obrigatórios.' });
+  }
+
+  const APP_ID = process.env.ONESIGNAL_APP_ID || '94fc5c63-540e-479f-8866-ecc43fc7915c';
+  const REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY;
+
+  if (!REST_API_KEY) {
+    return res.status(500).json({ error: 'Chave REST do OneSignal não configurada no servidor.' });
+  }
 
   const payload = {
     app_id: APP_ID,
@@ -19,11 +35,10 @@ export default async function handler(req, res) {
     payload.include_external_user_ids = targetUserIds;
     payload.channel_for_external_user_ids = 'push';
   } else if (targetUserId) {
-    // Para OneSignal V1 API, usamos include_external_user_ids para external_id
     payload.include_external_user_ids = [targetUserId];
     payload.channel_for_external_user_ids = 'push';
   } else {
-    // Comunicado para todos
+    // Comunicado geral para todos
     payload.included_segments = ['All'];
   }
 

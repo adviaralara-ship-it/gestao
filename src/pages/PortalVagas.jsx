@@ -4,6 +4,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'fire
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '../firebase'
 import { Link } from 'react-router-dom'
+import { validateFileUpload } from '../utils/fileValidation'
 
 export default function PortalVagas() {
   const [vagas, setVagas] = useState([])
@@ -45,6 +46,12 @@ export default function PortalVagas() {
     e.preventDefault()
     if (!file) return alert("Por favor, anexe o seu currículo em PDF.")
     
+    // Validação de tipo real por Magic Bytes
+    const valResult = await validateFileUpload(file, ['pdf'])
+    if (!valResult.valid) {
+      return alert(`❌ Arquivo rejeitado: ${valResult.error}`)
+    }
+
     setEnviando('Enviando currículo para a nuvem...')
 
     try {

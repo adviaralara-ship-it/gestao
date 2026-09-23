@@ -1,3 +1,5 @@
+import { applyCors, verifyUserAuth } from './_middleware/auth.js';
+
 export const config = {
   api: {
     bodyParser: {
@@ -6,26 +8,57 @@ export const config = {
   },
 };
 
+// Prevenção contra SSRF em URLs externas
+function isSafeUrl(urlStr) {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === 'localhost' ||
+      host.endsWith('.local') ||
+      host === '127.0.0.1' ||
+      host === '169.254.169.254' ||
+      host.startsWith('10.') ||
+      host.startsWith('192.168.') ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default async function handler(req, res) {
+  if (applyCors(req, res, 'POST, OPTIONS')) return;
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { number, text, instance = 'InstanciaAlpha', mediaBase64, mediaUrl, fileName, caption } = req.body;
+  // Autenticação obrigatória
+  const user = await verifyUserAuth(req, res);
+  if (!user) return;
+
+  const { number, text, instance = 'InstanciaAlpha', mediaBase64, mediaUrl, fileName, caption } = req.body || {};
 
   if (!number || (!text && !mediaBase64 && !mediaUrl)) {
-    return res.status(400).json({ error: 'Número e mensagem ou documento PDF são obrigatórios.' });
+    return res.status(400).json({ error: 'Número e mensagem ou documento são obrigatórios.' });
   }
 
-  // Suporte a JID de grupo do WhatsApp (ex: 120363012345678901@g.us):
-  // grupos nao devem ser limpos/prefixados como numeros de telefone comuns.
   const rawNumber = String(number).trim();
   const isGroupJid = rawNumber.includes('@g.us');
   const cleanNumber = isGroupJid ? rawNumber : rawNumber.replace(/\D/g, '');
   const finalNumber = isGroupJid ? cleanNumber : (cleanNumber.startsWith('55') ? cleanNumber : `55${cleanNumber}`);
 
-  const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live';
-  const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb';
+  const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://spiritualmacaw-evolution.cloudfy.live';
+  const API_KEY = process.env.EVOLUTION_API_KEY;
+
+  if (!API_KEY) {
+    return res.status(500).json({ error: 'Chave da Evolution API não configurada no servidor.' });
+  }
 
   try {
     let endpoint = `${EVOLUTION_URL}/message/sendText/${instance}`;
@@ -39,10 +72,12 @@ export default async function handler(req, res) {
       let mediaData = '';
 
       if (mediaBase64) {
-        // Se vier com prefixo data:application/pdf;base64, extrair apenas a string base64 pura
         const raw = mediaBase64.includes(',') ? mediaBase64.split(',')[1] : mediaBase64;
         mediaData = raw.replace(/\s+/g, '');
       } else if (mediaUrl) {
+        if (!isSafeUrl(mediaUrl)) {
+          return res.status(400).json({ error: 'URL de mídia inválida ou não permitida (SSRF protection).' });
+        }
         try {
           const resp = await fetch(mediaUrl);
           if (resp.ok) {

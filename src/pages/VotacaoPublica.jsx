@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   CheckCircle2, AlertCircle, BarChart3, Clock,
@@ -36,20 +36,13 @@ export default function VotacaoPublica() {
         return
       }
 
-      // Tenta login anonimo primeiro
+      // Tenta login anonimo resiliente
       try {
         await signInAnonymously(auth)
         if (isMounted) setAuthReady(true)
       } catch (errAnon) {
-        console.warn('Login anonimo indisponivel no Firebase, ativando sessao publica de leitura:', errAnon.code || errAnon)
-        try {
-          // Sessao publica segura para moradores votarem via link
-          await signInWithEmailAndPassword(auth, 'admin@alpha.com.br', 'admin123')
-          if (isMounted) setAuthReady(true)
-        } catch (errFallback) {
-          console.error('Falha na autenticacao publica:', errFallback)
-          if (isMounted) setAuthReady(true)
-        }
+        console.warn('Login anonimo indisponivel no Firebase:', errAnon.code || errAnon)
+        if (isMounted) setAuthReady(true)
       }
     })
 

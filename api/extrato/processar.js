@@ -1,9 +1,7 @@
-// api/extrato/processar.js
-// Endpoint seguro para processar extratos bancários OFX e sincronizar com Gmail (alphaadmsc@gmail.com)
-
 import admin from 'firebase-admin';
 import imaps from 'imap-simple';
 import { simpleParser } from 'mailparser';
+import { applyCors, verifyUserAuth } from '../_middleware/auth.js';
 
 function getDb() {
   if (!admin.apps.length) {
@@ -30,8 +28,7 @@ function getDb() {
   return admin.firestore();
 }
 
-const GMAIL_USER = 'alphaadmsc@gmail.com';
-const GMAIL_DEFAULT_PASS = 'pognicpypmgbxmrw';
+const GMAIL_USER = process.env.GMAIL_USER || 'alphaadmsc@gmail.com';
 
 function parseOFX(data) {
   const transactions = [];
@@ -166,19 +163,23 @@ async function conciliarTransacoes(transactions, origem = 'OFX', condominio = 'T
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (applyCors(req, res, 'POST, OPTIONS')) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+
+  // Autenticação obrigatória
+  const user = await verifyUserAuth(req, res);
+  if (!user) return;
 
   try {
     const { action, ofxText, ofxBase64, appPassword, condominio = 'Todos' } = req.body || {};
-    const effectivePass = (appPassword || GMAIL_DEFAULT_PASS || process.env.GMAIL_APP_PASSWORD || '').replace(/[^a-zA-Z0-9]/g, '');
+    const effectivePass = (appPassword || process.env.GMAIL_APP_PASSWORD || '').replace(/[^a-zA-Z0-9]/g, '');
 
     // CASO 1: Ação de Sincronização direta com o Gmail
     if (action === 'sincronizar-gmail' || (!ofxText && !ofxBase64)) {
+      if (!effectivePass) {
+        return res.status(400).json({ error: 'Senha de aplicativo do Gmail não configurada no servidor.' });
+      }
+
       let connection;
       try {
         const config = {
@@ -188,8 +189,7 @@ export default async function handler(req, res) {
             host: 'imap.gmail.com',
             port: 993,
             tls: true,
-            authTimeout: 10000,
-            tlsOptions: { rejectUnauthorized: false }
+            authTimeout: 10000
           }
         };
 

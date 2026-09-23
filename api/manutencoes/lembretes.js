@@ -1,7 +1,8 @@
 // api/manutencoes/lembretes.js
 // Endpoint de Cron para verificação e disparo automático de lembretes D-1 e D-0 de manutenções
 
-const admin = require('firebase-admin');
+import admin from 'firebase-admin';
+import { applyCors, verifyCronAuth } from '../_middleware/auth.js';
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -15,15 +16,14 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live';
-const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb';
+const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://spiritualmacaw-evolution.cloudfy.live';
+const API_KEY = process.env.EVOLUTION_API_KEY;
 
-module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+export default async function handler(req, res) {
+  if (applyCors(req, res, 'GET, POST, OPTIONS')) return;
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Validação obrigatória de autorização para execução de cron
+  if (!verifyCronAuth(req, res)) return;
 
   try {
     const hoje = new Date();

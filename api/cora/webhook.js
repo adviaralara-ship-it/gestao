@@ -1,10 +1,48 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
+import crypto from 'crypto'
 
-// You must set FIREBASE_SERVICE_ACCOUNT in Vercel with the JSON of the Firebase Admin SDK to allow backend to write to Firestore
+/**
+ * Validação de Assinatura Criptográfica do Webhook Cora
+ */
+function verifyCoraWebhookSignature(req) {
+  const webhookSecret = process.env.CORA_WEBHOOK_SECRET || 'Cora_Webhook_Secret_Token_Alpha_2026';
+  
+  // 1. Verificação por token em header ou query
+  const authHeader = req.headers['authorization'] || '';
+  const tokenHeader = req.headers['x-cora-token'] || req.headers['x-webhook-secret'] || '';
+  const queryToken = req.query?.token || '';
+
+  if (authHeader === `Bearer ${webhookSecret}` || tokenHeader === webhookSecret || queryToken === webhookSecret) {
+    return true;
+  }
+
+  // 2. Verificação por assinatura HMAC se o Cora enviar x-cora-signature
+  const signature = req.headers['x-cora-signature'];
+  if (signature) {
+    const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(rawBody)
+      .digest('hex');
+
+    if (crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).send('Method Not Allowed')
+  }
+
+  // ─── Validação obrigatória da assinatura do Webhook ─────────────────────
+  if (!verifyCoraWebhookSignature(req)) {
+    console.warn('Tentativa de acesso não autorizado ao Webhook Cora rejeitada.')
+    return res.status(401).json({ error: 'Unauthorized: Assinatura de webhook inválida ou ausente.' })
   }
 
   try {
@@ -15,13 +53,23 @@ export default async function handler(req, res) {
       const invoiceId = event.data.invoice.id
 
       if (!getApps().length) {
-        if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-          console.error("FIREBASE_SERVICE_ACCOUNT is missing")
-          return res.status(500).send('Server Error')
+        if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+          initializeApp({
+            credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
+          })
+        } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+          initializeApp({
+            credential: cert({
+              projectId: process.env.FIREBASE_PROJECT_ID,
+              clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+              privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+            })
+          })
+        } else {
+          initializeApp({
+            projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'alphaadmsc-fdc4e'
+          })
         }
-        initializeApp({
-          credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
-        })
       }
       const db = getFirestore()
       
@@ -33,19 +81,21 @@ export default async function handler(req, res) {
         const doc = q.docs[0]
         await doc.ref.update({
           status: 'Pago',
-          dataPagamento: new Date().toISOString()
+          dataPagamento: new Date().toISOString(),
+          conciliadoEm: new Date().toISOString(),
+          origemBaixa: 'Webhook Cora Verificado'
         })
-        console.log(`Boleto ${invoiceId} marked as Paid`)
+        console.log(`Boleto ${invoiceId} marcado como Pago via Webhook Seguro`)
       } else {
-        console.warn(`Boleto ${invoiceId} not found in Firestore`)
+        console.warn(`Boleto ${invoiceId} não encontrado no Firestore`)
       }
     }
     
     // Acknowledge webhook
-    res.status(200).send('OK')
+    return res.status(200).json({ success: true, message: 'Webhook processado com sucesso.' })
 
   } catch (error) {
     console.error('Webhook Error:', error)
-    res.status(500).send('Internal Server Error')
+    return res.status(500).json({ error: 'Internal Server Error' })
   }
 }

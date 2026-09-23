@@ -3,7 +3,8 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { 
   Wrench, Plus, CheckCircle, Clock, Trash2, Calendar, AlertCircle, 
-  ShoppingBag, ExternalLink, Briefcase, FileText, Printer, Bell, RefreshCw, Check 
+  ShoppingBag, ExternalLink, Briefcase, FileText, Printer, Bell, RefreshCw, Check,
+  Send, CheckSquare, Square, Share2, ThumbsUp, X
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
@@ -149,7 +150,7 @@ function ModalDemanda({ data, condominios, onClose, onSave }) {
   )
 }
 
-function ModalProposta({ proposta, onClose }) {
+function ModalProposta({ proposta, onClose, onAprovar }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content md:max-w-xl" onClick={e => e.stopPropagation()}>
@@ -187,11 +188,144 @@ function ModalProposta({ proposta, onClose }) {
             </div>
           </div>
         </div>
+        <div className="p-6 border-t border-cream-300 flex flex-wrap justify-between items-center gap-3 bg-gray-50">
+          <button onClick={() => onAprovar(proposta)} className="btn-primary bg-brand-600 hover:bg-brand-700 flex items-center gap-1.5 text-xs py-2">
+            <Send size={14} /> Enviar p/ Aprovação
+          </button>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="btn-secondary text-xs py-2">Fechar</button>
+            <a href={`https://wa.me/${proposta.telefone.replace(/\D/g, '')}?text=Olá!%20Vimos%20sua%20proposta%20no%20Portal%20da%20Alpha%20Gestão.`} target="_blank" rel="noreferrer" className="btn-primary bg-green-500 hover:bg-green-600 border-none text-xs py-2 flex items-center gap-1">
+              WhatsApp
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ModalEnviarAprovacao({ selecionadas, condominios, onClose, onConfirm }) {
+  const [destinatario, setDestinatario] = useState('Síndico e Conselho')
+  const [condoDestino, setCondoDestino] = useState(selecionadas[0]?.condominio || '')
+  const [mensagemExtra, setMensagemExtra] = useState('')
+  const [telefoneWhats, setTelefoneWhats] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  const handleEnviar = async () => {
+    setEnviando(true)
+    try {
+      await onConfirm({
+        destinatario,
+        condoDestino,
+        mensagemExtra,
+        telefoneWhats,
+        propostas: selecionadas
+      })
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  const gerarTextoCompartilhamento = () => {
+    let txt = `📋 *SOLICITAÇÃO DE APROVAÇÃO DE ORÇAMENTO*\n`
+    txt += `🏢 *Condomínio:* ${condoDestino || 'Geral'}\n`
+    txt += `🎯 *Destinatário:* ${destinatario}\n\n`
+    txt += `Segue(m) o(s) orçamento(s) selecionado(s) para análise e aprovação:\n\n`
+    selecionadas.forEach((p, idx) => {
+      txt += `*${idx + 1}. ${p.empresa}*\n`
+      txt += `• Demanda: ${p.demandaTitulo || 'Serviço'}\n`
+      txt += `• Valor: R$ ${Number(p.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`
+      txt += `• Contato: ${p.contato || ''} (${p.telefone || ''})\n\n`
+    })
+    if (mensagemExtra) {
+      txt += `📝 *Observações:* ${mensagemExtra}\n\n`
+    }
+    txt += `Por favor, avalie e nos retorne com a aprovação. Obrigado!`
+    return txt
+  }
+
+  const enviarWhatsAppDireto = () => {
+    const texto = gerarTextoCompartilhamento()
+    const num = telefoneWhats.replace(/\D/g, '')
+    const url = num ? `https://wa.me/55${num}?text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`
+    window.open(url, '_blank')
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content md:max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="p-6 border-b border-cream-300 flex items-center justify-between bg-brand-50">
+          <h3 className="font-bold text-brand-900 flex items-center gap-2">
+            <Send size={18} /> Enviar Orçamentos para Aprovação ({selecionadas.length})
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        </div>
+        <div className="p-6 flex flex-col gap-4">
+          <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-xs text-amber-900">
+            <p className="font-bold mb-1">Você está enviando {selecionadas.length} proposta(s) selecionada(s):</p>
+            <ul className="list-disc pl-4 space-y-0.5">
+              {selecionadas.map(p => (
+                <li key={p.id}>
+                  <strong>{p.empresa}</strong> — R$ {Number(p.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} ({p.demandaTitulo})
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <label className="label">Quem deve aprovar?</label>
+            <select className="input w-full" value={destinatario} onChange={e => setDestinatario(e.target.value)}>
+              <option>Síndico e Conselho Consultivo</option>
+              <option>Apenas o Síndico</option>
+              <option>Comissão de Obras</option>
+              <option>Diretoria / Administradora</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="label">Condomínio Vinculado</label>
+            <select className="input w-full" value={condoDestino} onChange={e => setCondoDestino(e.target.value)}>
+              <option value="">Geral / Sem condomínio</option>
+              {condominios?.map(c => <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="label">WhatsApp para envio rápido (opcional)</label>
+            <div className="flex gap-2">
+              <input
+                className="input flex-1"
+                placeholder="(DDD) 99999-9999 do Síndico / Aprovador"
+                value={telefoneWhats}
+                onChange={e => setTelefoneWhats(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={enviarWhatsAppDireto}
+                className="btn-success py-2 px-3 text-xs whitespace-nowrap"
+                title="Abre o WhatsApp com o texto pronto"
+              >
+                Abrir WhatsApp
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Parecer / Mensagem de Orientação</label>
+            <textarea
+              className="input w-full min-h-[80px] text-xs"
+              placeholder="Ex: Recomendamos a empresa X pelo menor prazo e referências apresentadas..."
+              value={mensagemExtra}
+              onChange={e => setMensagemExtra(e.target.value)}
+            />
+          </div>
+        </div>
+
         <div className="p-6 border-t border-cream-300 flex justify-end gap-3 bg-gray-50">
-          <button onClick={onClose} className="btn-secondary">Fechar</button>
-          <a href={`https://wa.me/${proposta.telefone.replace(/\D/g, '')}?text=Olá!%20Vimos%20sua%20proposta%20no%20Portal%20da%20Alpha%20Gestão.`} target="_blank" rel="noreferrer" className="btn-primary bg-green-500 hover:bg-green-600 border-none">
-            Chamar no WhatsApp
-          </a>
+          <button onClick={onClose} className="btn-secondary" disabled={enviando}>Cancelar</button>
+          <button onClick={handleEnviar} className="btn-primary flex items-center gap-1.5" disabled={enviando}>
+            <CheckCircle size={16} /> {enviando ? 'Gravando...' : 'Confirmar Envio'}
+          </button>
         </div>
       </div>
     </div>
@@ -207,14 +341,19 @@ export default function Manutencoes() {
   
   const { items: manutencoes, addItem, updateItem, deleteItem } = useFirestore('manutencoes')
   const { items: demandas, addItem: addDemanda, updateItem: updateDemanda, deleteItem: delDemanda } = useFirestore('demandas_cotacao')
-  const { items: propostas, deleteItem: delProposta } = useFirestore('propostas_fornecedores')
+  const { items: propostas, updateItem: updateProposta, deleteItem: delProposta } = useFirestore('propostas_fornecedores')
+  const { addItem: addNotificacao } = useFirestore('notificacoes')
   const { items: condominios } = useFirestore('condominios')
   const { items: allUsuarios } = useFirestore('usuarios')
   
   const [modalManu, setModalManu] = useState(null)
   const [modalDemanda, setModalDemanda] = useState(null)
   const [modalProposta, setModalProposta] = useState(null)
+  const [modalAprovacao, setModalAprovacao] = useState(false)
   const [isChecking, setIsChecking] = useState(false)
+  
+  // Estado para seleção múltipla de propostas para aprovação
+  const [selectedPropostasIds, setSelectedPropostasIds] = useState([])
   
   const [condoFiltro, setCondoFiltro] = useState(isMorador ? user?.condominio : 'Todos')
 
@@ -366,6 +505,87 @@ export default function Manutencoes() {
       default: return 'text-blue-700 bg-blue-50 border-blue-200'
     }
   }
+
+  const handleConfirmarAprovacao = async ({ destinatario, condoDestino, mensagemExtra, telefoneWhats, propostas: listaPropostas }) => {
+    try {
+      // 1. Marcar status de aprovação nas propostas
+      for (const p of listaPropostas) {
+        await updateProposta(p.id, {
+          statusAprovacao: 'Enviado para Aprovação',
+          destinatarioAprovacao: destinatario,
+          enviadoAprovacaoEm: new Date().toISOString()
+        })
+      }
+
+      // 2. Criar notificação interna no sininho
+      await addNotificacao({
+        titulo: `📋 Orçamento(s) enviado(s) para Aprovação (${destinatario})`,
+        mensagem: `${listaPropostas.length} proposta(s) de fornecedor foram encaminhadas para aprovação do ${destinatario} no condomínio ${condoDestino || 'Geral'}.`,
+        tipo: 'cotacao',
+        condominio: condoDestino || '',
+        lida: false,
+        _createdAt: new Date().toISOString()
+      })
+
+      // 3. Notificar via WhatsApp se houver telefone ou administradores
+      const telefonesAlvo = new Set()
+      if (telefoneWhats) {
+        const limpo = telefoneWhats.replace(/\D/g, '')
+        if (limpo.length >= 8) telefonesAlvo.add(limpo.length <= 11 ? `55${limpo}` : limpo)
+      }
+
+      allUsuarios?.forEach(u => {
+        if (['Administrador', 'Síndico'].includes(u.role) && (!condoDestino || !u.condominio || u.condominio === condoDestino)) {
+          const rawTel = u.tel || u.telefone || u.whatsapp || u.celular || ''
+          const limpo = String(rawTel).replace(/\D/g, '')
+          if (limpo.length >= 8) telefonesAlvo.add(limpo.length <= 11 ? `55${limpo}` : limpo)
+        }
+      })
+
+      let txt = `📋 *SOLICITAÇÃO DE APROVAÇÃO DE ORÇAMENTO*\n`
+      txt += `🏢 *Condomínio:* ${condoDestino || 'Geral'}\n`
+      txt += `🎯 *Aprovador Designado:* ${destinatario}\n\n`
+      txt += `Segue(m) o(s) orçamento(s) selecionado(s) para análise:\n\n`
+      listaPropostas.forEach((p, idx) => {
+        txt += `*${idx + 1}. ${p.empresa}*\n`
+        txt += `• Demanda: ${p.demandaTitulo || 'Serviço'}\n`
+        txt += `• Valor: R$ ${Number(p.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`
+        txt += `• Contato: ${p.contato || ''} (${p.telefone || ''})\n\n`
+      })
+      if (mensagemExtra) txt += `📝 *Observação:* ${mensagemExtra}\n\n`
+      txt += `🔗 Acesse para revisar: https://alpha-solucoes-condominiais.vercel.app/manutencoes`
+
+      for (const num of telefonesAlvo) {
+        try {
+          fetch('/api/whatsapp-send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: num, text: txt, instance: 'InstanciaAlpha' })
+          }).catch(e => console.warn(e))
+        } catch(e) {}
+      }
+
+      alert(`✅ Sucesso!\n\n${listaPropostas.length} orçamento(s) enviado(s) para aprovação de "${destinatario}".`)
+      setSelectedPropostasIds([])
+      setModalAprovacao(false)
+    } catch (err) {
+      console.error('Erro ao enviar aprovação:', err)
+      alert('Erro ao processar envio: ' + err.message)
+    }
+  }
+
+  const toggleSelectProposta = (id) => {
+    setSelectedPropostasIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    )
+  }
+
+  const propostasFiltradas = propostas.filter(p => {
+    if (condoFiltro !== 'Todos' && p.condominio && p.condominio !== condoFiltro) return false
+    return true
+  })
+
+  const propostasSelecionadas = propostas.filter(p => selectedPropostasIds.includes(p.id))
 
   const handlePrint = () => {
     window.print()
@@ -665,9 +885,9 @@ export default function Manutencoes() {
           <div className="card bg-brand-900 text-white flex flex-col md:flex-row items-center justify-between gap-4 p-6 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/4"></div>
             <div className="relative z-10">
-              <h3 className="text-xl font-bold mb-1">Mural de Licitações Público</h3>
+              <h3 className="text-xl font-bold mb-1">Mural de Licitações e Orçamentos</h3>
               <p className="text-brand-200 text-sm max-w-2xl">
-                Crie demandas de serviços ou materiais (ex: Limpeza de Caixa D'água, Pintura) e deixe os fornecedores da região enviarem as propostas diretamente pelo portal online.
+                Crie demandas de serviços ou materiais, receba orçamentos de fornecedores e selecione os melhores para enviar diretamente para aprovação do Síndico ou Conselho.
               </p>
             </div>
             <div className="relative z-10 flex flex-col sm:flex-row gap-3 w-full md:w-auto">
@@ -681,6 +901,40 @@ export default function Manutencoes() {
               )}
             </div>
           </div>
+
+          {/* Barra de Ações para Orçamentos Selecionados */}
+          {selectedPropostasIds.length > 0 && (
+            <div className="bg-brand-50 border-2 border-brand-400 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-md animate-fade-in">
+              <div className="flex items-center gap-3">
+                <span className="w-8 h-8 rounded-full bg-brand-600 text-white font-bold flex items-center justify-center text-sm">
+                  {selectedPropostasIds.length}
+                </span>
+                <div>
+                  <h4 className="font-bold text-brand-900 text-sm">
+                    {selectedPropostasIds.length} orçamento(s) selecionado(s)
+                  </h4>
+                  <p className="text-xs text-brand-700">
+                    Total: R$ {propostasSelecionadas.reduce((acc, p) => acc + (Number(p.valor) || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedPropostasIds([])}
+                  className="btn-secondary py-1.5 px-3 text-xs"
+                >
+                  Desmarcar Todos
+                </button>
+                <button
+                  onClick={() => setModalAprovacao(true)}
+                  className="btn-primary py-1.5 px-4 text-xs bg-emerald-600 hover:bg-emerald-700 border-none flex items-center gap-1.5 shadow-sm"
+                >
+                  <Send size={14} /> Enviar para Aprovação
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Coluna 1: Demandas Abertas */}
@@ -707,26 +961,80 @@ export default function Manutencoes() {
               </div>
             </div>
 
-            {/* Coluna 2: Propostas Recebidas */}
+            {/* Coluna 2: Propostas Recebidas com Seleção */}
             <div className="card p-0 overflow-hidden flex flex-col shadow-sm border-brand-200 border-2">
               <div className="p-4 border-b border-brand-200 bg-brand-50 flex items-center justify-between">
-                <h3 className="font-bold text-brand-900 flex items-center gap-2"><FileText size={16}/> Orçamentos Recebidos</h3>
-                <span className="bg-brand-600 text-white text-xs font-bold px-2 py-1 rounded-full">{propostas.length}</span>
+                <div>
+                  <h3 className="font-bold text-brand-900 flex items-center gap-2"><FileText size={16}/> Orçamentos Recebidos</h3>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Marque os orçamentos que deseja submeter à aprovação</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {propostasFiltradas.length > 0 && (
+                    <button
+                      onClick={() => {
+                        if (selectedPropostasIds.length === propostasFiltradas.length) {
+                          setSelectedPropostasIds([])
+                        } else {
+                          setSelectedPropostasIds(propostasFiltradas.map(p => p.id))
+                        }
+                      }}
+                      className="text-xs font-bold text-brand-600 hover:text-brand-800 underline flex items-center gap-1"
+                    >
+                      {selectedPropostasIds.length === propostasFiltradas.length ? 'Desmarcar' : 'Selecionar Todos'}
+                    </button>
+                  )}
+                  <span className="bg-brand-600 text-white text-xs font-bold px-2 py-1 rounded-full">{propostasFiltradas.length}</span>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4 custom-scrollbar max-h-[500px] flex flex-col gap-3">
-                {propostas.length === 0 && <p className="text-sm text-gray-400 text-center py-6">Nenhuma proposta recebida dos fornecedores ainda.</p>}
-                {propostas.map(p => (
-                  <div key={p.id} className="border border-cream-200 rounded-xl p-4 bg-white hover:shadow-md transition-all cursor-pointer relative" onClick={() => setModalProposta(p)}>
-                    <button onClick={(e) => {e.stopPropagation(); delProposta(p.id)}} className="absolute top-4 right-4 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1 line-clamp-1 pr-6">Ref: {p.demandaTitulo}</p>
-                    <h4 className="font-bold text-gray-800 mb-1">{p.empresa}</h4>
-                    <p className="text-xs text-gray-500 mb-3">{p.contato} • {p.telefone}</p>
-                    <div className="flex items-center justify-between bg-emerald-50 text-emerald-700 px-3 py-2 rounded-lg border border-emerald-100">
-                      <span className="text-xs font-bold">Valor Ofertado</span>
-                      <span className="font-black">R$ {Number(p.valor).toLocaleString('pt-BR', {minimumFractionDigits:2})}</span>
+                {propostasFiltradas.length === 0 && <p className="text-sm text-gray-400 text-center py-6">Nenhuma proposta recebida dos fornecedores ainda.</p>}
+                {propostasFiltradas.map(p => {
+                  const isSelected = selectedPropostasIds.includes(p.id)
+                  return (
+                    <div 
+                      key={p.id} 
+                      className={`border-2 rounded-xl p-4 bg-white transition-all cursor-pointer relative ${isSelected ? 'border-brand-600 bg-brand-50/30 shadow-md' : 'border-cream-200 hover:shadow-md'}`}
+                      onClick={() => toggleSelectProposta(p.id)}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {}} // tratado no onClick do container
+                            className="w-4 h-4 text-brand-600 rounded cursor-pointer"
+                          />
+                          <p className="text-[10px] text-gray-400 font-bold uppercase truncate max-w-[200px]">Ref: {p.demandaTitulo}</p>
+                        </div>
+                        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                          <button onClick={() => setModalProposta(p)} className="text-xs text-brand-600 font-semibold hover:underline">
+                            Ver detalhes
+                          </button>
+                          <button onClick={() => { if (window.confirm('Excluir proposta?')) delProposta(p.id) }} className="text-gray-300 hover:text-red-500 transition-colors">
+                            <Trash2 size={14}/>
+                          </button>
+                        </div>
+                      </div>
+
+                      <h4 className="font-bold text-gray-800 mb-0.5">{p.empresa}</h4>
+                      <p className="text-xs text-gray-500 mb-2">{p.contato} • {p.telefone}</p>
+
+                      <div className="flex items-center justify-between bg-emerald-50 text-emerald-700 px-3 py-2 rounded-lg border border-emerald-100">
+                        <span className="text-xs font-bold">Valor Ofertado</span>
+                        <span className="font-black">R$ {Number(p.valor).toLocaleString('pt-BR', {minimumFractionDigits:2})}</span>
+                      </div>
+
+                      {p.statusAprovacao && (
+                        <div className="mt-2 pt-2 border-t border-cream-200 flex items-center justify-between text-[11px]">
+                          <span className="text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded border border-purple-200 flex items-center gap-1">
+                            <ThumbsUp size={11} /> {p.statusAprovacao}
+                          </span>
+                          <span className="text-gray-400 text-[10px]">{p.destinatarioAprovacao}</span>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           </div>
@@ -735,7 +1043,25 @@ export default function Manutencoes() {
 
       {modalManu && <ModalManutencao data={modalManu.id ? modalManu : null} condominios={condominios} onClose={() => setModalManu(null)} onSave={handleSaveManu} />}
       {modalDemanda && <ModalDemanda data={modalDemanda.id ? modalDemanda : null} condominios={condominios} onClose={() => setModalDemanda(null)} onSave={handleSaveDemanda} />}
-      {modalProposta && <ModalProposta proposta={modalProposta} onClose={() => setModalProposta(null)} />}
+      {modalProposta && (
+        <ModalProposta 
+          proposta={modalProposta} 
+          onClose={() => setModalProposta(null)} 
+          onAprovar={(prop) => {
+            setSelectedPropostasIds([prop.id])
+            setModalProposta(null)
+            setModalAprovacao(true)
+          }}
+        />
+      )}
+      {modalAprovacao && (
+        <ModalEnviarAprovacao
+          selecionadas={propostasSelecionadas}
+          condominios={condominios}
+          onClose={() => setModalAprovacao(false)}
+          onConfirm={handleConfirmarAprovacao}
+        />
+      )}
     </div>
   )
 }

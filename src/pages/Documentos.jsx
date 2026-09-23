@@ -10,6 +10,7 @@ import { storage, db } from '../firebase'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { converterParaBlobUrl, visualizarDocumento, baixarDocumento } from '../utils/fileViewer'
+import { validateFileUpload } from '../utils/fileValidation'
 
 const categories = [
   'Convenção & Regimento', 
@@ -143,7 +144,16 @@ function ModalDocumento({ data, onClose, onSave, condominios }) {
       let fileType = data?.tipo || 'pdf'
 
       if (arquivo) {
-        fileType = arquivo.type.startsWith('image/') ? 'img' : 'pdf'
+        // Validação de tipo real por Magic Bytes
+        const valResult = await validateFileUpload(arquivo, ['pdf', 'jpeg', 'png', 'webp'])
+        if (!valResult.valid) {
+          alert(`❌ Erro no arquivo: ${valResult.error}`)
+          setLoading(false)
+          setUploadProgress('')
+          return
+        }
+
+        fileType = (valResult.type === 'jpeg' || valResult.type === 'png' || valResult.type === 'webp') ? 'img' : 'pdf'
         fileSize = arquivo.size > 1024 * 1024
           ? `${(arquivo.size / 1024 / 1024).toFixed(1)} MB`
           : `${Math.round(arquivo.size / 1024)} KB`

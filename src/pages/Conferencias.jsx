@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { Video, Copy, CheckCircle, Plus, Users, Clock, AlertCircle, FileText, Download, Tv, Radio } from 'lucide-react'
+import { Video, Copy, CheckCircle, Plus, Users, Clock, AlertCircle, FileText, Download, Tv, Radio, ExternalLink, ShieldCheck } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import { gerarAtaPorAudio } from '../utils/aiTranscricao'
 
@@ -9,6 +9,7 @@ export default function Conferencias() {
   const [copied, setCopied] = useState(false)
   const [youtubeLiveUrl, setYoutubeLiveUrl] = useState('')
   const [viewMode, setViewMode] = useState('meet') // 'meet' | 'youtube'
+  const [servidorJitsi, setServidorJitsi] = useState('https://meet.ffrn.be') // Servidor Jitsi open-source sem bloqueio comercial de 5 min
 
   // Estados de Gravação
   const [isRecording, setIsRecording] = useState(false)
@@ -150,7 +151,7 @@ export default function Conferencias() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Chaveador de modo de transmissão */}
+            {/* Seletor de Servidor / Modo */}
             <div className="bg-gray-100 p-1 rounded-lg flex items-center gap-1 border border-cream-200 text-xs">
               <button
                 onClick={() => setViewMode('meet')}
@@ -160,7 +161,7 @@ export default function Conferencias() {
                     : 'text-gray-500 hover:text-gray-800'
                 }`}
               >
-                <Video size={13}/> Interativa
+                <Video size={13}/> Sala Ilimitada
               </button>
               <button
                 onClick={() => setViewMode('youtube')}
@@ -173,6 +174,15 @@ export default function Conferencias() {
                 <Tv size={13}/> YouTube Live (100+ pessoas)
               </button>
             </div>
+
+            {/* Botão de abrir em janela externa (zero limitação de iframe) */}
+            <button
+              onClick={() => window.open(`${servidorJitsi}/${roomName}`, '_blank')}
+              className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1.5 bg-brand-50 border-brand-200 text-brand-700 hover:bg-brand-100"
+              title="Abre a videoconferência em uma janela dedicada sem nenhuma restrição de tempo"
+            >
+              <ExternalLink size={13}/> Abrir Janela Dedicada (Sem Limites)
+            </button>
           </div>
           
           <div className="flex items-center gap-3 flex-wrap">
@@ -282,7 +292,7 @@ export default function Conferencias() {
             )
           ) : (
             <iframe 
-              src={`https://meet.jit.si/${roomName}`} 
+              src={`${servidorJitsi}/${roomName}`} 
               allow="camera; microphone; fullscreen; display-capture; autoplay"
               className="w-full h-full border-0 absolute inset-0"
               title="Sala de Conferência Alpha"
@@ -293,12 +303,14 @@ export default function Conferencias() {
     )
   }
 
+  const linkSala = `${servidorJitsi}/${roomName}`
+
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div className="page-header">
         <div>
           <h2 className="section-title text-xl">Sala de Conferências</h2>
-          <p className="section-sub">Videoconferência para reuniões, recrutamento e alinhamentos.</p>
+          <p className="section-sub">Videoconferência para reuniões, recrutamento e assembleias virtuais.</p>
         </div>
       </div>
 
@@ -311,7 +323,7 @@ export default function Conferencias() {
               </div>
               <div>
                 <h3 className="font-bold text-gray-800 text-lg">Nova Sala de Vídeo</h3>
-                <p className="text-sm text-gray-500">Gere um link único para a conferência online.</p>
+                <p className="text-sm text-gray-500">Gere um link único para a conferência online com duração livre.</p>
               </div>
             </div>
 
@@ -322,18 +334,22 @@ export default function Conferencias() {
                   <div className="flex items-center justify-center gap-2 max-w-md mx-auto">
                     <input 
                       readOnly 
-                      value={`https://meet.jit.si/${roomName}`}
+                      value={linkSala}
                       className="input bg-white font-mono text-sm flex-1"
                     />
                     <button 
-                      onClick={handleCopyLink}
+                      onClick={() => {
+                        navigator.clipboard.writeText(linkSala)
+                        setCopied(true)
+                        setTimeout(() => setCopied(false), 2000)
+                      }}
                       className="p-3 bg-white border border-cream-300 rounded-xl hover:bg-cream-50 transition-colors text-brand-600 flex-shrink-0"
                       title="Copiar Link"
                     >
                       {copied ? <CheckCircle size={20} className="text-green-500"/> : <Copy size={20}/>}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">Envie este link para os participantes acessarem (pelo celular ou computador).</p>
+                  <p className="text-xs text-gray-500 mt-2">Envie este link para os participantes acessarem pelo celular ou computador sem limite de tempo.</p>
                 </div>
               ) : (
                 <div className="py-8">
@@ -346,9 +362,18 @@ export default function Conferencias() {
             </div>
 
             {roomName && (
-              <div className="flex justify-end gap-3 pt-4 border-t border-cream-200">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-cream-200">
                 <button onClick={() => setRoomName('')} className="btn-secondary">Cancelar</button>
-                <button onClick={handleJoin} className="btn-primary">Entrar na Sala Agora</button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => window.open(linkSala, '_blank')} 
+                    className="btn-secondary flex items-center gap-1.5"
+                    title="Abre a videoconferência diretamente em tela cheia sem limite de tempo"
+                  >
+                    <ExternalLink size={15} /> Abrir em Janela Dedicada
+                  </button>
+                  <button onClick={handleJoin} className="btn-primary">Entrar no App</button>
+                </div>
               </div>
             )}
           </div>
@@ -357,21 +382,25 @@ export default function Conferencias() {
         <div className="space-y-4">
           <div className="card bg-gradient-to-br from-gray-800 to-gray-900 text-white border-0 shadow-xl">
             <h3 className="font-bold mb-4 flex items-center gap-2">
-              <AlertCircle size={18} className="text-brand-400" /> 
-              Vantagens da Sala
+              <ShieldCheck size={18} className="text-emerald-400" /> 
+              Reuniões Livres e Ilimitadas
             </h3>
             <ul className="space-y-3 text-sm text-gray-300">
               <li className="flex items-start gap-2">
                 <Clock size={16} className="text-emerald-400 mt-0.5 shrink-0" />
-                <span>Sem limite de tempo nas ligações e reuniões.</span>
+                <span><strong>Sem limite de 5 minutos:</strong> Reuniões de 5 minutos a 5 horas ou mais sem interrupções.</span>
               </li>
               <li className="flex items-start gap-2">
                 <Users size={16} className="text-blue-400 mt-0.5 shrink-0" />
-                <span>Suporte híbrido: até 100 participantes interativos ou audiência ilimitada via YouTube Live.</span>
+                <span>Suporte híbrido: participantes interativos ou audiência ilimitada via YouTube Live.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <FileText size={16} className="text-amber-400 mt-0.5 shrink-0" />
+                <span>Gravação e ata automática com Inteligência Artificial integrada.</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle size={16} className="text-brand-400 mt-0.5 shrink-0" />
-                <span>Sem necessidade de instalação ou cadastro pelos moradores.</span>
+                <span>Sem necessidade de instalação ou cadastro pelos condôminos.</span>
               </li>
             </ul>
           </div>

@@ -33,7 +33,9 @@ export default function OnboardingCandidato() {
     cep: ''
   })
   
-  const [arquivos, setArquivos] = useState({}) // { rg: File, cpf: File, ... }
+  const [verificado, setVerificado] = useState(false)
+  const [emailConfirmacao, setEmailConfirmacao] = useState('')
+  const [erroAuth, setErroAuth] = useState('')
 
   useEffect(() => {
     carregarCandidato()
@@ -57,6 +59,20 @@ export default function OnboardingCandidato() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const validarCandidato = (e) => {
+    e.preventDefault()
+    setErroAuth('')
+    if (!candidato) return
+    const emailLimpo = emailConfirmacao.toLowerCase().trim()
+    const emailEsperado = (candidato.email || '').toLowerCase().trim()
+    
+    if (emailEsperado && emailLimpo !== emailEsperado) {
+      setErroAuth('O e-mail informado não corresponde ao candidato desta vaga.')
+      return
+    }
+    setVerificado(true)
   }
 
   const handleFileChange = async (docId, file) => {
@@ -153,6 +169,39 @@ export default function OnboardingCandidato() {
       </div>
     </div>
   )
+
+  if (!verificado) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 font-sans">
+        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-gray-100">
+          <div className="w-12 h-12 bg-brand-50 text-brand-700 rounded-xl flex items-center justify-center mb-4 text-xl">
+            🔒
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-1">Acesso à Admissão Digital</h2>
+          <p className="text-gray-500 text-xs mb-5">
+            Para proteger a privacidade dos seus dados, confirme o e-mail informado na candidatura para acessar a página de envio de documentos.
+          </p>
+          <form onSubmit={validarCandidato} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Seu E-mail Cadastrado</label>
+              <input
+                type="email"
+                required
+                value={emailConfirmacao}
+                onChange={e => setEmailConfirmacao(e.target.value)}
+                placeholder="seu.email@exemplo.com"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-brand-500 focus:outline-none"
+              />
+              {erroAuth && <p className="text-red-600 text-xs mt-1.5 font-medium">{erroAuth}</p>}
+            </div>
+            <button type="submit" className="btn-primary w-full py-3.5 text-sm justify-center rounded-xl shadow-lg">
+              Confirmar e Prosseguir
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans animate-fade-in">

@@ -2,15 +2,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Função auxiliar para verificar autenticação
+    // Usuário autenticado com credenciais reais (não anônimo)
     function isAuthenticated() {
+      return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // Qualquer sessão autenticada (incluindo moradores anônimos em enquetes/links)
+    function hasAnyAuth() {
       return request.auth != null;
     }
 
     // Candidatos a vagas de emprego (público para envio de currículo)
     match /candidatos/{docId} {
       allow create: if true;
-      allow read, update, delete: if isAuthenticated();
+      allow read, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
     }
 
     // Notificações do sistema
@@ -19,7 +25,7 @@ service cloud.firestore {
       allow read, update, delete: if isAuthenticated();
     }
 
-    // Usuários do sistema (isolamento de credenciais)
+    // Usuários do sistema (isolamento estrito de credenciais)
     match /usuarios/{userId} {
       allow create: if true;
       allow read: if isAuthenticated();
@@ -32,30 +38,53 @@ service cloud.firestore {
       allow read, update, delete: if isAuthenticated();
     }
 
-    // Registros de auditoria (apenas leitura/escrita autenticada)
+    // Registros de auditoria (apenas leitura autenticada, imutáveis)
     match /auditoria_logs/{logId} {
       allow create: if true;
       allow read: if isAuthenticated();
-      allow update, delete: if false; // Logs são imutáveis (não podem ser alterados ou apagados)
+      allow update, delete: if false;
     }
 
-    // Ponto eletrônico (registro público para bater ponto com GPS)
+    match /auditoria/{logId} {
+      allow create: if true;
+      allow read: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    // Ponto eletrônico (registro com foto/GPS)
     match /ponto_registros/{pontoId} {
       allow create: if true;
       allow read, update, delete: if isAuthenticated();
     }
 
-    // Módulos confidenciais (Financeiro, Boletos, Documentos, Contratos, etc.)
-    match /{document=**} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Enquetes: leitura pública (qualquer um pode ver), escrita exige auth (anônima inclusa)
-    // Isso permite que moradores votem via link do WhatsApp sem precisar de conta no ERP.
-    // O controle de voto único é feito pelo código (chave por unidade/nome), não por bloqueio de acesso.
+    // Enquetes: leitura pública, votação permitida para qualquer sessão ativa
     match /enquetes/{enqueteId} {
       allow read: if true;
+      allow write: if hasAnyAuth();
+    }
+
+    // Mediações: leitura de sala permitida, alteração apenas autenticada
+    match /mediacoes/{mediacaoId} {
+      allow read: if true;
+      allow update: if hasAnyAuth();
+      allow create, delete: if isAuthenticated();
+    }
+
+    // Visitantes e Convidados de Eventos
+    match /visitantes/{visitanteId} {
+      allow read: if true;
       allow write: if isAuthenticated();
+    }
+
+    match /eventos_convidados/{convidadoId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Módulos confidenciais (Financeiro, Boletos, Documentos, Contratos, etc.)
+    // Apenas usuários registrados e autenticados de verdade (bloqueia anônimos)
+    match /{document=**} {
+      allow read, write: if isAuthenticated();
     }
   }
 }

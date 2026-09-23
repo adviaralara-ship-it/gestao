@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react'
+import React, { useState } from 'react'
 import {
   PieChart, ListChecks, Plus, Trash2, CheckCircle2, AlertCircle,
   BarChart3, Clock, X, ExternalLink, Share2, MessageCircle, Users, ChevronDown, ChevronUp
@@ -17,12 +17,22 @@ export default function Enquetes() {
   
   const [modal, setModal] = useState(false)
   const [verDetalhesId, setVerDetalhesId] = useState(null)
+  const [condoFiltro, setCondoFiltro] = useState(user?.condominio || 'Todos')
 
-  // Auto encerra votações cuja data limite já passou (visualmente)
-  const viewEnquetes = enquetes.map(e => ({
-    ...e,
-    status: new Date(e.dataFim + 'T23:59:59') < new Date() ? 'Encerrada' : e.status
-  })).sort((a,b) => new Date(b._createdAt) - new Date(a._createdAt))
+  // Auto encerra votações cuja data limite já passou e filtra por condomínio
+  const viewEnquetes = enquetes
+    .filter(e => {
+      if (condoFiltro && condoFiltro !== 'Todos') {
+        const cEnquete = String(e.condominio || '').trim().toLowerCase()
+        const cAlvo = String(condoFiltro).trim().toLowerCase()
+        return cEnquete === cAlvo || cEnquete === 'todos' || !cEnquete
+      }
+      return true
+    })
+    .map(e => ({
+      ...e,
+      status: new Date(e.dataFim + 'T23:59:59') < new Date() ? 'Encerrada' : e.status
+    })).sort((a,b) => new Date(b._createdAt) - new Date(a._createdAt))
 
   const handleSave = async (form) => {
     if (form.id) {
@@ -121,6 +131,26 @@ export default function Enquetes() {
             <Plus size={16} />Nova Enquete
           </button>
         )}
+      </div>
+
+      {/* Barra de Filtro de Condomínio */}
+      <div className="card p-3.5 flex flex-wrap gap-4 items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Filtrar por Condomínio:</label>
+          <select 
+            value={condoFiltro} 
+            onChange={e => setCondoFiltro(e.target.value)}
+            className="input py-1.5 px-3 text-sm font-semibold w-auto min-w-[220px]"
+          >
+            <option value="Todos">Todos os Condomínios (Geral)</option>
+            {condominios.map(c => (
+              <option key={c.id} value={c.nome}>{c.nome}</option>
+            ))}
+          </select>
+        </div>
+        <span className="text-xs text-gray-400 font-medium">
+          Exibindo {viewEnquetes.length} enquete(s) {condoFiltro !== 'Todos' ? `em ${condoFiltro}` : ''}
+        </span>
       </div>
 
       {viewEnquetes.length === 0 ? (
@@ -303,11 +333,11 @@ export default function Enquetes() {
 }
 
 function ModalEnqueteForm({ data, user, condominios = [], onClose, onSave }) {
-  const isAdmin = user?.role === 'Administrador'
+  const canSelectCondo = user?.role === 'Administrador' || !user?.condominio || condominios.length > 1
   const [form, setForm] = useState({
     id: data.id || null,
     pergunta: data.pergunta || '',
-    condominio: data.condominio || user?.condominio || (condominios[0]?.nome || ''),
+    condominio: data.condominio || user?.condominio || (condominios[0]?.nome || 'Todos'),
     dataFim: data.dataFim || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
     opcoes: data.opcoes || ['CONCORDO', 'NÃO CONCORDO']
   })
@@ -338,7 +368,7 @@ function ModalEnqueteForm({ data, user, condominios = [], onClose, onSave }) {
         <form onSubmit={submit} className="flex flex-col gap-4">
           <div>
             <label className="text-xs font-semibold text-gray-600 block mb-1">Condomínio</label>
-            {isAdmin ? (
+            {canSelectCondo ? (
               <select
                 className="input-field"
                 value={form.condominio}

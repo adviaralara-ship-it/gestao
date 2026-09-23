@@ -1,30 +1,54 @@
 import React, { useState } from 'react'
-import { Receipt, Search, ExternalLink, RefreshCw, Plus, Trash2, Edit2, X, Eye } from 'lucide-react'
+import { Receipt, Search, ExternalLink, RefreshCw, Plus, Trash2, Edit2, X, Eye, UploadCloud, Loader2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
-import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage'
-import { app } from '../firebase'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { storage } from '../firebase'
 
 const statusBadge = s => ({ Válida: 'badge-green', 'Em análise': 'badge-yellow', Rejeitada: 'badge-red' }[s] || 'badge-blue')
 
 // ─── Modal: Nova / Editar Nota Fiscal ────────────────────────────────
 function ModalNota({ data, user, condominiosDisponiveis, onClose, onSave }) {
   const [form, setForm] = useState(data || {
-    numero: '', prestador: '', cnpj: '', servico: '', valor: '', data: '', status: 'Em análise', condominio: user?.condominio || '', tipo: 'Nota Fiscal', arquivoUrl: ''
+    numero: '', prestador: '', cnpj: '', servico: '', valor: '', data: new Date().toISOString().split('T')[0], status: 'Em análise', condominio: user?.condominio || '', tipo: 'Nota Fiscal', arquivoUrl: '', arquivoNome: ''
   })
   const [isExtracting, setIsExtracting] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
     setIsExtracting(true)
+    setIsUploading(true)
+    set('arquivoNome', file.name)
     
     try {
-      // 1. Converter para Base64 para OCR
+      // 1. Upload seguro para o Firebase Storage
+      try {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const storageRef = ref(storage, `notas_fiscais/${Date.now()}_${safeName}`)
+        const snapshot = await uploadBytes(storageRef, file)
+        const downloadUrl = await getDownloadURL(snapshot.ref)
+        set('arquivoUrl', downloadUrl)
+      } catch (stErr) {
+        console.warn('Storage upload falhou, tentando fallback:', stErr)
+      }
+
+      // 2. Extração OCR com IA via Base64
       const reader = new FileReader()
-      reader.onload = async (e) => {
-        const base64Data = e.target.result
+      reader.onload = async (ev) => {
+        const base64Data = ev.target.result
+        
+        // Se falhou o upload no storage e o arquivo for pequeno, salva data URL como fallback
+        setForm(prev => {
+          if (!prev.arquivoUrl && file.size < 700000) {
+            return { ...prev, arquivoUrl: base64Data }
+          }
+          return prev
+        })
+
         try {
           const res = await fetch('/api/extract', {
             method: 'POST',
@@ -32,32 +56,45 @@ function ModalNota({ data, user, condominiosDisponiveis, onClose, onSave }) {
             body: JSON.stringify({ file: base64Data, mimeType: file.type, type: 'notafiscal' })
           })
           const ocrData = await res.json()
-          if (ocrData.success) {
-            set('numero', ocrData.data.numero || '')
-            set('prestador', ocrData.data.prestador || '')
-            set('cnpj', ocrData.data.cnpj || '')
-            set('servico', ocrData.data.servico || '')
-            set('valor', ocrData.data.valor || '')
+          if (ocrData.success && ocrData.data) {
+            if (ocrData.data.numero) set('numero', ocrData.data.numero)
+            if (ocrData.data.prestador) set('prestador', ocrData.data.prestador)
+            if (ocrData.data.cnpj) set('cnpj', ocrData.data.cnpj)
+            if (ocrData.data.servico) set('servico', ocrData.data.servico)
+            if (ocrData.data.valor) set('valor', ocrData.data.valor)
             if (ocrData.data.data) set('data', ocrData.data.data)
-            alert('Dados preenchidos automaticamente com IA!')
-          } else {
-            console.error('OCR Error:', ocrData.error)
-            alert('Não foi possível ler o arquivo. Preencha manualmente.')
           }
         } catch(err) {
-          console.error(err)
+          console.error('Falha na extração IA:', err)
+        } finally {
+          setIsExtracting(false)
+          setIsUploading(false)
         }
-        
-        // 2. Salvar no Storage
-        if (file.size < 2048576) { // Salvar Base64 direto se < 2MB para evitar erro de CORS
-           set('arquivoUrl', base64Data)
-        }
-        setIsExtracting(false)
       }
       reader.readAsDataURL(file)
     } catch (err) {
       console.error(err)
       setIsExtracting(false)
+      setIsUploading(false)
+    }
+  }
+
+  const handleSalvar = async () => {
+    const prestadorFinal = form.prestador?.trim() || form.arquivoNome || 'Prestador a Identificar'
+    const numeroFinal = form.numero?.trim() || `DOC-${Date.now().toString().slice(-6)}`
+    
+    setSaving(true)
+    try {
+      await onSave({
+        ...form,
+        prestador: prestadorFinal,
+        numero: numeroFinal
+      })
+    } catch (err) {
+      console.error('Erro ao salvar nota:', err)
+      alert('Erro ao salvar no banco de dados: ' + (err.message || err))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -65,14 +102,25 @@ function ModalNota({ data, user, condominiosDisponiveis, onClose, onSave }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">{data ? 'Editar Nota Fiscal' : 'Nova Nota Fiscal'}</h3>
+          <h3 className="font-bold text-gray-800">{data ? 'Editar Nota / Recibo' : 'Nova Nota Fiscal ou Recibo'}</h3>
           <button onClick={onClose}><X size={18} className="text-gray-400 hover:text-gray-700" /></button>
         </div>
         <div className="p-6 grid grid-cols-2 gap-4">
           <div className="col-span-2">
-            <label className="label text-brand-600 flex items-center gap-2">🤖 Ler Arquivo Automaticamente (IA)</label>
-            <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileUpload} className="input p-2 text-sm" disabled={isExtracting} />
-            {isExtracting && <p className="text-xs text-brand-500 mt-1 animate-pulse">Lendo informações do documento...</p>}
+            <label className="label text-brand-600 flex items-center gap-2">
+              <UploadCloud size={16} /> 🤖 Ler Arquivo Automaticamente (IA)
+            </label>
+            <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileUpload} className="input p-2 text-sm w-full" disabled={isExtracting || isUploading} />
+            {(isExtracting || isUploading) && (
+              <p className="text-xs text-brand-600 mt-1 flex items-center gap-1.5 font-semibold animate-pulse">
+                <Loader2 size={13} className="animate-spin" /> Processando anexo e lendo informações do documento...
+              </p>
+            )}
+            {form.arquivoNome && !isExtracting && (
+              <p className="text-xs text-emerald-600 mt-1 font-semibold flex items-center gap-1">
+                ✓ Arquivo anexado: {form.arquivoNome}
+              </p>
+            )}
           </div>
           <div><label className="label">Tipo de Documento</label>
             <select className="input" value={form.tipo || 'Nota Fiscal'} onChange={e => set('tipo', e.target.value)}>
@@ -85,9 +133,9 @@ function ModalNota({ data, user, condominiosDisponiveis, onClose, onSave }) {
               {condominiosDisponiveis.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <div><label className="label">Nº da Nota / Recibo</label><input className="input" value={form.numero} onChange={e => set('numero', e.target.value)} placeholder="Ex: NF-001234" /></div>
+          <div><label className="label">Nº da Nota / Recibo</label><input className="input" value={form.numero} onChange={e => set('numero', e.target.value)} placeholder="Ex: NF-001234 (opcional)" /></div>
           <div><label className="label">Data de emissão</label><input type="date" className="input" value={form.data} onChange={e => set('data', e.target.value)} /></div>
-          <div className="col-span-2"><label className="label">Prestador / Fornecedor</label><input className="input" value={form.prestador} onChange={e => set('prestador', e.target.value)} placeholder="Nome da empresa" /></div>
+          <div className="col-span-2"><label className="label">Prestador / Fornecedor *</label><input className="input" value={form.prestador} onChange={e => set('prestador', e.target.value)} placeholder="Nome da empresa ou prestador" /></div>
           <div><label className="label">CNPJ</label><input className="input" value={form.cnpj} onChange={e => set('cnpj', e.target.value)} placeholder="00.000.000/0001-00" /></div>
           <div><label className="label">Valor</label><input className="input" value={form.valor} onChange={e => set('valor', e.target.value)} placeholder="Ex: R$ 1.200,00" /></div>
           <div className="col-span-2"><label className="label">Serviço prestado</label><input className="input" value={form.servico} onChange={e => set('servico', e.target.value)} placeholder="Descrição do serviço" /></div>
@@ -98,8 +146,15 @@ function ModalNota({ data, user, condominiosDisponiveis, onClose, onSave }) {
           </div>
         </div>
         <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
-          <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={() => { if (!form.numero || !form.prestador) return; onSave(form) }} className="btn-primary">Salvar</button>
+          <button onClick={onClose} className="btn-secondary" disabled={saving}>Cancelar</button>
+          <button 
+            onClick={handleSalvar} 
+            disabled={saving || isUploading}
+            className="btn-primary flex items-center gap-2"
+          >
+            {saving ? <Loader2 size={15} className="animate-spin" /> : null}
+            {saving ? 'Salvando...' : 'Salvar Documento'}
+          </button>
         </div>
       </div>
     </div>

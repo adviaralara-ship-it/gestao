@@ -2,7 +2,8 @@
 // Cron job executado diariamente às 08h00 para alertar contas a pagar vencendo hoje.
 // Separa em dois blocos: A) Contas "Alpha interno"; B) Contas dos condomínios (agrupadas por condomínio).
 
-const admin = require('firebase-admin');
+import admin from 'firebase-admin';
+import { applyCors, verifyCronAuth } from '../_middleware/auth.js';
 
 if (!admin.apps.length) {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -28,8 +29,8 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live';
-const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb';
+const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://spiritualmacaw-evolution.cloudfy.live';
+const API_KEY = process.env.EVOLUTION_API_KEY;
 
 const isAlphaInterno = (condo) => {
   if (!condo) return true;
@@ -41,12 +42,11 @@ const fmtBRL = (v) => {
   return Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+export default async function handler(req, res) {
+  if (applyCors(req, res, 'GET, POST, OPTIONS')) return;
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Validação obrigatória de autorização para execução de cron
+  if (!verifyCronAuth(req, res)) return;
 
   try {
     // 1. Data atual no fuso de Brasília (UTC-3)
@@ -56,35 +56,43 @@ module.exports = async (req, res) => {
     const hojeStr = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
     const dataFmt = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
 
-    // 2. Buscar lançamentos financeiros e administradores/usuários
-    const [finSnap, usuariosSnap] = await Promise.all([
+    // 2. Buscar lançamentos financeiros, usuários e tarefas do dia
+    const [finSnap, usuariosSnap, tarefasSnap] = await Promise.all([
       db.collection('financeiro_lancamentos').get(),
-      db.collection('usuarios').get()
+      db.collection('usuarios').get(),
+      db.collection('tarefas').get()
     ]);
 
     const lancamentos = finSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const usuarios = usuariosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const tarefas = tarefasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    // 3. Filtrar contas a pagar / despesas com vencimento HOJE e pendentes
+    // 3. Filtrar contas a pagar com vencimento HOJE e pendentes
     const contasVencendoHoje = lancamentos.filter(item => {
       const isDespesa = item.tipo === 'Despesa' || (item.categoria && String(item.categoria).toLowerCase().includes('despesa'));
       if (!isDespesa) return false;
 
-      // Status não quitado
       const pago = item.status === 'Pago' || item.status === 'Liquidado' || item.pago === true;
       if (pago) return false;
 
-      // Data de vencimento correspondente a hoje
       const dtVenc = item.vencimento || item.data || '';
       return dtVenc.startsWith(hojeStr);
     });
 
-    if (contasVencendoHoje.length === 0) {
+    // Filtrar tarefas agendadas para HOJE não concluídas
+    const tarefasHoje = tarefas.filter(t => {
+      const isDone = t.coluna === 'Concluído' || t.coluna === 'concluido' || t.status === 'Concluído';
+      const dtVenc = t.vencimento || t.data || '';
+      return dtVenc.startsWith(hojeStr) && !isDone;
+    });
+
+    if (contasVencendoHoje.length === 0 && tarefasHoje.length === 0) {
       return res.status(200).json({
         success: true,
         dataReferencia: hojeStr,
-        message: 'Nenhuma conta vencendo hoje encontrada.',
-        totalContas: 0
+        message: 'Nenhuma conta nem tarefa vencendo hoje encontrada.',
+        totalContas: 0,
+        totalTarefas: 0
       });
     }
 
@@ -140,7 +148,19 @@ module.exports = async (req, res) => {
       msgTexto += `\n`;
     }
 
-    msgTexto += `🔗 *Acesse o módulo Financeiro:* https://alpha-solucoes-condominiais.vercel.app/financeiro`;
+    // BLOCO C) Tarefas & Agenda de Hoje
+    if (tarefasHoje.length > 0) {
+      msgTexto += `📋 *BLOCO C: TAREFAS & AGENDA DE HOJE*\n`;
+      tarefasHoje.forEach((t, i) => {
+        const horaStr = t.hora ? ` (${t.hora})` : '';
+        const prioStr = t.prioridade ? ` [${t.prioridade}]` : '';
+        msgTexto += `  ${i + 1}. *${t.titulo}*${horaStr}${prioStr}${t.responsavel ? ` - Resp: ${t.responsavel}` : ''}\n`;
+      });
+      msgTexto += `\n`;
+    }
+
+    msgTexto += `🔗 *Acesse o módulo Financeiro:* https://alpha-solucoes-condominiais.vercel.app/financeiro\n`;
+    msgTexto += `🔗 *Acesse as Tarefas:* https://alpha-solucoes-condominiais.vercel.app/tarefas`;
 
     // 6. Gravar notificação no Firestore (sininho da plataforma)
     await db.collection('notificacoes').add({

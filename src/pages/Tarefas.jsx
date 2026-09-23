@@ -3,10 +3,11 @@ import emailjs from '@emailjs/browser'
 import {
   CheckSquare, Plus, Trash2, Edit2, Calendar, User, X,
   LayoutGrid, List, Mail, Link2, Filter, Download, Clock,
-  AlertTriangle, Send, Inbox, CheckCircle, Eye, ChevronLeft, ChevronRight, CalendarDays
+  AlertTriangle, Send, Inbox, CheckCircle, Eye, ChevronLeft, ChevronRight, CalendarDays, Bell
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { EMAILJS_CONFIG } from '../emailjs.config'
+import { useTarefasAutoReminder, verificarEDispararLembretesTarefas } from '../hooks/useTarefasAutoReminder'
 
 // ─── Inicializa EmailJS se configurado ──────────────────────────────
 if (EMAILJS_CONFIG.ATIVO) {
@@ -472,6 +473,7 @@ function EmailsView({ emails, onDelete, onVisualizar }) {
 
 // ─── Componente Principal ─────────────────────────────────────────────
 export default function Tarefas() {
+  useTarefasAutoReminder()
   const { items: tarefas, addItem, updateItem, deleteItem } = useFirestore('tarefas')
   const { items: emails, addItem: addEmail, deleteItem: delEmail } = useFirestore('emails_enviados')
 
@@ -481,6 +483,7 @@ export default function Tarefas() {
   const [vizModal, setVizModal] = useState(null)
   const [filtroPrio, setFiltroPrio] = useState('')
   const [filtroResp, setFiltroResp] = useState('')
+  const [enviandoLembretes, setEnviandoLembretes] = useState(false)
 
   const tarefasFiltradas = useMemo(() => tarefas.filter(t => {
     if (filtroPrio && t.prioridade !== filtroPrio) return false
@@ -524,7 +527,22 @@ export default function Tarefas() {
           <h2 className="section-title text-xl">Tarefas & Agenda</h2>
           <p className="section-sub">{stats.total} tarefas · {stats.concluidas} concluídas · {emails.length} e-mails enviados</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <button 
+            onClick={async () => {
+              setEnviandoLembretes(true)
+              const res = await verificarEDispararLembretesTarefas(true)
+              setEnviandoLembretes(false)
+              if (res?.success) alert(res.message || 'Lembrete enviado com sucesso!')
+              else alert('Aviso: ' + (res?.message || res?.error))
+            }} 
+            disabled={enviandoLembretes}
+            className="btn-secondary gap-1.5 text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold"
+            title="Disparar lembrete das tarefas de hoje pelo WhatsApp"
+          >
+            <Bell size={14} className="text-emerald-600" />
+            {enviandoLembretes ? 'Enviando...' : 'Lembrete no WhatsApp'}
+          </button>
           <button onClick={() => setEmailModal({})} className="btn-secondary gap-1.5 text-sm"><Mail size={14} />Novo E-mail</button>
           <button onClick={exportarCSV} className="btn-secondary gap-1.5 text-sm py-2 px-3"><Download size={14} /></button>
           <button onClick={() => setCardModal({ coluna: 'A Fazer', titulo: '', descricao: '', responsavel: '', email: '', vencimento: '', prioridade: 'Média', tags: '' })} className="btn-primary"><Plus size={16} />Nova Tarefa</button>

@@ -20,9 +20,14 @@ class handler(BaseHTTPRequestHandler):
         try:
             audio_data = asyncio.run(self.generate_audio(texto))
             
+            origin = self.headers.get('Origin', '')
+            allowed = ['https://alphaadmsc.vercel.app', 'https://alpha-gestao.vercel.app', 'http://localhost:5173', 'http://localhost:3000']
+            allow_origin = origin if origin in allowed else allowed[0]
+
             self.send_response(200)
             self.send_header('Content-type', 'audio/mpeg')
-            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Origin', allow_origin)
+            self.send_header('Vary', 'Origin')
             self.end_headers()
             self.wfile.write(audio_data)
         except Exception as e:

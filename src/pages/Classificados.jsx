@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { ShoppingBag, Search, Plus, Trash2, MapPin, MessageSquare, Tag, X, ExternalLink } from 'lucide-react'
+import { ShoppingBag, Search, Plus, Trash2, MapPin, MessageSquare, Tag, X, ExternalLink, Building2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 
@@ -7,14 +7,18 @@ export default function Classificados() {
   const { user } = useAuth()
   const isAdmin = ['Administrador', 'Síndico'].includes(user?.role)
   const { items: anuncios, addItem, deleteItem } = useFirestore('classificados')
+  const { items: condominios } = useFirestore('condominios')
   
   const [modal, setModal] = useState(false)
   const [busca, setBusca] = useState('')
+  const [condoFiltro, setCondoFiltro] = useState('')
 
-  const filtrados = anuncios.filter(a => 
-    a.titulo.toLowerCase().includes(busca.toLowerCase()) || 
-    a.descricao.toLowerCase().includes(busca.toLowerCase())
-  ).sort((a,b) => new Date(b._createdAt) - new Date(a._createdAt))
+  const filtrados = anuncios.filter(a => {
+    const matchBusca = a.titulo.toLowerCase().includes(busca.toLowerCase()) || 
+                       a.descricao.toLowerCase().includes(busca.toLowerCase())
+    const matchCondo = !condoFiltro || !a.condominio || a.condominio === 'todos' || a.condominio === condoFiltro
+    return matchBusca && matchCondo
+  }).sort((a,b) => new Date(b._createdAt) - new Date(a._createdAt))
 
   const handleSave = async (form) => {
     await addItem({ 
@@ -47,10 +51,26 @@ export default function Classificados() {
         )}
       </div>
 
-      <div className="card p-4 flex gap-4 items-center">
-        <div className="relative flex-1 max-w-md">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" className="input pl-9 w-full" placeholder="Buscar por produto ou serviço..." value={busca} onChange={e => setBusca(e.target.value)} />
+      <div className="card p-4 flex flex-wrap gap-4 items-center justify-between">
+        <div className="flex flex-wrap gap-3 items-center flex-1">
+          <div className="relative flex-1 min-w-[240px] max-w-md">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input type="text" className="input pl-9 w-full" placeholder="Buscar por produto ou serviço..." value={busca} onChange={e => setBusca(e.target.value)} />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Building2 size={16} className="text-gray-400" />
+            <select
+              value={condoFiltro}
+              onChange={e => setCondoFiltro(e.target.value)}
+              className="input py-2 text-sm bg-white"
+            >
+              <option value="">🏢 Todos os Condomínios</option>
+              {condominios.map(c => (
+                <option key={c.id} value={c.nome || c.id}>{c.nome || c.id}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <span className="text-sm text-gray-400 font-medium">{filtrados.length} resultados</span>
       </div>
@@ -80,6 +100,12 @@ export default function Classificados() {
                   <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs font-bold text-gray-800 shadow-sm flex items-center gap-1">
                     <Tag size={12} className="text-brand-600"/> {a.categoria}
                   </div>
+
+                  {a.condominio && a.condominio !== 'todos' && (
+                    <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm text-white px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1">
+                      <Building2 size={10} /> {a.condominio}
+                    </div>
+                  )}
                   
                   {/* Botão de excluir se for dono ou admin */}
                   {(isDono || isAdmin) && (
@@ -90,7 +116,14 @@ export default function Classificados() {
                 </div>
                 
                 <div className="p-5 flex-1 flex flex-col">
-                  <h3 className="font-bold text-gray-800 text-lg mb-1 line-clamp-2 leading-tight">{a.titulo}</h3>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <h3 className="font-bold text-gray-800 text-lg line-clamp-2 leading-tight flex-1">{a.titulo}</h3>
+                  </div>
+                  {a.condominio && (
+                    <span className="text-[11px] font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded w-fit mb-2 flex items-center gap-1">
+                      <Building2 size={11} /> {a.condominio === 'todos' ? 'Disponível para todos os condomínios' : a.condominio}
+                    </span>
+                  )}
                   <p className="text-brand-600 font-black text-xl mb-3">{a.valor > 0 ? `R$ ${Number(a.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : 'A Combinar / Grátis'}</p>
                   
                   <p className="text-sm text-gray-500 line-clamp-3 mb-4 flex-1">{a.descricao}</p>
@@ -118,13 +151,13 @@ export default function Classificados() {
         </div>
       )}
 
-      {modal && <ModalClassificadoForm onClose={() => setModal(false)} onSave={handleSave} />}
+      {modal && <ModalClassificadoForm condominios={condominios} onClose={() => setModal(false)} onSave={handleSave} />}
     </div>
   )
 }
 
-function ModalClassificadoForm({ onClose, onSave }) {
-  const [form, setForm] = useState({ titulo: '', descricao: '', valor: '', categoria: 'Produto', telefone: '', localizacao: '', imagemUrl: '' })
+function ModalClassificadoForm({ condominios = [], onClose, onSave }) {
+  const [form, setForm] = useState({ titulo: '', descricao: '', valor: '', categoria: 'Produto', telefone: '', localizacao: '', imagemUrl: '', condominio: 'todos' })
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -168,9 +201,24 @@ function ModalClassificadoForm({ onClose, onSave }) {
                <input className="input w-full" value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(11) 99999-9999" />
             </div>
             <div>
-               <label className="label">Localização no Condomínio</label>
+               <label className="label">Localização (Ex: Bloco/Apto)</label>
                <input className="input w-full" value={form.localizacao} onChange={e => setForm(f => ({ ...f, localizacao: e.target.value }))} placeholder="Ex: Bloco B - Apt 304" />
             </div>
+          </div>
+
+          <div>
+            <label className="label">Condomínio de Destino (Para quem vai aparecer) *</label>
+            <select
+              className="input w-full"
+              value={form.condominio}
+              onChange={e => setForm(f => ({ ...f, condominio: e.target.value }))}
+            >
+              <option value="todos">🏢 Todos os Condomínios (Geral)</option>
+              {condominios.map(c => (
+                <option key={c.id} value={c.nome || c.id}>{c.nome || c.id}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400 mt-1">Selecione para qual condomínio este anúncio ficará visível.</p>
           </div>
           
           <div>

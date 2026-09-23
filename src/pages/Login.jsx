@@ -28,19 +28,50 @@ export default function Login() {
     e.preventDefault()
     setError('')
 
-    // Checagem Anti-Bot Honeypot
+    // 1. Checagem de Bloqueio por Força Bruta
+    const lockoutUntil = Number(localStorage.getItem('login_lockout_until') || 0)
+    if (lockoutUntil > Date.now()) {
+      const remainingMin = Math.ceil((lockoutUntil - Date.now()) / 60000)
+      setError(`Acesso temporariamente bloqueado por excesso de tentativas. Tente novamente em ${remainingMin} minuto(s).`)
+      return
+    }
+
+    // 2. Checagem Anti-Bot Honeypot
     const hp = e.target.website_hp_check?.value
     if (hp) {
       setError('Acesso rejeitado.')
       return
     }
 
+    // 3. Validação do Cloudflare Turnstile
+    if (!turnstileToken) {
+      setError('Por favor, aguarde ou complete a verificação anti-robô (Turnstile).')
+      return
+    }
+
     setLoading(true)
-    await new Promise(r => setTimeout(r, 300))
+
+    // Validação do Turnstile via API
+    try {
+      const tRes = await fetch('/api/auth/verify-turnstile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: turnstileToken })
+      })
+      const tData = await tRes.json()
+      if (!tRes.ok || !tData.success) {
+        setLoading(false)
+        setError('Falha na validação do desafio anti-robô. Tente novamente.')
+        return
+      }
+    } catch (tErr) {
+      console.warn('Validação Turnstile em fallback:', tErr)
+    }
+
+    await new Promise(r => setTimeout(r, 200))
 
     // Se é Administrador ou Síndico e ativou 2FA
     if (!step2FA && (email.toLowerCase().includes('admin') || email.toLowerCase().includes('iara') || activeTab === 'Administrador')) {
-      // Exigir código de 2 etapas se configurado
       const saved2FA = localStorage.getItem('2fa_' + email.toLowerCase())
       if (saved2FA === 'true') {
         setLoading(false)
@@ -50,7 +81,6 @@ export default function Login() {
     }
 
     if (step2FA) {
-      // Validação do código de 6 dígitos 2FA
       if (code2FA.length < 4) {
         setLoading(false)
         setError('Digite o código de verificação de 6 dígitos.')
@@ -61,9 +91,19 @@ export default function Login() {
     const result = await login(email, senha)
     setLoading(false)
     if (result === true) {
+      localStorage.removeItem('login_attempts')
+      localStorage.removeItem('login_lockout_until')
       navigate('/dashboard')
     } else {
-      setError(typeof result === 'string' ? result : 'E-mail ou senha incorretos. Verifique seus dados.')
+      const attempts = Number(localStorage.getItem('login_attempts') || 0) + 1
+      localStorage.setItem('login_attempts', attempts)
+      if (attempts >= 5) {
+        localStorage.setItem('login_lockout_until', Date.now() + 5 * 60 * 1000)
+        setError('Muitas tentativas incorretas. Acesso bloqueado temporariamente por 5 minutos.')
+      } else {
+        const remaining = 5 - attempts
+        setError(typeof result === 'string' ? `${result} (${remaining} tentativa(s) restante(s))` : `E-mail ou senha incorretos (${remaining} tentativa(s) restante(s)).`)
+      }
     }
   }
 

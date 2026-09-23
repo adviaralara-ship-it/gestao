@@ -1,21 +1,16 @@
-export default async function handler(req, res) {
-  // CORS configuration
-  res.setHeader('Access-Control-Allow-Credentials', true)
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT')
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  )
+import { applyCors, verifyUserAuth } from '../_middleware/auth.js'
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end()
-    return
-  }
+export default async function handler(req, res) {
+  // CORS configuration restrito
+  if (applyCors(req, res, 'POST, OPTIONS')) return;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
+
+  // Autenticação obrigatória (JWT ou API Secret Key)
+  const authUser = await verifyUserAuth(req, res);
+  if (!authUser) return;
 
   const clientId = process.env.CORA_CLIENT_ID
   const clientSecret = process.env.CORA_CLIENT_SECRET
@@ -90,7 +85,6 @@ export default async function handler(req, res) {
 
     const boletoData = await boletoResponse.json()
 
-    // boletoData contains url, barcode, pix
     return res.status(200).json({
       success: true,
       invoice_id: boletoData.id,

@@ -128,6 +128,7 @@ export default function WhatsApp() {
 
     setSending(true)
     let uploadedFileRef = null
+    let mediaUrl = ''
     try {
       let base64ToSend = arquivoPdfBase64
       if (arquivoPdfFile && !base64ToSend) {
