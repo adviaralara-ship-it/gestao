@@ -60,6 +60,7 @@ import MediacaoNova from './pages/MediacaoNova'
 import MediacaoSalaExterna from './pages/MediacaoSalaExterna'
 import Cotacoes from './pages/Cotacoes'
 import CheckinPrestador from './pages/CheckinPrestador'
+import PainelSeguranca from './pages/PainelSeguranca'
 
 // Spinner de carregamento enquanto o Firebase Auth verifica a sessão
 function AuthLoader() {
@@ -204,6 +205,7 @@ function AppRoutes() {
           <Route path="veiculos" element={<AuthorizedRoute module="veiculos"><Veiculos /></AuthorizedRoute>} />
           <Route path="cameras" element={<AuthorizedRoute module="cameras"><Cameras /></AuthorizedRoute>} />
           <Route path="calculadora" element={<AuthorizedRoute module="calculadora"><Calculadora /></AuthorizedRoute>} />
+          <Route path="seguranca" element={<AuthorizedRoute module="usuarios"><PainelSeguranca /></AuthorizedRoute>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

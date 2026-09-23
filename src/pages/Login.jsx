@@ -97,6 +97,20 @@ export default function Login() {
     } else {
       const attempts = Number(localStorage.getItem('login_attempts') || 0) + 1
       localStorage.setItem('login_attempts', attempts)
+      
+      // Notifica o sentinela de segurança para monitorar mais de 20 erros em 10 minutos
+      fetch('/api/security/alarme', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo: 'ERRO_SENHA',
+          titulo: 'Múltiplas falhas de autenticação detectadas',
+          detalhes: `Tentativa com senha incorreta para o login "${email}".`,
+          userEmail: email,
+          metadata: { tentativa: attempts }
+        })
+      }).catch(() => {})
+
       if (attempts >= 5) {
         localStorage.setItem('login_lockout_until', Date.now() + 5 * 60 * 1000)
         setError('Muitas tentativas incorretas. Acesso bloqueado temporariamente por 5 minutos.')

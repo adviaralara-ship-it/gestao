@@ -394,6 +394,21 @@ export default function Usuarios() {
       }
       await addItem(novo)
 
+      // ALARME: Criação de qualquer usuário Administrador
+      if (isAdm) {
+        fetch('/api/security/alarme', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tipo: 'CRIACAO_ADMIN',
+            titulo: 'Novo Usuário Administrador Criado',
+            detalhes: `Um novo perfil com privilégios de Administrador foi criado no sistema para "${nomeNorm}" (${emailClean}).`,
+            userEmail: emailClean,
+            metadata: { nome: nomeNorm, perfil: 'Administrador' }
+          })
+        }).catch(() => {})
+      }
+
       // Se o perfil é do tipo morador, também inserir na coleção moradores
       if (MORADOR_ROLES.includes(form.role)) {
         await addDoc(collection(db, 'moradores'), {
@@ -418,6 +433,8 @@ export default function Usuarios() {
         `Olá ${nomeNorm},<br><br>Seu acesso ao sistema foi criado com sucesso.<br><br><b>Login:</b> ${emailClean}<br><b>Senha provisória:</b> ${form.senha}<br><br>Acesse o painel para validar seus dados e alterar sua senha.`
       ).catch(() => {})
     } else {
+      const viraAdmin = form.role === 'Administrador' && modal.role !== 'Administrador'
+      
       const updated = {
         ...form,
         nome: nomeNorm,
@@ -431,6 +448,21 @@ export default function Usuarios() {
       if (!updated.senha && modal.senha) updated.senha = modal.senha
       
       await updateItem(modal.id, updated)
+
+      // ALARME: Usuário comum virou Administrador
+      if (viraAdmin) {
+        fetch('/api/security/alarme', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tipo: 'ELEVACAO_ADMIN',
+            titulo: 'Privilégio de Administrador Concedido a Usuário',
+            detalhes: `O usuário "${nomeNorm}" (${emailClean}), anteriormente com perfil "${modal.role}", foi promovido a Administrador do sistema.`,
+            userEmail: emailClean,
+            metadata: { nome: nomeNorm, perfilAnterior: modal.role, novoPerfil: 'Administrador' }
+          })
+        }).catch(() => {})
+      }
     }
     setModal(null)
   }

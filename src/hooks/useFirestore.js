@@ -77,6 +77,33 @@ export function useFirestore(colName) {
           const tb = b._createdAt?.seconds ?? 0
           return ta - tb
         })
+
+        // ALARME: Consulta ou leitura massiva (> 500 registros de uma vez)
+        if (docs.length >= 500) {
+          const lastReportKey = `last_alarm_read_${colName}`
+          const lastReport = Number(sessionStorage.getItem(lastReportKey) || 0)
+          // Notifica no máximo a cada 10 minutos por coleção para não sobrecarregar
+          if (Date.now() - lastReport > 10 * 60 * 1000) {
+            sessionStorage.setItem(lastReportKey, Date.now())
+            fetch('/api/security/alarme', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tipo: 'CONSULTA_MASSIVA',
+                titulo: 'Consulta / Exportação Massiva de Dados (> 500 registros)',
+                detalhes: `O usuário "${user?.nome || 'Anônimo'}" (${user?.email || 'N/A'}) consultou ou carregou ${docs.length} registros da coleção "${colName}".`,
+                userEmail: user?.email,
+                metadata: {
+                  colecao: colName,
+                  quantidade: docs.length,
+                  usuario: user?.nome,
+                  perfil: user?.role
+                }
+              })
+            }).catch(() => {})
+          }
+        }
+
         setItems(docs)
         setLoading(false)
         setError(null)
@@ -157,6 +184,37 @@ export function useFirestore(colName) {
       checkThrottle(skipThrottle)
       await deleteDoc(doc(db, colName, id))
       await logAudit('DELETE', id)
+
+      // ALARME: Rastreio de Apagamento em Massa
+      // Monitora se mais de 10 exclusões ocorreram nos últimos 5 minutos
+      const delHistory = JSON.parse(sessionStorage.getItem('delete_history') || '[]')
+      const fiveMinAgo = Date.now() - 5 * 60 * 1000
+      const recentDels = delHistory.filter(ts => ts > fiveMinAgo)
+      recentDels.push(Date.now())
+      sessionStorage.setItem('delete_history', JSON.stringify(recentDels))
+
+      if (recentDels.length >= 10) {
+        const lastDelAlarm = Number(sessionStorage.getItem('last_alarm_mass_del') || 0)
+        if (Date.now() - lastDelAlarm > 5 * 60 * 1000) {
+          sessionStorage.setItem('last_alarm_mass_del', Date.now())
+          fetch('/api/security/alarme', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tipo: 'APAGAMENTO_MASSA',
+              titulo: 'Apagamento em Massa Detectado',
+              detalhes: `Detectado apagamento sequencial de ${recentDels.length} registros na coleção "${colName}" pelo usuário "${user?.nome || 'Anônimo'}" (${user?.email || 'N/A'}).`,
+              userEmail: user?.email,
+              metadata: {
+                colecao: colName,
+                quantidade: recentDels.length,
+                usuario: user?.nome,
+                perfil: user?.role
+              }
+            })
+          }).catch(() => {})
+        }
+      }
     } catch (err) {
       console.error(`[Firestore] Erro ao excluir "${colName}/${id}":`, err)
       if (err.code === 'permission-denied') {

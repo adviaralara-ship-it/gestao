@@ -7,7 +7,7 @@ import {
   CreditCard, Target, Scale, Building, Calculator,
   CalendarCheck as Reservas, Wrench, DoorOpen, Package, QrCode, Car, Camera,
   Briefcase, UserCog, Settings, MessageCircleCode, Mail, UserCog as Usuarios2,
-  FileSpreadsheet, Clock
+  FileSpreadsheet, Clock, ShieldAlert
 } from 'lucide-react'
 
 export const navGroups = [
@@ -18,6 +18,7 @@ export const navGroups = [
     items: [
       { to: '/dashboard',        label: 'Dashboard',            icon: LayoutDashboard },
       { to: '/alpha-ai',         label: 'Alpha IA',             icon: Bot },
+      { to: '/seguranca',        label: 'Segurança & Backups',  icon: ShieldAlert },
       { to: '/monitoramento-ia', label: 'Monitoramento IA',     icon: BarChart3 },
       { to: '/whatsapp',         label: 'WhatsApp',             icon: MessageCircleCode },
       { to: '/email',            label: 'E-mail Alpha',         icon: Mail },
