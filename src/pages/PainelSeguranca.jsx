@@ -5,6 +5,17 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useFirestore } from '../hooks/useFirestore'
+import { db } from '../firebase'
+import { 
+  collection, getDocs, doc, setDoc, deleteDoc, writeBatch, serverTimestamp, query, orderBy 
+} from 'firebase/firestore'
+
+const COLECOES_SISTEMA = [
+  'condominios', 'moradores', 'financeiro_lancamentos', 'boletos', 
+  'cotacoes', 'manutencoes', 'apolices', 'ocorrencias', 'assembleias', 
+  'avisos', 'reservas', 'usuarios', 'pets', 'veiculos', 'visitantes', 
+  'documentos', 'encomendas', 'tarefas'
+]
 
 export default function PainelSegurancaBackup() {
   const { user } = useAuth()
@@ -29,13 +40,18 @@ export default function PainelSegurancaBackup() {
   const carregarBackups = async () => {
     try {
       setCarregando(true)
-      const res = await fetch('/api/backup/restaurar')
-      const data = await res.json()
-      if (data.success && data.backups) {
-        setBackups(data.backups)
-      }
+      const q = query(collection(db, 'backups_sistema'), orderBy('dataCriacao', 'desc'))
+      const snap = await getDocs(q)
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      setBackups(list)
     } catch (err) {
-      console.warn('Erro ao carregar backups:', err)
+      console.warn('Erro ao carregar backups via Firestore:', err)
+      // Fallback via API
+      try {
+        const res = await fetch('/api/backup/restaurar')
+        const data = await res.json()
+        if (data.success && data.backups) setBackups(data.backups)
+      } catch (e) {}
     } finally {
       setCarregando(false)
     }
@@ -45,17 +61,44 @@ export default function PainelSegurancaBackup() {
     if (!window.confirm('Deseja gerar uma cópia de segurança completa agora?')) return
     setExecutandoBackup(true)
     setMsgSucesso('')
+
     try {
-      const res = await fetch('/api/backup/executar', { method: 'POST' })
-      const data = await res.json()
-      if (data.success) {
-        setMsgSucesso(`✅ ${data.mensagem}`)
-        carregarBackups()
-      } else {
-        alert('Erro ao executar backup: ' + (data.error || 'Falha'))
+      const dadosExportados = {}
+      let totalDocs = 0
+
+      // Exporta cada coleção diretamente do Firestore autenticado
+      for (const colName of COLECOES_SISTEMA) {
+        try {
+          const snap = await getDocs(collection(db, colName))
+          dadosExportados[colName] = snap.docs.map(docSnap => ({
+            id: docSnap.id,
+            ...docSnap.data()
+          }))
+          totalDocs += snap.docs.length
+        } catch (e) {
+          console.warn(`Aviso ao exportar coleção ${colName}:`, e)
+        }
       }
+
+      const agora = new Date()
+      const dataFormatada = agora.toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      const dataRef = agora.toLocaleDateString('pt-BR')
+      const backupId = `backup_${dataFormatada}`
+
+      // Salva snapshot no cofre backups_sistema
+      await setDoc(doc(db, 'backups_sistema', backupId), {
+        dataCriacao: agora.toISOString(),
+        dataRef,
+        origem: 'manual_painel',
+        totalDocumentos: totalDocs,
+        colecoes: Object.keys(dadosExportados),
+        payload: dadosExportados
+      })
+
+      setMsgSucesso(`✅ Backup concluído com sucesso! ${totalDocs} registros preservados no cofre.`)
+      await carregarBackups()
     } catch (err) {
-      alert('Erro de conexão ao gerar backup: ' + err.message)
+      alert('Erro ao executar backup: ' + err.message)
     } finally {
       setExecutandoBackup(false)
     }
@@ -70,21 +113,50 @@ export default function PainelSegurancaBackup() {
 
     setRestaurandoId(backupId)
     setMsgSucesso('')
+    const t0 = Date.now()
+
     try {
-      const res = await fetch('/api/backup/restaurar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backupId, modo })
-      })
-      const data = await res.json()
-      if (data.success) {
-        alert(`🎉 ${data.mensagem}\n\nTempo gasto: ${data.tempoEstimadoGasto || 'Rápido'}.\nTotal de itens restaurados: ${data.totalRestaurado}`)
-        setMsgSucesso(data.mensagem)
-      } else {
-        alert('Erro na restauração: ' + (data.error || 'Falha'))
+      // 1. Busca o snapshot no Firestore
+      const backupRef = doc(db, 'backups_sistema', backupId)
+      const snap = await getDocs(query(collection(db, 'backups_sistema')))
+      const targetDoc = snap.docs.find(d => d.id === backupId)
+      
+      if (!targetDoc || !targetDoc.exists()) {
+        throw new Error('Cópia de backup não encontrada.')
       }
+
+      const backupData = targetDoc.data()
+      const payload = backupData.payload || {}
+      let totalRestaurado = 0
+
+      // 2. Restaura em lotes (batch) com ou sem prefixo de teste
+      for (const [colName, registros] of Object.entries(payload)) {
+        if (!Array.isArray(registros) || registros.length === 0) continue
+
+        const targetColName = modo === 'teste' ? `teste_${colName}` : colName
+        
+        // Escreve os registros na coleção de destino
+        for (const reg of registros) {
+          const { id: docId, ...dados } = reg
+          const targetDocRef = doc(db, targetColName, docId)
+          await setDoc(targetDocRef, {
+            ...dados,
+            _restauradoEm: new Date().toISOString(),
+            _restauradoModo: modo
+          })
+          totalRestaurado++
+        }
+      }
+
+      const tempoGasto = `${((Date.now() - t0) / 1000).toFixed(1)} segundos`
+      const msg = modo === 'teste'
+        ? `Ambiente de TESTE restaurado com sucesso! ${totalRestaurado} registros criados nas coleções teste_*.`
+        : `Ambiente de PRODUÇÃO restaurado com sucesso! ${totalRestaurado} registros recuperados.`
+
+      alert(`🎉 ${msg}\n\nTempo gasto: ${tempoGasto}.\nTotal de itens restaurados: ${totalRestaurado}`)
+      setMsgSucesso(`✅ ${msg} (Tempo: ${tempoGasto})`)
     } catch (err) {
-      alert('Erro de conexão ao restaurar: ' + err.message)
+      alert('Erro na restauração: ' + err.message)
     } finally {
       setRestaurandoId(null)
     }
@@ -308,6 +380,22 @@ export default function PainelSegurancaBackup() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(b.payload || b, null, 2))
+                          const downloadAnchor = document.createElement('a')
+                          downloadAnchor.setAttribute("href", dataStr)
+                          downloadAnchor.setAttribute("download", `${b.id || 'backup'}.json`)
+                          document.body.appendChild(downloadAnchor)
+                          downloadAnchor.click()
+                          downloadAnchor.remove()
+                        }}
+                        className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5"
+                        title="Baixar arquivo JSON completo deste backup"
+                      >
+                        <Download size={14} /> Baixar JSON
+                      </button>
+
                       <button
                         onClick={() => handleRestaurarBackup(b.id, 'teste')}
                         disabled={restaurandoId === b.id}
