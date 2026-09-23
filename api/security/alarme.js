@@ -1,5 +1,5 @@
-import { applyCors, verifyUserAuth } from './_middleware/auth.js';
-import { enviarAlarmeSeguranca } from './_services/emailAlerts.js';
+import { applyCors, verifyUserAuth } from '../_middleware/auth.js';
+import { enviarAlarmeSeguranca } from '../_services/emailAlerts.js';
 import admin from 'firebase-admin';
 
 if (!admin.apps.length) {
