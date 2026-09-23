@@ -7,10 +7,6 @@
     {
       "path": "/api/cron/alertas-vencimento",
       "schedule": "0 15 * * *"
-    },
-    {
-      "path": "/api/backup/executar",
-      "schedule": "0 3 * * *"
     }
   ],
   "rewrites": [
