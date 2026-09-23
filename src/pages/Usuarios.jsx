@@ -6,6 +6,7 @@ import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc }
 import { db, secondaryAuth } from '../firebase'
 import { enviarEmail } from '../emailjs.config'
 import { createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth'
+import { dispararAlarmeSeguranca } from '../utils/alarmeService'
 
 const MORADOR_ROLES = ['Morador', 'Síndico', 'Subsíndico', 'Conselheiro']
 
@@ -399,16 +400,12 @@ export default function Usuarios() {
 
       // ALARME: Criação de qualquer usuário Administrador
       if (isAdm) {
-        fetch('/api/security/alarme', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tipo: 'CRIACAO_ADMIN',
-            titulo: 'Novo Usuário Administrador Criado',
-            detalhes: `Um novo perfil com privilégios de Administrador foi criado no sistema para "${nomeNorm}" (${emailClean}).`,
-            userEmail: emailClean,
-            metadata: { nome: nomeNorm, perfil: 'Administrador' }
-          })
+        dispararAlarmeSeguranca({
+          tipo: 'CRIACAO_ADMIN',
+          titulo: 'Novo Usuário Administrador Criado',
+          detalhes: `Um novo perfil com privilégios de Administrador foi criado no sistema para "${nomeNorm}" (${emailClean}).`,
+          userEmail: emailClean,
+          metadata: { nome: nomeNorm, perfil: 'Administrador' }
         }).catch(() => {})
       }
 
@@ -454,16 +451,12 @@ export default function Usuarios() {
 
       // ALARME: Usuário comum virou Administrador
       if (viraAdmin) {
-        fetch('/api/security/alarme', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tipo: 'ELEVACAO_ADMIN',
-            titulo: 'Privilégio de Administrador Concedido a Usuário',
-            detalhes: `O usuário "${nomeNorm}" (${emailClean}), anteriormente com perfil "${modal.role}", foi promovido a Administrador do sistema.`,
-            userEmail: emailClean,
-            metadata: { nome: nomeNorm, perfilAnterior: modal.role, novoPerfil: 'Administrador' }
-          })
+        dispararAlarmeSeguranca({
+          tipo: 'ELEVACAO_ADMIN',
+          titulo: 'Privilégio de Administrador Concedido a Usuário',
+          detalhes: `O usuário "${nomeNorm}" (${emailClean}), anteriormente com perfil "${modal.role}", foi promovido a Administrador do sistema.`,
+          userEmail: emailClean,
+          metadata: { nome: nomeNorm, perfilAnterior: modal.role, novoPerfil: 'Administrador' }
         }).catch(() => {})
       }
     }

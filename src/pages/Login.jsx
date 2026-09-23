@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Building, Mail, Lock, Eye, EyeOff, ShieldCheck, KeyRound, ArrowLeft } from 'lucide-react'
 import TurnstileWidget from '../components/TurnstileWidget'
 import { useAuth } from '../context/AuthContext'
+import { dispararAlarmeSeguranca } from '../utils/alarmeService'
 
 export default function Login() {
   const { login, resetPassword } = useAuth()
@@ -99,16 +100,12 @@ export default function Login() {
       localStorage.setItem('login_attempts', attempts)
       
       // Notifica o sentinela de segurança para monitorar mais de 20 erros em 10 minutos
-      fetch('/api/security/alarme', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tipo: 'ERRO_SENHA',
-          titulo: 'Múltiplas falhas de autenticação detectadas',
-          detalhes: `Tentativa com senha incorreta para o login "${email}".`,
-          userEmail: email,
-          metadata: { tentativa: attempts }
-        })
+      dispararAlarmeSeguranca({
+        tipo: 'ERRO_SENHA',
+        titulo: 'Múltiplas falhas de autenticação detectadas',
+        detalhes: `Tentativa com senha incorreta para o login "${email}".`,
+        userEmail: email,
+        metadata: { tentativa: attempts }
       }).catch(() => {})
 
       if (attempts >= 5) {

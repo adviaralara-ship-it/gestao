@@ -6,6 +6,7 @@ import {
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { encryptData, decryptData } from '../utils/crypto'
+import { dispararAlarmeSeguranca } from '../utils/alarmeService'
 
 const requestLocks = {} // Para Throttling local (Antiscraping)
 const SENSITIVE_FIELDS = ['cpf', 'documento', 'rg']
@@ -85,21 +86,17 @@ export function useFirestore(colName) {
           // Notifica no máximo a cada 10 minutos por coleção para não sobrecarregar
           if (Date.now() - lastReport > 10 * 60 * 1000) {
             sessionStorage.setItem(lastReportKey, Date.now())
-            fetch('/api/security/alarme', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                tipo: 'CONSULTA_MASSIVA',
-                titulo: 'Consulta / Exportação Massiva de Dados (> 500 registros)',
-                detalhes: `O usuário "${user?.nome || 'Anônimo'}" (${user?.email || 'N/A'}) consultou ou carregou ${docs.length} registros da coleção "${colName}".`,
-                userEmail: user?.email,
-                metadata: {
-                  colecao: colName,
-                  quantidade: docs.length,
-                  usuario: user?.nome,
-                  perfil: user?.role
-                }
-              })
+            dispararAlarmeSeguranca({
+              tipo: 'CONSULTA_MASSIVA',
+              titulo: 'Consulta / Exportação Massiva de Dados (> 500 registros)',
+              detalhes: `O usuário "${user?.nome || 'Anônimo'}" (${user?.email || 'N/A'}) consultou ou carregou ${docs.length} registros da coleção "${colName}".`,
+              userEmail: user?.email,
+              metadata: {
+                colecao: colName,
+                quantidade: docs.length,
+                usuario: user?.nome,
+                perfil: user?.role
+              }
             }).catch(() => {})
           }
         }
@@ -197,21 +194,17 @@ export function useFirestore(colName) {
         const lastDelAlarm = Number(sessionStorage.getItem('last_alarm_mass_del') || 0)
         if (Date.now() - lastDelAlarm > 5 * 60 * 1000) {
           sessionStorage.setItem('last_alarm_mass_del', Date.now())
-          fetch('/api/security/alarme', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              tipo: 'APAGAMENTO_MASSA',
-              titulo: 'Apagamento em Massa Detectado',
-              detalhes: `Detectado apagamento sequencial de ${recentDels.length} registros na coleção "${colName}" pelo usuário "${user?.nome || 'Anônimo'}" (${user?.email || 'N/A'}).`,
-              userEmail: user?.email,
-              metadata: {
-                colecao: colName,
-                quantidade: recentDels.length,
-                usuario: user?.nome,
-                perfil: user?.role
-              }
-            })
+          dispararAlarmeSeguranca({
+            tipo: 'APAGAMENTO_MASSA',
+            titulo: 'Apagamento em Massa Detectado',
+            detalhes: `Detectado apagamento sequencial de ${recentDels.length} registros na coleção "${colName}" pelo usuário "${user?.nome || 'Anônimo'}" (${user?.email || 'N/A'}).`,
+            userEmail: user?.email,
+            metadata: {
+              colecao: colName,
+              quantidade: recentDels.length,
+              usuario: user?.nome,
+              perfil: user?.role
+            }
           }).catch(() => {})
         }
       }
