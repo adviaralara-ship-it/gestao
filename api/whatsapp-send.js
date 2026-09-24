@@ -54,10 +54,10 @@ export default async function handler(req, res) {
   const finalNumber = isGroupJid ? cleanNumber : (cleanNumber.startsWith('55') ? cleanNumber : `55${cleanNumber}`);
 
   const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://spiritualmacaw-evolution.cloudfy.live';
-  const API_KEY = process.env.EVOLUTION_API_KEY || 'Q1CguwvCa34nqB1936dHekPICikeSCHb';
+  const API_KEY = process.env.EVOLUTION_API_KEY;
 
   if (!API_KEY) {
-    return res.status(500).json({ error: 'Chave da Evolution API não configurada no servidor.' });
+    return res.status(500).json({ error: 'Chave da Evolution API (EVOLUTION_API_KEY) não configurada no servidor.' });
   }
 
   try {

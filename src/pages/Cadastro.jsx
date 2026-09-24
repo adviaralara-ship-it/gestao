@@ -6,6 +6,7 @@ import { createUserWithEmailAndPassword, signOut } from 'firebase/auth'
 import { sindicoPerms, porteiroPerms, moradorPerms, conselhoPerms, allModulesPerms } from '../context/AuthContext'
 import { useFirestore } from '../hooks/useFirestore'
 import { dispararAlarmeSeguranca } from '../utils/alarmeService'
+import TurnstileWidget from '../components/TurnstileWidget'
 
 const ROLES_QUE_EXIGEM_APROVACAO = ['Administrador', 'Síndico', 'Subsíndico']
 
@@ -43,6 +44,7 @@ export default function Cadastro() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [registeredRole, setRegisteredRole] = useState('Morador')
+  const [turnstileToken, setTurnstileToken] = useState('')
   const [error, setError]     = useState('')
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
   const requiresLocation = needsLocation.includes(form.role)
@@ -50,6 +52,7 @@ export default function Cadastro() {
 
   const handleSubmit = async () => {
     setError('')
+    if (!turnstileToken) { setError('Por favor, aguarde ou complete a verificação anti-robô (Cloudflare Turnstile).'); return }
     if (!form.nome||!form.email||!form.senha||!form.telefone||!form.cpf) { setError('Preencha todos os campos obrigatórios.'); return }
     if (form.telefone.replace(/\D/g, '').length < 10) { setError('Informe um telefone válido com DDD.'); return }
     if (form.cpf.replace(/\D/g, '').length !== 11) { setError('Informe um CPF válido com 11 dígitos.'); return }
@@ -336,6 +339,11 @@ export default function Cadastro() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Verificação Anti-Robô (Cloudflare Turnstile) */}
+          <div className="flex justify-center my-2">
+            <TurnstileWidget onVerify={tok => setTurnstileToken(tok)} />
           </div>
 
           {error && <div className="p-3 bg-red-50 border border-red-300 rounded-xl text-sm text-red-600">{error}</div>}

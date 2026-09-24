@@ -46,20 +46,6 @@ const MASTER_PROFILES = {
   'portaria@jardins.com.br':   { id: '6', nome: 'João Porteiro',    role: 'Porteiro',      permissoes: porteiroPerms, condominio: 'Jardins' },
 }
 
-// ─── Senhas padrão para MIGRAÇÃO AUTOMÁTICA (primeira vez) ────────────────
-// Após a migração, este objeto pode ser removido com segurança.
-// As senhas originais são mantidas aqui SOMENTE para auto-criar contas no Firebase Auth.
-const MIGRATION_PASSWORDS = {
-  'admin@alpha.com.br':      'admin123',
-  'master@alpha.com.br':     'alpha123',
-  'iaralara1812@gmail.com':  'Clark1812@',
-  'adviaralara@gmail.com':   'admin123',
-  'roberto@jardins.com.br':  'sindico123',
-  'ana@primavera.com.br':    'sindico456',
-  'financeiro@alpha.com.br': 'fin123',
-  'portaria@jardins.com.br': 'port123',
-}
-
 // Busca perfil do usuário no Firestore ou nos MASTER_PROFILES
 async function fetchUserProfile(firebaseUser) {
   const emailLower = firebaseUser.email.toLowerCase()
@@ -218,25 +204,6 @@ export function AuthProvider({ children }) {
         return 'Sua conta ainda está pendente de aprovação por uma das administradoras da Alpha ADM.'
       }
     } catch (err) {
-      // Se falhou no login E é um usuário master com senha correta → migração automática
-      if (
-        err.code?.startsWith('auth/') &&
-        MASTER_PROFILES[emailLower] &&
-        MIGRATION_PASSWORDS[emailLower] === senha
-      ) {
-        try {
-          const credential = await createUserWithEmailAndPassword(auth, emailLower, senha)
-          console.info(`[Alpha] Conta migrada para Firebase Auth: ${emailLower}`)
-          const profile = await fetchUserProfile(credential.user)
-          if (profile) {
-            setUser(profile)
-            return true
-          }
-        } catch (createErr) {
-          console.error('Falha na migração:', createErr.code, createErr.message)
-        }
-      }
-
       // Migração de usuários criados/editados pelo painel (onde a senha fica salva no Firestore)
       if (err.code?.startsWith('auth/')) {
         try {

@@ -90,8 +90,8 @@ export async function verifyUserAuth(req, res) {
   }
 
   // 1. Chave de API de integração backend direta
-  const secretKey = process.env.API_SECRET_KEY || 'Alpha_Sec_Backend_Token_2026_xK9pL2';
-  if (token === secretKey) {
+  const secretKey = process.env.API_SECRET_KEY;
+  if (secretKey && token === secretKey) {
     return { uid: 'system_service', role: 'Administrador', isServiceKey: true };
   }
 
