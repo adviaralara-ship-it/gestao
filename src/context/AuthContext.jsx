@@ -76,7 +76,7 @@ async function fetchUserProfile(firebaseUser) {
     const snap = await getDoc(docRef)
     if (snap.exists()) {
       const data = snap.data()
-      if (data.ativo === false) return null // conta pendente de aprovação
+      if (data.ativo === false || data.status === 'Pendente' || data.status === 'Inativo' || data.pendenteAprovacao === true) return null // conta pendente de aprovação
         let userPerms = data.permissoes || moradorPerms
         if (data.role === 'Administrador') {
           userPerms = allModulesPerms
@@ -215,7 +215,7 @@ export function AuthProvider({ children }) {
         return true
       } else {
         await signOut(auth)
-        return 'Sua conta ainda está pendente de aprovação pelo administrador.'
+        return 'Sua conta ainda está pendente de aprovação por uma das administradoras da Alpha ADM.'
       }
     } catch (err) {
       // Se falhou no login E é um usuário master com senha correta → migração automática
@@ -262,7 +262,7 @@ export function AuthProvider({ children }) {
             const qInativo = query(collection(db, 'usuarios'), where('email', '==', emailLower), where('ativo', '==', false))
             const qInativoSnap = await getDocs(qInativo)
             if (!qInativoSnap.empty) {
-              return 'Sua conta ainda está pendente de aprovação pelo administrador.'
+              return 'Sua conta ainda está pendente de aprovação por uma das administradoras da Alpha ADM.'
             }
           }
         } catch (migrationErr) {

@@ -95,6 +95,9 @@ export default function Login() {
       localStorage.removeItem('login_attempts')
       localStorage.removeItem('login_lockout_until')
       navigate('/dashboard')
+    } else if (typeof result === 'string') {
+      // Conta existe e senha está correta, mas está pendente de aprovação da administradora
+      setError(result)
     } else {
       const attempts = Number(localStorage.getItem('login_attempts') || 0) + 1
       localStorage.setItem('login_attempts', attempts)
@@ -113,7 +116,7 @@ export default function Login() {
         setError('Muitas tentativas incorretas. Acesso bloqueado temporariamente por 5 minutos.')
       } else {
         const remaining = 5 - attempts
-        setError(typeof result === 'string' ? `${result} (${remaining} tentativa(s) restante(s))` : `E-mail ou senha incorretos (${remaining} tentativa(s) restante(s)).`)
+        setError(`E-mail ou senha incorretos (${remaining} tentativa(s) restante(s)).`)
       }
     }
   }

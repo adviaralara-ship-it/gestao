@@ -1,12 +1,13 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, Plus, Shield, Edit2, Trash2, Eye, EyeOff, KeyRound, Building, Layers, DoorOpen, Phone, Search, CheckSquare, ShieldAlert } from 'lucide-react'
+import { Users, Plus, Shield, Edit2, Trash2, Eye, EyeOff, KeyRound, Building, Layers, DoorOpen, Phone, Search, CheckSquare, ShieldAlert, CheckCircle2, Clock } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore'
 import { db, secondaryAuth } from '../firebase'
 import { enviarEmail } from '../emailjs.config'
 import { createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth'
 import { dispararAlarmeSeguranca } from '../utils/alarmeService'
+import { useAuth } from '../context/AuthContext'
 
 const MORADOR_ROLES = ['Morador', 'Síndico', 'Subsíndico', 'Conselheiro']
 
@@ -338,12 +339,45 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
 
 export default function Usuarios() {
   const navigate = useNavigate()
+  const { user: currentUser } = useAuth()
   const { items: users, addItem, updateItem, deleteItem } = useFirestore('usuarios')
   const { items: allCondominios } = useFirestore('condominios')
   const [modal, setModal] = useState(null)
   const [condoFilter, setCondoFilter] = useState('Todos')
   const [roleFilter, setRoleFilter] = useState('Todos')
   const [search, setSearch] = useState('')
+
+  const isPendente = u => u.ativo === false || u.status === 'Pendente' || u.status === 'Inativo' || u.pendenteAprovacao === true
+  const pendingUsers = users.filter(isPendente)
+
+  const handleAprovarUsuario = async (u) => {
+    if (!window.confirm(`Deseja APROVAR e liberar o acesso do usuário "${u.nome || u.email}" com perfil de "${u.role}"?`)) return
+    try {
+      await updateItem(u.id, {
+        ...u,
+        ativo: true,
+        status: 'Ativo',
+        pendenteAprovacao: false,
+        aprovadoPor: currentUser?.nome || currentUser?.email || 'Administração',
+        aprovadoEm: new Date().toISOString()
+      })
+
+      // Envia e-mail notificando o usuário que sua conta foi liberada
+      if (u.email) {
+        await enviarEmail(
+          u.email,
+          u.nome || 'Usuário',
+          'Seu acesso foi APROVADO - Alpha Gestão Condominial',
+          `Olá <b>${u.nome || 'Usuário'}</b>,<br><br>Seu cadastro com perfil de <b>${u.role}</b> foi analisado e <b>APROVADO</b> pela administração da Alpha ADM.<br><br>Seu acesso ao sistema já está liberado! Você já pode fazer login normalmente utilizando seu e-mail e senha cadastrados.<br><br><a href="https://alphaadmsc.vercel.app" style="display:inline-block;padding:10px 20px;background:#16a34a;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:bold;margin-top:10px;">Acessar o Painel</a>`
+        ).catch(() => {})
+      }
+
+      alert(`✅ Acesso de "${u.nome || u.email}" aprovado e liberado com sucesso!`)
+    } catch (err) {
+      console.error('Erro ao aprovar usuário:', err)
+      alert('Erro ao ativar usuário: ' + err.message)
+    }
+  }
 
   // Padronização automática: Administradores pertencem à gestão interna 'ALPHA' (sem bloco/apto)
   React.useEffect(() => {
@@ -482,6 +516,13 @@ export default function Usuarios() {
   const normalizeStr = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
 
   const filteredUsers = users.filter(u => {
+    // Filtro de Pendentes ou Perfil
+    if (roleFilter === 'Pendentes') {
+      if (!isPendente(u)) return false
+    } else if (roleFilter !== 'Todos' && u.role !== roleFilter) {
+      return false
+    }
+
     // Filtro de Condomínio
     if (condoFilter !== 'Todos') {
       const cU = normalizeStr(u.condominio)
@@ -492,9 +533,6 @@ export default function Usuarios() {
         if (!cU || (cU !== cTarget && !cU.includes(cTarget) && !cTarget.includes(cU))) return false
       }
     }
-
-    // Filtro de Perfil
-    if (roleFilter !== 'Todos' && u.role !== roleFilter) return false
 
     // Busca textual
     if (search.trim()) {
@@ -541,6 +579,31 @@ export default function Usuarios() {
         </div>
       </div>
 
+      {/* Banner de Autorização de Gestores Pendentes */}
+      {pendingUsers.length > 0 && (
+        <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-200 text-amber-900 rounded-xl flex items-center justify-center font-bold text-lg shrink-0">
+              <Clock size={22} className="text-amber-700" />
+            </div>
+            <div>
+              <h4 className="font-bold text-amber-900 text-sm flex items-center gap-1.5">
+                {pendingUsers.length} cadastro(s) aguardando autorização das Administradoras
+              </h4>
+              <p className="text-xs text-amber-700">
+                Novos usuários cadastrados como Administrador, Síndico ou Subsíndico nascem inativos por segurança institucional. Clique em &quot;Aprovar&quot; para liberar o acesso.
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setRoleFilter(roleFilter === 'Pendentes' ? 'Todos' : 'Pendentes')}
+            className="btn-secondary bg-amber-200 hover:bg-amber-300 text-amber-950 border-amber-400 text-xs font-bold shrink-0 self-start sm:self-auto"
+          >
+            {roleFilter === 'Pendentes' ? 'Mostrar Todos' : `Filtrar Pendentes (${pendingUsers.length})`}
+          </button>
+        </div>
+      )}
+
       {/* Barra de Filtros Inteligentes */}
       <div className="card p-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between bg-white shadow-sm border border-cream-300">
         <div className="relative flex-1">
@@ -576,11 +639,14 @@ export default function Usuarios() {
           <div className="flex items-center gap-1.5">
             <Shield size={14} className="text-purple-600 shrink-0" />
             <select
-              className="input text-xs font-bold text-gray-700 min-w-[140px]"
+              className={`input text-xs font-bold min-w-[160px] ${roleFilter === 'Pendentes' ? 'bg-amber-100 border-amber-400 text-amber-900 font-black' : 'text-gray-700'}`}
               value={roleFilter}
               onChange={e => setRoleFilter(e.target.value)}
             >
               <option value="Todos">👤 Todos os Perfis</option>
+              {pendingUsers.length > 0 && (
+                <option value="Pendentes">⏳ Aguardando Aprovação ({pendingUsers.length})</option>
+              )}
               {roles.map(r => (
                 <option key={r} value={r}>{r}</option>
               ))}
@@ -593,8 +659,8 @@ export default function Usuarios() {
       <div className="p-4 bg-pale-100 border border-brand-300 rounded-xl text-sm text-brand-800 flex items-start gap-2">
         <Shield size={16} className="mt-0.5 min-w-4 text-brand-600" />
         <div>
-          <p className="font-semibold mb-0.5">Como funciona o controle de acessos</p>
-          <p className="text-xs text-brand-700">Cada usuário cadastrado possui e-mail e senha próprios. O perfil e as permissões individuais definem exatamente quais telas do condomínio ele pode visualizar e operar.</p>
+          <p className="font-semibold mb-0.5">Controle Zero-Trust & Governança de Acessos</p>
+          <p className="text-xs text-brand-700">Novos usuários gestores são bloqueados preventivamente até a homologação de uma das administradoras. Isso impede que terceiros auto-concedam privilégios elevados.</p>
         </div>
       </div>
 
@@ -655,12 +721,28 @@ export default function Usuarios() {
                     </td>
                     <td className="table-cell text-gray-600 text-xs font-mono">{u.telefone || <span className="text-gray-300">—</span>}</td>
                     <td className="table-cell">
-                      <span className={(u.ativo !== false && u.status !== 'Inativo') ? 'badge-green' : 'badge-red'}>
-                        {(u.ativo !== false && u.status !== 'Inativo') ? 'Ativo' : 'Pendente/Inativo'}
-                      </span>
+                      {isPendente(u) ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                          <Clock size={11} className="text-amber-700 shrink-0" />
+                          Aguardando Aprovação
+                        </span>
+                      ) : (
+                        <span className="badge-green">
+                          Ativo
+                        </span>
+                      )}
                     </td>
                     <td className="table-cell">
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-1.5">
+                        {isPendente(u) && (
+                          <button
+                            onClick={() => handleAprovarUsuario(u)}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 shadow-xs transition-all"
+                            title="Aprovar e ativar este usuário imediatamente"
+                          >
+                            <CheckCircle2 size={13} /> Aprovar
+                          </button>
+                        )}
                         <button
                           onClick={() => setModal({ ...u, status: (u.ativo !== false && u.status !== 'Inativo') ? 'Ativo' : 'Inativo' })}
                           className="p-1.5 rounded-lg bg-cream-200 hover:bg-brand-100 text-gray-500 hover:text-brand-700 transition-all"

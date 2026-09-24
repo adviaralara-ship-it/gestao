@@ -1,15 +1,19 @@
 import React, { useState } from 'react'
-import { Shield, User, Lock, Mail, ArrowRight, CheckCircle, Phone, Building, DoorOpen, Layers, Check, Smartphone } from 'lucide-react'
+import { Shield, User, Lock, Mail, ArrowRight, CheckCircle, Phone, Building, DoorOpen, Layers, Check, Smartphone, Clock, ShieldAlert } from 'lucide-react'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db, secondaryAuth } from '../firebase'
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth'
-import { sindicoPerms, porteiroPerms, moradorPerms, conselhoPerms } from '../context/AuthContext'
+import { sindicoPerms, porteiroPerms, moradorPerms, conselhoPerms, allModulesPerms } from '../context/AuthContext'
 import { useFirestore } from '../hooks/useFirestore'
+import { dispararAlarmeSeguranca } from '../utils/alarmeService'
+
+const ROLES_QUE_EXIGEM_APROVACAO = ['Administrador', 'Síndico', 'Subsíndico']
 
 const rolesOptions = [
   { value: 'Morador',     label: 'Morador' },
-  { value: 'Síndico',    label: 'Síndico' },
-  { value: 'Subsíndico', label: 'Subsíndico' },
+  { value: 'Síndico',    label: 'Síndico (Requer autorização da Administradora)' },
+  { value: 'Subsíndico', label: 'Subsíndico (Requer autorização da Administradora)' },
+  { value: 'Administrador', label: 'Administrador (Requer autorização da Administradora)' },
   { value: 'Conselheiro',label: 'Conselheiro' },
   { value: 'Porteiro',   label: 'Porteiro' },
 ]
@@ -38,9 +42,11 @@ export default function Cadastro() {
   const [form, setForm] = useState({ nome:'', email:'', telefone:'', cpf:'', senha:'', confirmar:'', condominio:'', bloco:'', unidade:'', role:'Morador' })
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [registeredRole, setRegisteredRole] = useState('Morador')
   const [error, setError]     = useState('')
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
   const requiresLocation = needsLocation.includes(form.role)
+  const requiresApproval = ROLES_QUE_EXIGEM_APROVACAO.includes(form.role)
 
   const handleSubmit = async () => {
     setError('')
@@ -80,17 +86,23 @@ export default function Cadastro() {
 
       const normalizeStr = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
       const foundCondo = condominiosList.find(c => normalizeStr(c.nome) === normalizeStr(form.condominio) || (c.nome && form.condominio && normalizeStr(c.nome).includes(normalizeStr(form.condominio))))
-      const finalCondoNome = foundCondo ? foundCondo.nome : form.condominio.trim().toUpperCase()
+      const finalCondoNome = foundCondo ? foundCondo.nome : (form.condominio ? form.condominio.trim().toUpperCase() : '')
 
       const localInfo = requiresLocation
         ? { condominio: finalCondoNome, bloco: form.bloco.trim(), unidade: form.unidade.trim() }
-        : { condominio: '', bloco: '', unidade: '' }
+        : { condominio: form.role === 'Administrador' ? 'ALPHA' : '', bloco: '', unidade: '' }
 
-      const rolePerms = form.role === 'Síndico' || form.role === 'Subsíndico' ? sindicoPerms : 
+      const isGestao = ROLES_QUE_EXIGEM_APROVACAO.includes(form.role)
+
+      const rolePerms = form.role === 'Administrador' ? allModulesPerms :
+                        form.role === 'Síndico' || form.role === 'Subsíndico' ? sindicoPerms : 
                         form.role === 'Conselheiro' || form.role === 'Conselho' ? conselhoPerms :
                         form.role === 'Porteiro' ? porteiroPerms : moradorPerms
 
       // 2. Registra na coleção de usuários
+      // 🔒 SEGURANÇA: Se o usuário tentar se cadastrar como Administrador, Síndico ou Subsíndico,
+      // ele é salvo automaticamente com 'ativo: false' e 'status: Pendente'.
+      // O acesso só é liberado quando uma administradora autorizar no painel.
       await addDoc(collection(db, 'usuarios'), {
         nome: form.nome.trim(),
         email: emailClean,
@@ -98,14 +110,17 @@ export default function Cadastro() {
         cpf: form.cpf.replace(/\D/g, ''),
         senha: form.senha,
         ...localInfo,
+        condominio: form.role === 'Administrador' ? 'ALPHA' : localInfo.condominio,
         role: form.role,
         permissoes: rolePerms,
-        ativo: true,
+        ativo: !isGestao,
+        status: isGestao ? 'Pendente' : 'Ativo',
+        pendenteAprovacao: isGestao,
         origem: 'auto-cadastro',
         _createdAt: serverTimestamp()
       })
 
-      // 3. Registra na coleção de moradores
+      // 3. Registra na coleção de moradores caso se aplique
       if (addToMoradores.includes(form.role)) {
         await addDoc(collection(db, 'moradores'), {
           nome: form.nome.trim(),
@@ -121,19 +136,37 @@ export default function Cadastro() {
         })
       }
 
-      // 4. Notifica administração
+      // 4. Notifica administração e dispara alarme se for perfil de gestão
       const aptLabel = localInfo.unidade
         ? ` – ${localInfo.condominio}${localInfo.bloco ? ` Bl.${localInfo.bloco}` : ''} Apt ${localInfo.unidade}` : ''
 
+      if (isGestao) {
+        dispararAlarmeSeguranca({
+          tipo: 'CADASTRO_GESTAO_PENDENTE',
+          titulo: `Novo cadastro de ${form.role} aguardando aprovação`,
+          detalhes: `O usuário "${form.nome.trim()}" (${emailClean}) solicitou cadastro com o perfil de ${form.role}. Por segurança institucional, a conta foi criada como INATIVA e aguarda aprovação das administradoras no painel.`,
+          userEmail: emailClean,
+          metadata: {
+            nome: form.nome.trim(),
+            role: form.role,
+            condominio: form.role === 'Administrador' ? 'ALPHA' : localInfo.condominio,
+            status: 'Pendente'
+          }
+        }).catch(e => console.warn('Aviso ao disparar alarme:', e))
+      }
+
       await addDoc(collection(db, 'notificacoes'), {
-        text: `Novo ${form.role} cadastrado no sistema – ${form.nome.trim()}${aptLabel}`,
+        text: isGestao
+          ? `⏳ NOVO ${form.role.toUpperCase()} PENDENTE: ${form.nome.trim()} (${emailClean}) aguarda aprovação da administração no painel de Usuários.`
+          : `Novo ${form.role} cadastrado no sistema – ${form.nome.trim()}${aptLabel}`,
         time: new Date().toISOString(),
-        tipo: 'morador',
+        tipo: isGestao ? 'aprovacao_usuario' : 'morador',
         lida: false,
-        condominio: localInfo.condominio,
+        condominio: form.role === 'Administrador' ? 'ALPHA' : (localInfo.condominio || 'Alpha ADM'),
         _createdAt: serverTimestamp()
       })
 
+      setRegisteredRole(form.role)
       setSuccess(true)
     } catch (err) {
       console.error('Erro no cadastro:', err)
@@ -143,25 +176,59 @@ export default function Cadastro() {
     }
   }
 
-  if (success) return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-cream-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-xl p-8 sm:p-10 max-w-md w-full text-center">
-        <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCircle size={32} className="text-emerald-500"/></div>
-        <h2 className="text-xl font-bold text-gray-800 mb-2">Cadastro concluído!</h2>
-        <p className="text-gray-500 text-sm mb-4">Seu cadastro foi realizado com sucesso. Você já pode fazer login usando seu e-mail e senha.</p>
-        
-        <div className="mb-6 p-3.5 bg-brand-50 border border-brand-200 rounded-2xl text-left flex items-start gap-2.5">
-          <Smartphone size={22} className="text-brand-600 shrink-0 mt-0.5" />
-          <div className="text-xs text-brand-900">
-            <p className="font-bold">📱 Acesso direto no seu Celular:</p>
-            <p className="text-[11px] text-brand-800 mt-0.5">Toque no aviso na parte inferior da tela para <b>adicionar à tela inicial</b> e abrir o sistema como um aplicativo!</p>
-          </div>
-        </div>
+  if (success) {
+    const isGestao = ROLES_QUE_EXIGEM_APROVACAO.includes(registeredRole)
 
-        <a href="/" className="btn-primary w-full justify-center">Ir para o Login</a>
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-brand-50 to-cream-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-xl p-8 sm:p-10 max-w-md w-full text-center">
+          {isGestao ? (
+            <>
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Clock size={32} className="text-amber-600"/>
+              </div>
+              <h2 className="text-xl font-bold text-gray-800 mb-2">Solicitação enviada com sucesso!</h2>
+              
+              <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-left">
+                <div className="flex items-center gap-2 mb-1.5 text-amber-900 font-bold text-xs uppercase tracking-wider">
+                  <ShieldAlert size={15} className="text-amber-700 shrink-0" />
+                  Autorização de Administradora Obrigatória
+                </div>
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  Por medidas de segurança e controle patrimonial, cadastros de <b>{registeredRole}</b> são gerados <b>automaticamente inativos</b>.
+                </p>
+                <p className="text-xs text-amber-800 mt-2 leading-relaxed">
+                  Uma das administradoras da Alpha foi notificada e precisa <b>ativar sua conta</b> no painel de controle antes que você possa fazer login.
+                </p>
+              </div>
+
+              <p className="text-xs text-gray-500 mb-6">
+                Assim que sua conta for autorizada, você receberá a confirmação e poderá acessar o sistema normalmente.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle size={32} className="text-emerald-500"/>
+              </div>
+              <h2 className="text-xl font-bold text-gray-800 mb-2">Cadastro concluído!</h2>
+              <p className="text-gray-500 text-sm mb-4">Seu cadastro foi realizado com sucesso. Você já pode fazer login usando seu e-mail e senha.</p>
+              
+              <div className="mb-6 p-3.5 bg-brand-50 border border-brand-200 rounded-2xl text-left flex items-start gap-2.5">
+                <Smartphone size={22} className="text-brand-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-brand-900">
+                  <p className="font-bold">📱 Acesso direto no seu Celular:</p>
+                  <p className="text-[11px] text-brand-800 mt-0.5">Toque no aviso na parte inferior da tela para <b>adicionar à tela inicial</b> e abrir o sistema como um aplicativo!</p>
+                </div>
+              </div>
+            </>
+          )}
+
+          <a href="/" className="btn-primary w-full justify-center">Ir para a Tela de Login</a>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-50 to-cream-100 flex items-center justify-center p-4">
