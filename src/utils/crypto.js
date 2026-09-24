@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js'
 
-const SECRET_KEY = import.meta.env.VITE_CRYPTO_SECRET || 'fallback-super-secret-key-2026'
+const SECRET_KEY = import.meta.env.VITE_CRYPTO_SECRET || 'AlphaSec2026!@SuperSecretKey'
 const PREFIX = 'ENC:'
 
 export const encryptData = (text) => {
