@@ -3,7 +3,8 @@ import emailjs from '@emailjs/browser'
 import {
   CheckSquare, Plus, Trash2, Edit2, Calendar, User, X,
   LayoutGrid, List, Mail, Link2, Filter, Download, Clock,
-  AlertTriangle, Send, Inbox, CheckCircle, Eye, ChevronLeft, ChevronRight, CalendarDays, Bell
+  AlertTriangle, Send, Inbox, CheckCircle, Eye, ChevronLeft, ChevronRight, CalendarDays, Bell,
+  Building2, MapPin, Phone
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { EMAILJS_CONFIG } from '../emailjs.config'
@@ -284,6 +285,9 @@ function KanbanView({ tarefas, onEdit, onDelete, onMove, onAdd, onEmail }) {
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${prioColors[t.prioridade]}`}>{t.prioridade}</span>
                   <VencBadge venc={t.vencimento} coluna={t.coluna} />
                   {t.responsavel && <span className="text-xs text-gray-500 flex items-center gap-1 bg-cream-100 px-2 py-0.5 rounded-full"><User size={9} />{t.responsavel}</span>}
+                  {t.construtora && <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold"><Building2 size={10} />{t.construtora}</span>}
+                  {t.bairro && <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 flex items-center gap-1 px-2 py-0.5 rounded-full font-medium"><MapPin size={10} />{t.bairro}</span>}
+                  {t.clienteTelefone && <span className="text-xs text-slate-600 bg-slate-100 border border-slate-200 flex items-center gap-1 px-2 py-0.5 rounded-full"><Phone size={9} />{t.clienteTelefone}</span>}
                 </div>
                 {t.tags && <div className="flex flex-wrap gap-1 mb-2">{t.tags.split(',').map(g => g.trim()).filter(Boolean).map(g => <span key={g} className="text-xs bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full border border-brand-100">#{g}</span>)}</div>}
                 <div className="flex gap-1 flex-wrap">
@@ -493,13 +497,16 @@ export default function Tarefas() {
       .map(n => ({
         id: n.id,
         isNotif: true,
-        titulo: n.titulo || 'Nova Reunião Comercial Agendada',
+        titulo: n.titulo || (n.construtora ? `Reunião Comercial: ${n.construtora}` : 'Nova Reunião Comercial Agendada'),
         descricao: n.descricao || n.mensagem || '',
         responsavel: n.responsavel || 'Equipe Alpha',
         vencimento: n.vencimento || (n.criadoEm ? n.criadoEm.split('T')[0] : hoje()),
         prioridade: n.prioridade || 'Alta',
         coluna: n.coluna || 'A Fazer',
-        tags: n.tags || 'reunião, comercial, prospecção'
+        tags: n.tags || 'reunião, comercial, prospecção',
+        construtora: n.construtora || '',
+        bairro: n.bairro || '',
+        clienteTelefone: n.clienteTelefone || ''
       }))
 
     return [...tarefas, ...agendamentos]
