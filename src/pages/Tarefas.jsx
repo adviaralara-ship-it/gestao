@@ -479,7 +479,7 @@ function EmailsView({ emails, onDelete, onVisualizar }) {
 export default function Tarefas() {
   useTarefasAutoReminder()
   const { items: tarefas, addItem, updateItem, deleteItem } = useFirestore('tarefas')
-  const { items: notificacoes, deleteItem: delNotif } = useFirestore('notificacoes')
+  const { items: notificacoes, updateItem: updateNotif, deleteItem: delNotif } = useFirestore('notificacoes')
   const { items: emails, addItem: addEmail, deleteItem: delEmail } = useFirestore('emails_enviados')
 
   const [tab, setTab] = useState('kanban') // 'kanban' | 'agenda' | 'emails'
@@ -527,7 +527,7 @@ export default function Tarefas() {
 
   const handleSaveCard = async (form) => {
     if (cardModal?.id) {
-      if (cardModal.isNotif) await updateItem(cardModal.id, form) // se for notif salva ou atualiza
+      if (cardModal.isNotif) await updateNotif(cardModal.id, form)
       else await updateItem(cardModal.id, form)
     } else {
       await addItem(form)
@@ -543,7 +543,7 @@ export default function Tarefas() {
 
   const handleMoveTarefa = async (id, col) => {
     const item = todasTarefas.find(t => t.id === id)
-    if (item?.isNotif) await delNotif(id) // ou move
+    if (item?.isNotif) await updateNotif(id, { coluna: col })
     else await updateItem(id, { coluna: col })
   }
 
