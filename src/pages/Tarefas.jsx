@@ -475,6 +475,7 @@ function EmailsView({ emails, onDelete, onVisualizar }) {
 export default function Tarefas() {
   useTarefasAutoReminder()
   const { items: tarefas, addItem, updateItem, deleteItem } = useFirestore('tarefas')
+  const { items: notificacoes, deleteItem: delNotif } = useFirestore('notificacoes')
   const { items: emails, addItem: addEmail, deleteItem: delEmail } = useFirestore('emails_enviados')
 
   const [tab, setTab] = useState('kanban') // 'kanban' | 'agenda' | 'emails'
@@ -485,23 +486,58 @@ export default function Tarefas() {
   const [filtroResp, setFiltroResp] = useState('')
   const [enviandoLembretes, setEnviandoLembretes] = useState(false)
 
-  const tarefasFiltradas = useMemo(() => tarefas.filter(t => {
+  // Unifica as tarefas com os agendamentos comerciais recebidos pelo robô da Alpha
+  const todasTarefas = useMemo(() => {
+    const agendamentos = (notificacoes || [])
+      .filter(n => n.tipo === 'agendamento_comercial')
+      .map(n => ({
+        id: n.id,
+        isNotif: true,
+        titulo: n.titulo || 'Nova Reunião Comercial Agendada',
+        descricao: n.descricao || n.mensagem || '',
+        responsavel: n.responsavel || 'Equipe Alpha',
+        vencimento: n.vencimento || (n.criadoEm ? n.criadoEm.split('T')[0] : hoje()),
+        prioridade: n.prioridade || 'Alta',
+        coluna: n.coluna || 'A Fazer',
+        tags: n.tags || 'reunião, comercial, prospecção'
+      }))
+
+    return [...tarefas, ...agendamentos]
+  }, [tarefas, notificacoes])
+
+  const tarefasFiltradas = useMemo(() => todasTarefas.filter(t => {
     if (filtroPrio && t.prioridade !== filtroPrio) return false
     if (filtroResp && !t.responsavel?.toLowerCase().includes(filtroResp.toLowerCase())) return false
     return true
-  }), [tarefas, filtroPrio, filtroResp])
+  }), [todasTarefas, filtroPrio, filtroResp])
 
   const stats = {
-    total: tarefas.length,
-    concluidas: tarefas.filter(t => t.coluna === 'Concluído').length,
-    atrasadas: tarefas.filter(t => t.vencimento && t.vencimento < hoje() && t.coluna !== 'Concluído').length,
-    hoje: tarefas.filter(t => t.vencimento === hoje() && t.coluna !== 'Concluído').length,
+    total: todasTarefas.length,
+    concluidas: todasTarefas.filter(t => t.coluna === 'Concluído').length,
+    atrasadas: todasTarefas.filter(t => t.vencimento && t.vencimento < hoje() && t.coluna !== 'Concluído').length,
+    hoje: todasTarefas.filter(t => t.vencimento === hoje() && t.coluna !== 'Concluído').length,
   }
 
   const handleSaveCard = async (form) => {
-    if (cardModal?.id) await updateItem(cardModal.id, form)
-    else await addItem(form)
+    if (cardModal?.id) {
+      if (cardModal.isNotif) await updateItem(cardModal.id, form) // se for notif salva ou atualiza
+      else await updateItem(cardModal.id, form)
+    } else {
+      await addItem(form)
+    }
     setCardModal(null)
+  }
+
+  const handleDeleteTarefa = async (id) => {
+    const item = todasTarefas.find(t => t.id === id)
+    if (item?.isNotif) await delNotif(id)
+    else await deleteItem(id)
+  }
+
+  const handleMoveTarefa = async (id, col) => {
+    const item = todasTarefas.find(t => t.id === id)
+    if (item?.isNotif) await delNotif(id) // ou move
+    else await updateItem(id, { coluna: col })
   }
 
   const exportarCSV = () => {
@@ -587,11 +623,11 @@ export default function Tarefas() {
       </div>
 
       {/* Vistas */}
-      {tab === 'kanban' && <KanbanView tarefas={tarefasFiltradas} onEdit={setCardModal} onDelete={deleteItem} onMove={async (id, col) => await updateItem(id, { coluna: col })} onAdd={(col, data = '') => setCardModal({ coluna: col, titulo: '', descricao: '', responsavel: '', email: '', vencimento: data, prioridade: 'Média', tags: '' })} onEmail={t => setEmailModal(t)} />}
+      {tab === 'kanban' && <KanbanView tarefas={tarefasFiltradas} onEdit={setCardModal} onDelete={handleDeleteTarefa} onMove={handleMoveTarefa} onAdd={(col, data = '') => setCardModal({ coluna: col, titulo: '', descricao: '', responsavel: '', email: '', vencimento: data, prioridade: 'Média', tags: '' })} onEmail={t => setEmailModal(t)} />}
 
-      {tab === 'agenda' && <AgendaView tarefas={tarefasFiltradas} onEdit={setCardModal} onDelete={deleteItem} onEmail={t => setEmailModal(t)} />}
+      {tab === 'agenda' && <AgendaView tarefas={tarefasFiltradas} onEdit={setCardModal} onDelete={handleDeleteTarefa} onEmail={t => setEmailModal(t)} />}
 
-      {tab === 'calendario' && <CalendarView tarefas={tarefasFiltradas} onEdit={setCardModal} onDelete={deleteItem} onAdd={(col, data) => setCardModal({ coluna: col, titulo: '', descricao: '', responsavel: '', email: '', vencimento: data, prioridade: 'Média', tags: '' })} onEmail={t => setEmailModal(t)} />}
+      {tab === 'calendario' && <CalendarView tarefas={tarefasFiltradas} onEdit={setCardModal} onDelete={handleDeleteTarefa} onAdd={(col, data) => setCardModal({ coluna: col, titulo: '', descricao: '', responsavel: '', email: '', vencimento: data, prioridade: 'Média', tags: '' })} onEmail={t => setEmailModal(t)} />}
 
       {tab === 'emails' && <EmailsView emails={emails} onDelete={delEmail} onVisualizar={setVizModal} />}
 
