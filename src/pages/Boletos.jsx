@@ -1541,16 +1541,33 @@ export default function Boletos() {
     }
   }
 
+  // Função utilitária para normalizar strings de competência (ex: "out/2026", "out/ 2026", "out. 2026", "outubro/2026")
+  const normalizeComp = (str) => {
+    return String(str || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[.\s-]+/g, '/')
+      .replace(/\/+/g, '/')
+      .trim()
+  }
+
   // Lista única de competências presentes nos boletos para o filtro de mês
   const uniqueCompetencias = React.useMemo(() => {
-    const setComp = new Set()
+    const mapComp = new Map()
     const mesAtual = new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '/')
-    setComp.add(mesAtual)
+    mapComp.set(normalizeComp(mesAtual), mesAtual)
+
     allBoletos.forEach(b => {
       const c = (b.competencia || '').trim()
-      if (c) setComp.add(c)
+      if (c) {
+        const norm = normalizeComp(c)
+        if (!mapComp.has(norm)) {
+          mapComp.set(norm, c)
+        }
+      }
     })
-    return Array.from(setComp)
+    return Array.from(mapComp.values())
   }, [allBoletos])
 
   const boletosFiltradosPorCondo = allBoletos.filter(b => {
@@ -1577,9 +1594,11 @@ export default function Boletos() {
        if (bCondo !== condoFilter) return false;
     }
 
+    // Filtro por mês/competência: se um mês específico estiver selecionado, apenas os boletos daquele mês aparecem
     if (competenciaFilter && competenciaFilter !== 'Todas') {
-      const bComp = (b.competencia || '').trim().toLowerCase()
-      if (bComp !== competenciaFilter.trim().toLowerCase()) {
+      const bCompNorm = normalizeComp(b.competencia)
+      const filtroCompNorm = normalizeComp(competenciaFilter)
+      if (bCompNorm !== filtroCompNorm) {
         return false
       }
     }

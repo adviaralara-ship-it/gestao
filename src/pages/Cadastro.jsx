@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Shield, User, Lock, Mail, ArrowRight, CheckCircle, Phone, Building, DoorOpen, Layers, Check, Smartphone, Clock, ShieldAlert } from 'lucide-react'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, getDocs, updateDoc, doc, query, where } from 'firebase/firestore'
 import { db, secondaryAuth } from '../firebase'
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth'
 import { sindicoPerms, porteiroPerms, moradorPerms, conselhoPerms, allModulesPerms } from '../context/AuthContext'
@@ -39,8 +40,44 @@ const modulosMorador = [
 ]
 
 export default function Cadastro() {
+  const [searchParams] = useSearchParams()
   const { items: condominiosList } = useFirestore('condominios')
-  const [form, setForm] = useState({ nome:'', email:'', telefone:'', cpf:'', senha:'', confirmar:'', condominio:'', bloco:'', unidade:'', role:'Morador' })
+  
+  const paramCondo = searchParams.get('condominio') || searchParams.get('condo') || ''
+  const paramApt = searchParams.get('apt') || searchParams.get('unidade') || ''
+  const paramBloco = searchParams.get('bloco') || ''
+  const paramNome = searchParams.get('nome') || ''
+  const paramTel = searchParams.get('tel') || searchParams.get('telefone') || searchParams.get('whatsapp') || ''
+  const paramEmail = searchParams.get('email') || ''
+
+  const [form, setForm] = useState({
+    nome: paramNome,
+    email: paramEmail,
+    telefone: paramTel,
+    cpf: '',
+    senha: '',
+    confirmar: '',
+    condominio: paramCondo,
+    bloco: paramBloco,
+    unidade: paramApt,
+    role: 'Morador'
+  })
+
+  // Se parâmetros forem carregados via link
+  useEffect(() => {
+    if (paramCondo || paramApt || paramNome || paramTel || paramEmail) {
+      setForm(prev => ({
+        ...prev,
+        condominio: paramCondo || prev.condominio,
+        unidade: paramApt || prev.unidade,
+        bloco: paramBloco || prev.bloco,
+        nome: paramNome || prev.nome,
+        telefone: paramTel || prev.telefone,
+        email: paramEmail || prev.email
+      }))
+    }
+  }, [paramCondo, paramApt, paramBloco, paramNome, paramTel, paramEmail])
+
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [registeredRole, setRegisteredRole] = useState('Morador')
@@ -123,20 +160,60 @@ export default function Cadastro() {
         _createdAt: serverTimestamp()
       })
 
-      // 3. Registra na coleção de moradores caso se aplique
+      // 3. Registra ou atualiza na coleção de moradores caso se aplique
       if (addToMoradores.includes(form.role)) {
-        await addDoc(collection(db, 'moradores'), {
-          nome: form.nome.trim(),
-          email: emailClean,
-          tel: form.telefone.trim(),
-          condominio: localInfo.condominio,
-          bloco: localInfo.bloco,
-          apt: localInfo.unidade,
-          cpf: form.cpf.replace(/\D/g, ''),
-          status: form.role === 'Morador' ? 'Proprietário' : form.role,
-          origem: 'auto-cadastro',
-          _createdAt: serverTimestamp()
-        })
+        try {
+          const mCondo = localInfo.condominio.trim().toLowerCase()
+          const mApt = localInfo.unidade.trim().toLowerCase()
+          const mSnap = await getDocs(collection(db, 'moradores'))
+          
+          const moradorExistenteDoc = mSnap.docs.find(d => {
+            const data = d.data()
+            const c = (data.condominio || '').trim().toLowerCase()
+            const a = String(data.apt || data.unidade || '').trim().toLowerCase()
+            const tel = (data.tel || data.telefone || data.whatsapp || '').replace(/\D/g, '')
+            const formTel = form.telefone.replace(/\D/g, '')
+            
+            const matchUnidade = c === mCondo && a === mApt
+            const matchTel = tel && formTel && tel === formTel
+            const matchEmail = data.email && data.email.toLowerCase().trim() === emailClean
+            
+            return (matchUnidade && (matchTel || matchEmail || !data.email)) || (matchTel && c === mCondo)
+          })
+
+          if (moradorExistenteDoc) {
+            // Atualiza o morador pré-cadastrado com os dados completos fornecidos
+            await updateDoc(doc(db, 'moradores', moradorExistenteDoc.id), {
+              nome: form.nome.trim(),
+              email: emailClean,
+              tel: form.telefone.trim(),
+              condominio: localInfo.condominio,
+              bloco: localInfo.bloco || moradorExistenteDoc.data().bloco || '',
+              apt: localInfo.unidade,
+              cpf: form.cpf.replace(/\D/g, ''),
+              status: moradorExistenteDoc.data().status || (form.role === 'Morador' ? 'Proprietário' : form.role),
+              cadastroCompleto: true,
+              origem: 'auto-cadastro',
+              _updatedAt: serverTimestamp()
+            })
+          } else {
+            await addDoc(collection(db, 'moradores'), {
+              nome: form.nome.trim(),
+              email: emailClean,
+              tel: form.telefone.trim(),
+              condominio: localInfo.condominio,
+              bloco: localInfo.bloco,
+              apt: localInfo.unidade,
+              cpf: form.cpf.replace(/\D/g, ''),
+              status: form.role === 'Morador' ? 'Proprietário' : form.role,
+              cadastroCompleto: true,
+              origem: 'auto-cadastro',
+              _createdAt: serverTimestamp()
+            })
+          }
+        } catch (errMorador) {
+          console.error('Erro ao salvar morador:', errMorador)
+        }
       }
 
       // 4. Notifica administração e dispara alarme se for perfil de gestão

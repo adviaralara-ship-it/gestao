@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Users, Plus, Search, Edit2, Trash2, Phone, Mail, Filter, PawPrint, Home, UserCheck, LayoutGrid, Table as TableIcon, X } from 'lucide-react'
+import { Users, Plus, Search, Edit2, Trash2, Phone, Mail, Filter, PawPrint, Home, UserCheck, LayoutGrid, Table as TableIcon, X, Upload, FileSpreadsheet, Share2, Copy, Check, MessageSquare, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { collection, query, where, getDocs, deleteDoc } from 'firebase/firestore'
@@ -175,8 +175,423 @@ function PetModalRapido({ data, onClose, onSave, currentUser }) {
   )
 }
 
+function ModalCompartilharLink({ link, titulo, descricao, onClose }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 3000)
+    } catch {
+      prompt('Copie o link abaixo:', link)
+    }
+  }
+
+  const handleShareWhatsApp = () => {
+    const texto = `*Alpha Soluções Condominiais*\n\nOlá! Para concluir o seu cadastro de morador e ter acesso imediato ao seu apartamento, boletos e serviços, acesse o link oficial:\n\n${link}`
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank')
+  }
+
+  return (
+    <div className="modal-overlay z-50 p-4" onClick={onClose}>
+      <div className="modal-content max-w-lg w-full bg-white rounded-3xl p-6 shadow-2xl border border-gray-200" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between pb-4 border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-2xl bg-brand-100 text-brand-700 flex items-center justify-center font-bold">
+              <Share2 size={20} />
+            </div>
+            <div>
+              <h3 className="font-black text-slate-900 text-base">{titulo || 'Link de Auto-Cadastro'}</h3>
+              <p className="text-xs text-gray-500">{descricao || 'Envie ao morador para ele concluir os dados'}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-slate-100">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="py-5 flex flex-col gap-4">
+          <p className="text-xs text-gray-600 leading-relaxed">
+            Ao abrir este link, o morador já encontrará o condomínio e a unidade preenchidos e travados. Ele só precisará cadastrar o CPF, e-mail e senha de acesso.
+          </p>
+
+          <div className="p-3 bg-slate-50 border border-gray-200 rounded-2xl flex items-center justify-between gap-2">
+            <input
+              type="text"
+              readOnly
+              value={link}
+              className="bg-transparent border-0 text-xs font-mono text-gray-700 w-full focus:outline-none select-all truncate"
+            />
+            <button
+              onClick={handleCopy}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 transition-all ${
+                copied ? 'bg-emerald-600 text-white' : 'bg-brand-600 hover:bg-brand-500 text-white'
+              }`}
+            >
+              {copied ? <><Check size={14} /> Copiado!</> : <><Copy size={14} /> Copiar Link</>}
+            </button>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleShareWhatsApp}
+              className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-sm transition-all"
+            >
+              <MessageSquare size={16} /> Compartilhar no WhatsApp
+            </button>
+            <button
+              onClick={handleCopy}
+              className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+            >
+              Copiar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ModalImportarUnidades({ condominios = [], onImport, onClose }) {
+  const [condoNome, setCondoNome] = useState(condominios[0]?.nome || '')
+  const [textoColado, setTextoColado] = useState('')
+  const [arquivoNome, setArquivoNome] = useState('')
+  const [unidadesParsed, setUnidadesParsed] = useState([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [modo, setModo] = useState('arquivo') // 'arquivo' | 'colar'
+
+  const processarTexto = (rawText) => {
+    if (!rawText || !rawText.trim()) {
+      setUnidadesParsed([])
+      return
+    }
+
+    const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+    if (lines.length === 0) {
+      setUnidadesParsed([])
+      return
+    }
+
+    // Tenta detectar cabeçalho na primeira linha
+    let startIdx = 0
+    const firstLineLower = lines[0].toLowerCase()
+    let colApt = -1, colNome = -1, colTel = -1, colBloco = -1, colEmail = -1, colCpf = -1
+
+    const separadores = [';', '\t', ',']
+    let bestSep = ','
+    let maxSplits = 0
+    for (const sep of separadores) {
+      const count = lines[0].split(sep).length
+      if (count > maxSplits) {
+        maxSplits = count
+        bestSep = sep
+      }
+    }
+
+    const headers = lines[0].split(bestSep).map(h => h.trim().toLowerCase().replace(/["']/g, ''))
+    
+    // Verifica se a primeira linha é cabeçalho
+    const temPalavraChave = headers.some(h => 
+      h.includes('apt') || h.includes('apartamento') || h.includes('unidade') || 
+      h.includes('nome') || h.includes('morador') || h.includes('tel') || h.includes('bloco')
+    )
+
+    if (temPalavraChave) {
+      startIdx = 1
+      headers.forEach((h, idx) => {
+        if (h.includes('apt') || h.includes('apartamento') || h.includes('unidade') || h.includes('numero') || h.includes('num')) {
+          if (colApt === -1) colApt = idx
+        } else if (h.includes('nome') || h.includes('morador') || h.includes('responsavel') || h.includes('proprietario')) {
+          if (colNome === -1) colNome = idx
+        } else if (h.includes('tel') || h.includes('whats') || h.includes('cel') || h.includes('fone')) {
+          if (colTel === -1) colTel = idx
+        } else if (h.includes('bloco') || h.includes('torre') || h.includes('quadra')) {
+          if (colBloco === -1) colBloco = idx
+        } else if (h.includes('email') || h.includes('e-mail')) {
+          if (colEmail === -1) colEmail = idx
+        } else if (h.includes('cpf') || h.includes('doc')) {
+          if (colCpf === -1) colCpf = idx
+        }
+      })
+    }
+
+    const parsed = []
+
+    for (let i = startIdx; i < lines.length; i++) {
+      const line = lines[i]
+      if (!line) continue
+
+      // Divide linha pelas colunas
+      const parts = line.split(bestSep).map(p => p.trim().replace(/^["']|["']$/g, ''))
+      if (parts.length === 0 || (parts.length === 1 && !parts[0])) continue
+
+      let apt = ''
+      let nome = ''
+      let tel = ''
+      let bloco = ''
+      let email = ''
+      let cpf = ''
+
+      if (colApt !== -1 || colNome !== -1) {
+        if (colApt !== -1 && parts[colApt]) apt = parts[colApt]
+        if (colNome !== -1 && parts[colNome]) nome = parts[colNome]
+        if (colTel !== -1 && parts[colTel]) tel = parts[colTel]
+        if (colBloco !== -1 && parts[colBloco]) bloco = parts[colBloco]
+        if (colEmail !== -1 && parts[colEmail]) email = parts[colEmail]
+        if (colCpf !== -1 && parts[colCpf]) cpf = parts[colCpf]
+      } else {
+        // Modo heurístico / tolerante sem cabeçalho:
+        // Padrão 1: Apt, Nome, Telefone, Bloco
+        // Se a primeira coluna tiver apenas dígitos/números de apartamento (ex: "101", "Apt 101", "101-A")
+        if (/^(apt|ap|bl|casa)?\s*\d+[a-zA-Z]?$/i.test(parts[0]) || /^\d+$/.test(parts[0].replace(/\D/g, ''))) {
+          apt = parts[0].replace(/^(apt|ap|unidade)\s*/i, '').trim()
+          nome = parts[1] || `Morador Apt ${apt}`
+          tel = parts[2] || ''
+          bloco = parts[3] || ''
+        } else {
+          // Padrão 2: Nome, Apt, Telefone, Bloco
+          nome = parts[0]
+          apt = (parts[1] || '').replace(/^(apt|ap|unidade)\s*/i, '').trim()
+          tel = parts[2] || ''
+          bloco = parts[3] || ''
+        }
+      }
+
+      // Normaliza
+      apt = String(apt || '').trim()
+      nome = String(nome || '').trim().toUpperCase()
+      tel = String(tel || '').trim()
+      bloco = String(bloco || '').trim().toUpperCase()
+      cpf = String(cpf || '').replace(/\D/g, '')
+
+      if (apt) {
+        parsed.push({
+          apt,
+          bloco,
+          nome: nome || `MORADOR APT ${apt}`,
+          tel,
+          email,
+          cpf,
+          status: 'Proprietário',
+          cadastroCompleto: false
+        })
+      }
+    }
+
+    setUnidadesParsed(parsed)
+  }
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setArquivoNome(file.name)
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const content = event.target.result
+      setTextoColado(content)
+      processarTexto(content)
+    }
+    reader.readAsText(file)
+  }
+
+  const handleImportar = async () => {
+    if (!condoNome) {
+      alert('Por favor, selecione o condomínio de destino.')
+      return
+    }
+    if (unidadesParsed.length === 0) {
+      alert('Nenhuma unidade/apartamento válido foi identificado para importação.')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await onImport(condoNome, unidadesParsed)
+      onClose()
+    } catch (err) {
+      console.error(err)
+      alert('Erro ao importar unidades: ' + (err.message || 'Tente novamente.'))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay z-50 p-4" onClick={onClose}>
+      <div className="modal-content max-w-2xl w-full bg-white rounded-3xl p-0 shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        {/* Cabeçalho */}
+        <div className="p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-brand-600 text-white flex items-center justify-center font-bold">
+              <FileSpreadsheet size={22} />
+            </div>
+            <div>
+              <h3 className="font-black text-base sm:text-lg">Importar Lista de Apartamentos</h3>
+              <p className="text-xs text-slate-400">Preenchimento automático das unidades de um condomínio</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Corpo com scroll */}
+        <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-5 bg-slate-50">
+          {/* Seletor de Condomínio */}
+          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-2">
+            <label className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              🏢 1. Selecione o Condomínio de Destino *
+            </label>
+            <select
+              className="input text-xs font-bold bg-slate-50"
+              value={condoNome}
+              onChange={e => setCondoNome(e.target.value)}
+            >
+              <option value="">Selecione um condomínio cadastrado...</option>
+              {condominios.map(c => (
+                <option key={c.id || c.nome} value={c.nome}>
+                  {c.nome} {c.unidades ? `(${c.unidades} unidades)` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Abas Arquivo vs Colar */}
+          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                📄 2. Forneça os Dados das Unidades
+              </label>
+              <div className="flex bg-slate-100 p-0.5 rounded-lg border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setModo('arquivo')}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                    modo === 'arquivo' ? 'bg-white text-brand-700 shadow-xs' : 'text-gray-500'
+                  }`}
+                >
+                  Subir Arquivo (.csv / .txt)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModo('colar')}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                    modo === 'colar' ? 'bg-white text-brand-700 shadow-xs' : 'text-gray-500'
+                  }`}
+                >
+                  Colar da Planilha
+                </button>
+              </div>
+            </div>
+
+            {modo === 'arquivo' ? (
+              <label className="border-2 border-dashed border-brand-300 hover:border-brand-500 bg-brand-50/50 hover:bg-brand-50/80 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all">
+                <Upload size={32} className="text-brand-600 mb-2" />
+                <span className="text-xs font-bold text-brand-900">
+                  {arquivoNome ? `Arquivo selecionado: ${arquivoNome}` : 'Clique para selecionar arquivo CSV ou TXT'}
+                </span>
+                <span className="text-[11px] text-gray-500 mt-1">
+                  Formatos aceitos: Planilha CSV exportada do Excel, Google Planilhas ou bloco de notas
+                </span>
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+              </label>
+            ) : (
+              <div>
+                <textarea
+                  rows={5}
+                  value={textoColado}
+                  onChange={e => {
+                    setTextoColado(e.target.value)
+                    processarTexto(e.target.value)
+                  }}
+                  className="input font-mono text-xs w-full p-3 bg-slate-50"
+                  placeholder="Cole aqui linhas da sua planilha (ex: 101, João da Silva, 83999999999, Bloco A)..."
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Dica: Você pode copiar direto do Excel ou Google Sheets e colar aqui. O sistema detecta colunas separadas por vírgula, ponto-e-vírgula ou tabulação.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Pré-visualização dos dados identificados */}
+          {unidadesParsed.length > 0 && (
+            <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-sm flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-emerald-900 flex items-center gap-1.5">
+                  <CheckCircle2 size={16} className="text-emerald-600" />
+                  {unidadesParsed.length} unidades identificadas com sucesso:
+                </span>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">
+                  Pronto para cadastrar
+                </span>
+              </div>
+
+              <div className="max-h-48 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-xl mt-1">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100 font-bold text-gray-600 sticky top-0">
+                    <tr>
+                      <th className="p-2">Apt</th>
+                      <th className="p-2">Bloco</th>
+                      <th className="p-2">Nome do Titular</th>
+                      <th className="p-2">Telefone</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {unidadesParsed.map((u, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="p-2 font-bold text-brand-700">{u.apt}</td>
+                        <td className="p-2 text-gray-500">{u.bloco || '—'}</td>
+                        <td className="p-2 font-medium text-gray-800">{u.nome}</td>
+                        <td className="p-2 text-gray-500">{u.tel || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Rodapé com botões */}
+        <div className="p-4 bg-white border-t border-gray-200 flex items-center justify-between gap-3 shrink-0">
+          <button
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="btn-secondary text-xs"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleImportar}
+            disabled={isSubmitting || unidadesParsed.length === 0 || !condoNome}
+            className={`btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 shadow-md flex items-center gap-2 ${
+              isSubmitting || unidadesParsed.length === 0 || !condoNome
+                ? 'opacity-50 cursor-not-allowed'
+                : 'cursor-pointer'
+            }`}
+          >
+            <CheckCircle2 size={16} />
+            {isSubmitting
+              ? 'Importando...'
+              : `Confirmar e Cadastrar ${unidadesParsed.length} Unidades`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Moradores() {
   const { items: moradores, addItem, updateItem, deleteItem } = useFirestore('moradores')
+  const { items: allCondominios } = useFirestore('condominios')
   const { items: pets, addItem: addPet } = useFirestore('pets')
   const { user } = useAuth()
   const isMorador = user?.role === 'Morador'
@@ -187,9 +602,18 @@ export default function Moradores() {
   const [viewMode, setViewMode] = useState('agrupado')
   const [modal, setModal] = useState(null)
   const [modalPet, setModalPet] = useState(null)
+  const [modalImport, setModalImport] = useState(false)
+  const [modalShareLink, setModalShareLink] = useState(null)
   const [targetUnidade, setTargetUnidade] = useState(null)
 
-  const condominiosUnicos = ['Todos', ...Array.from(new Set(moradores.map(m => m.condominio).filter(Boolean))).sort()]
+  // Lista unificada de condomínios combinando o cadastro oficial de condomínios e eventuais nomes em moradores
+  const condominiosUnicos = React.useMemo(() => {
+    const setC = new Set()
+    allCondominios.forEach(c => { if (c.nome) setC.add(c.nome) })
+    moradores.forEach(m => { if (m.condominio) setC.add(m.condominio) })
+    return ['Todos', ...Array.from(setC).sort()]
+  }, [allCondominios, moradores])
+
   const aptsUnicos = ['Todos', ...Array.from(new Set(moradores.filter(m => filtroCondominio === 'Todos' || m.condominio === filtroCondominio).map(m => m.apt).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))]
 
   const filtered = moradores.filter(m => {
@@ -263,6 +687,74 @@ export default function Moradores() {
     setModalPet(null)
   }
 
+  // Gera o link de auto-cadastro com pré-preenchimento
+  const gerarLinkCadastro = ({ condominio = '', apt = '', bloco = '', nome = '', tel = '' }) => {
+    const origin = typeof window !== 'undefined' && window.location.origin
+      ? window.location.origin
+      : 'https://alpha-solucoes-condominiais.vercel.app'
+    
+    const params = new URLSearchParams()
+    if (condominio) params.set('condominio', condominio)
+    if (apt) params.set('apt', apt)
+    if (bloco) params.set('bloco', bloco)
+    if (nome) params.set('nome', nome)
+    if (tel) params.set('tel', tel)
+
+    return `${origin}/cadastro?${params.toString()}`
+  }
+
+  // Importação em lote para o condomínio selecionado
+  const handleImportLote = async (nomeCondo, listaUnidades) => {
+    let cadastrados = 0
+    let atualizados = 0
+
+    for (const item of listaUnidades) {
+      const aptKey = String(item.apt).trim().toLowerCase()
+      const blocoKey = String(item.bloco || '').trim().toLowerCase()
+      const condoKey = String(nomeCondo).trim().toLowerCase()
+
+      // Verifica se já existe um morador cadastrado para este apt e bloco neste condomínio
+      const existente = moradores.find(m => {
+        const mApt = String(m.apt || '').trim().toLowerCase()
+        const mBloco = String(m.bloco || '').trim().toLowerCase()
+        const mCondo = String(m.condominio || '').trim().toLowerCase()
+        return mApt === aptKey && mBloco === blocoKey && mCondo === condoKey
+      })
+
+      const dadosParaSalvar = {
+        condominio: nomeCondo,
+        apt: item.apt,
+        bloco: item.bloco || '',
+        nome: item.nome,
+        tel: item.tel || '',
+        email: item.email || '',
+        cpf: item.cpf || '',
+        status: item.status || 'Proprietário',
+        cadastroCompleto: Boolean(existente?.cadastroCompleto),
+        _updatedAt: new Date().toISOString()
+      }
+
+      if (existente) {
+        await updateItem(existente.id, {
+          ...existente,
+          ...dadosParaSalvar,
+          nome: item.nome || existente.nome,
+          tel: item.tel || existente.tel
+        })
+        atualizados++
+      } else {
+        await addItem({
+          ...dadosParaSalvar,
+          _createdAt: new Date().toISOString()
+        })
+        cadastrados++
+      }
+    }
+
+    setFiltroCondominio(nomeCondo)
+    alert(`🎉 Importação Concluída com Sucesso!\n\n🏢 Condomínio: ${nomeCondo}\n✅ ${cadastrados} novas unidades cadastradas\n🔄 ${atualizados} unidades atualizadas.\n\nAgora você já pode copiar os links ou convidar os moradores pelo WhatsApp!`)
+  }
+
   const handleDeleteMorador = async (m) => {
     if (!window.confirm(`Deseja realmente remover o morador "${m.nome}"?`)) return
     try {
@@ -306,6 +798,34 @@ export default function Moradores() {
               </button>
             </div>
           )}
+          {!isMorador && (
+            <>
+              <button
+                onClick={() => setModalImport(true)}
+                className="btn-secondary text-xs font-black flex items-center gap-1.5 bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100 shadow-sm"
+                title="Importar lista de apartamentos e moradores via arquivo ou planilha"
+              >
+                <FileSpreadsheet size={15} className="text-emerald-700" /> Importar Lista (.CSV)
+              </button>
+
+              <button
+                onClick={() => {
+                  const cNome = filtroCondominio !== 'Todos' ? filtroCondominio : (allCondominios[0]?.nome || '')
+                  const link = gerarLinkCadastro({ condominio: cNome })
+                  setModalShareLink({
+                    link,
+                    titulo: `Link de Auto-Cadastro ${cNome ? `• ${cNome}` : ''}`,
+                    descricao: 'Envie para os moradores entrarem e completarem o cadastro na unidade deles'
+                  })
+                }}
+                className="btn-secondary text-xs font-bold flex items-center gap-1.5 bg-white text-gray-700 border-gray-300 hover:bg-slate-50 shadow-sm"
+                title="Copiar link geral de cadastro para enviar aos moradores"
+              >
+                <Share2 size={14} className="text-brand-600" /> Link Geral de Cadastro
+              </button>
+            </>
+          )}
+
           <button
             onClick={() => {
               setTargetUnidade(null)
@@ -402,59 +922,130 @@ export default function Moradores() {
                     </div>
 
                     {!isMorador && (
-                      <button
-                        onClick={() => {
-                          setTargetUnidade(u)
-                          setModal('new')
-                        }}
-                        className="px-3 py-1.5 bg-white hover:bg-brand-50 text-brand-700 border border-brand-200 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm shrink-0"
-                      >
-                        <Plus size={14} /> Adicionar Membro neste Apt
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={() => {
+                            const titular = titulares[0] || u.moradores[0]
+                            const link = gerarLinkCadastro({
+                              condominio: u.condominio,
+                              apt: u.apt,
+                              bloco: u.bloco,
+                              nome: titular?.nome || '',
+                              tel: titular?.tel || ''
+                            })
+                            setModalShareLink({
+                              link,
+                              titulo: `Link do Apt ${u.apt} ${u.bloco ? `• Bloco ${u.bloco}` : ''}`,
+                              descricao: `Condomínio ${u.condominio} • Envie para o morador acessar e completar os dados`
+                            })
+                          }}
+                          className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-gray-700 border border-gray-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm shrink-0"
+                          title="Copiar link exclusivo deste apartamento"
+                        >
+                          <Share2 size={13} className="text-brand-600" /> Link deste Apt
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setTargetUnidade(u)
+                            setModal('new')
+                          }}
+                          className="px-3 py-1.5 bg-white hover:bg-brand-50 text-brand-700 border border-brand-200 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm shrink-0"
+                        >
+                          <Plus size={14} /> Adicionar Membro
+                        </button>
+                      </div>
                     )}
                   </div>
 
                   {/* Corpo: Membros da Família */}
                   <div className="p-4 divide-y divide-gray-100">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pb-3">
-                      {u.moradores.map(m => (
-                        <div key={m.id} className="p-3 bg-slate-50/60 hover:bg-slate-50 rounded-xl border border-gray-200 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            {m.fotoRosto ? (
-                              <img
-                                src={m.fotoRosto}
-                                alt={m.nome}
-                                className="w-10 h-10 rounded-full object-cover shadow-sm border border-brand-300 shrink-0 cursor-pointer"
-                                onClick={() => window.open(m.fotoRosto, '_blank')}
-                                title="Ver foto facial"
-                              />
-                            ) : (
-                              <div className="w-10 h-10 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-sm font-black shrink-0">
-                                {m.nome?.[0] || '?'}
+                      {u.moradores.map(m => {
+                        const linkIndividual = gerarLinkCadastro({
+                          condominio: u.condominio,
+                          apt: u.apt,
+                          bloco: u.bloco,
+                          nome: m.nome,
+                          tel: m.tel
+                        })
+
+                        const rawTel = String(m.tel || '').replace(/\D/g, '')
+                        const temWhats = rawTel.length >= 8
+
+                        const handleWhatsConvite = () => {
+                          const msg = `*Alpha Soluções Condominiais*\n\nOlá *${m.nome}*!\n\nVocê foi pré-cadastrado no condomínio *${u.condominio}*, na unidade *Apt ${u.apt}*.\n\nPara concluir seu cadastro e ter acesso imediato à sua área do morador, boletos e solicitações, clique no link seguro abaixo:\n\n${linkIndividual}`
+                          const foneWhats = rawTel.length <= 11 ? `55${rawTel}` : rawTel
+                          window.open(`https://wa.me/${foneWhats}?text=${encodeURIComponent(msg)}`, '_blank')
+                        }
+
+                        return (
+                          <div key={m.id} className="p-3 bg-slate-50/60 hover:bg-slate-50 rounded-xl border border-gray-200 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              {m.fotoRosto ? (
+                                <img
+                                  src={m.fotoRosto}
+                                  alt={m.nome}
+                                  className="w-10 h-10 rounded-full object-cover shadow-sm border border-brand-300 shrink-0 cursor-pointer"
+                                  onClick={() => window.open(m.fotoRosto, '_blank')}
+                                  title="Ver foto facial"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-sm font-black shrink-0">
+                                  {m.nome?.[0] || '?'}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <p className="font-bold text-gray-900 text-xs truncate">{m.nome}</p>
+                                </div>
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${m.status === 'Proprietário' ? 'bg-blue-100 text-blue-800' : m.status === 'Inquilino' ? 'bg-emerald-100 text-emerald-800' : 'bg-purple-100 text-purple-800'}`}>
+                                    {m.status}
+                                  </span>
+                                  {m.cpf ? (
+                                    <span className="text-[10px] text-gray-400 font-mono">CPF: {m.cpf}</span>
+                                  ) : (
+                                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1 rounded">Pré-cadastro</span>
+                                  )}
+                                </div>
+                                {m.tel && <p className="text-[11px] text-gray-500 flex items-center gap-1 mt-1"><Phone size={10} /> {m.tel}</p>}
                               </div>
-                            )}
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <p className="font-bold text-gray-900 text-xs truncate">{m.nome}</p>
-                              </div>
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${m.status === 'Proprietário' ? 'bg-blue-100 text-blue-800' : m.status === 'Inquilino' ? 'bg-emerald-100 text-emerald-800' : 'bg-purple-100 text-purple-800'}`}>
-                                  {m.status}
-                                </span>
-                                {m.cpf && <span className="text-[10px] text-gray-400 font-mono">CPF: {m.cpf}</span>}
-                              </div>
-                              {m.tel && <p className="text-[11px] text-gray-500 flex items-center gap-1 mt-1"><Phone size={10} /> {m.tel}</p>}
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {!isMorador && temWhats && (
+                                <button
+                                  onClick={handleWhatsConvite}
+                                  className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm"
+                                  title="Enviar convite e link de cadastro pelo WhatsApp"
+                                >
+                                  <MessageSquare size={13} />
+                                </button>
+                              )}
+                              {!isMorador && (
+                                <button
+                                  onClick={() => {
+                                    setModalShareLink({
+                                      link: linkIndividual,
+                                      titulo: `Link de ${m.nome}`,
+                                      descricao: `Apt ${u.apt} • Condomínio ${u.condominio}`
+                                    })
+                                  }}
+                                  className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-gray-500 hover:text-brand-700 border border-gray-200 shadow-sm"
+                                  title="Copiar link pré-configurado deste morador"
+                                >
+                                  <Share2 size={12} />
+                                </button>
+                              )}
+                              <button onClick={() => setModal(m)} className="p-1.5 rounded-lg bg-white hover:bg-brand-100 text-gray-400 hover:text-brand-700 border border-gray-200 shadow-sm" title="Editar"><Edit2 size={12} /></button>
+                              {(!isMorador || m.status !== 'Proprietário') && (
+                                <button onClick={() => handleDeleteMorador(m)} className="p-1.5 rounded-lg bg-white hover:bg-red-100 text-gray-400 hover:text-red-500 border border-gray-200 shadow-sm" title="Remover"><Trash2 size={12} /></button>
+                              )}
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button onClick={() => setModal(m)} className="p-1.5 rounded-lg bg-white hover:bg-brand-100 text-gray-400 hover:text-brand-700 border border-gray-200 shadow-sm" title="Editar"><Edit2 size={12} /></button>
-                            {(!isMorador || m.status !== 'Proprietário') && (
-                              <button onClick={() => handleDeleteMorador(m)} className="p-1.5 rounded-lg bg-white hover:bg-red-100 text-gray-400 hover:text-red-500 border border-gray-200 shadow-sm" title="Remover"><Trash2 size={12} /></button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
 
                     {/* Pets do Apartamento */}
@@ -558,6 +1149,23 @@ export default function Moradores() {
           onClose={() => setModalPet(null)}
           onSave={handleSavePet}
           currentUser={user}
+        />
+      )}
+
+      {modalImport && (
+        <ModalImportarUnidades
+          condominios={allCondominios}
+          onImport={handleImportLote}
+          onClose={() => setModalImport(false)}
+        />
+      )}
+
+      {modalShareLink && (
+        <ModalCompartilharLink
+          link={modalShareLink.link}
+          titulo={modalShareLink.titulo}
+          descricao={modalShareLink.descricao}
+          onClose={() => setModalShareLink(null)}
         />
       )}
     </div>
