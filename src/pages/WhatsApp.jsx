@@ -11,7 +11,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { storage } from '../firebase'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { enviarBoletoWhatsAppAuto } from '../utils/whatsappAutomacao'
+import { enviarBoletoWhatsAppAuto, enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
 
 export default function WhatsApp() {
   const { user } = useAuth()
@@ -152,28 +152,15 @@ export default function WhatsApp() {
         }
       }
 
-      const res = await fetch('/api/whatsapp-send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          number: tel,
-          text: mensagem,
-          mediaBase64: base64ToSend || undefined,
-          mediaUrl: mediaUrl || undefined,
-          fileName: arquivoPdfNome || 'Documento_Condominial.pdf',
-          instance: instance
-        })
+      const data = await enviarMensagemWhatsApp({
+        number: tel,
+        text: mensagem,
+        mediaBase64: base64ToSend || undefined,
+        fileName: arquivoPdfNome || 'Documento_Condominial.pdf',
+        instance: instance
       })
 
-      const rawText = await res.text()
-      let data
-      try {
-        data = JSON.parse(rawText)
-      } catch(parseErr) {
-        throw new Error(rawText || 'Resposta inválida do servidor')
-      }
-
-      if (data.success) {
+      if (data && data.success) {
         alert(`🎉 Mensagem ${arquivoPdfFile || arquivoPdfBase64 ? 'com o Boleto em PDF ' : ''}enviada com sucesso para ${nomeDestino || tel}!`)
         setLogsEnvio(prev => [{
           hora: new Date().toLocaleTimeString('pt-BR'),
@@ -200,7 +187,7 @@ export default function WhatsApp() {
         setArquivoPdfBase64(null)
         setArquivoPdfNome('')
       } else {
-        alert(`Erro ao enviar: ${data.error || 'Verifique se o WhatsApp está conectado na instância.'}`)
+        alert(`Erro ao enviar: ${data?.error || 'Verifique se o WhatsApp está conectado na instância.'}`)
       }
     } catch (err) {
       console.error(err)
@@ -251,18 +238,16 @@ export default function WhatsApp() {
         .replace(/{apt}/g, m.apt ? `Apt ${m.apt}` : '')
 
       try {
-        await fetch('/api/whatsapp-send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            number: tel,
-            text: msgPersonalizada,
-            mediaBase64: base64Lote || undefined,
-            fileName: arquivoPdfNome || 'Comunicado_Condominio.pdf',
-            instance: instance
-          })
+        const resEnvio = await enviarMensagemWhatsApp({
+          number: tel,
+          text: msgPersonalizada,
+          mediaBase64: base64Lote || undefined,
+          fileName: arquivoPdfNome || 'Comunicado_Condominio.pdf',
+          instance: instance
         })
-        enviados++
+        if (resEnvio && resEnvio.success) {
+          enviados++
+        }
       } catch (err) {
         console.error(`Erro ao enviar para ${m.nome}:`, err)
       }

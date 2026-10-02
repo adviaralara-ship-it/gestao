@@ -103,6 +103,99 @@ export async function enviarBoletoWhatsAppAuto(boleto, morador, condoDoc, custom
 }
 
 /**
+ * Função universal para disparo de mensagens e mídias via WhatsApp (com fallback direto na Evolution API)
+ */
+export async function enviarMensagemWhatsApp({ number, text, mediaBase64, fileName, instance = 'InstanciaAlpha' }) {
+  const rawTel = String(number || '').trim()
+  const isGroupJid = rawTel.includes('@g.us')
+  const cleanNumber = isGroupJid ? rawTel : rawTel.replace(/\D/g, '')
+  const finalNumber = isGroupJid ? cleanNumber : (cleanNumber.startsWith('55') ? cleanNumber : `55${cleanNumber}`)
+
+  if (!finalNumber || (!isGroupJid && finalNumber.length < 10)) {
+    return { success: false, error: 'Número de WhatsApp inválido.' }
+  }
+
+  const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live'
+  const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb'
+
+  // 1. Tenta rota do backend serverless
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 18000)
+    const res = await fetch('/api/whatsapp-send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        number: finalNumber,
+        text,
+        mediaBase64,
+        fileName,
+        instance
+      }),
+      signal: controller.signal
+    })
+    clearTimeout(timeoutId)
+    if (res.ok) {
+      const data = await res.json()
+      if (data && data.success) return data
+    }
+  } catch (errServerless) {
+    console.warn('Backend serverless falhou, acionando Evolution direto:', errServerless)
+  }
+
+  // 2. Fallback direto Evolution API
+  try {
+    if (mediaBase64) {
+      const rawMedia = mediaBase64.includes(',') ? mediaBase64.split(',')[1] : mediaBase64
+      const resDirect = await fetch(`${EVOLUTION_URL}/message/sendMedia/${instance}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': API_KEY
+        },
+        body: JSON.stringify({
+          number: finalNumber,
+          mediatype: 'document',
+          mimetype: 'application/pdf',
+          caption: text || '',
+          media: rawMedia.replace(/\s+/g, ''),
+          fileName: fileName || 'Documento.pdf'
+        })
+      })
+      if (resDirect.ok) {
+        const directData = await resDirect.json()
+        return { success: true, data: directData }
+      } else {
+        const errJson = await resDirect.json().catch(() => ({}))
+        return { success: false, error: errJson?.response?.message || errJson?.message || 'Falha no envio da mídia via Evolution' }
+      }
+    } else {
+      const resDirect = await fetch(`${EVOLUTION_URL}/message/sendText/${instance}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': API_KEY
+        },
+        body: JSON.stringify({
+          number: finalNumber,
+          text: text || ''
+        })
+      })
+      if (resDirect.ok) {
+        const directData = await resDirect.json()
+        return { success: true, data: directData }
+      } else {
+        const errJson = await resDirect.json().catch(() => ({}))
+        return { success: false, error: errJson?.response?.message || errJson?.message || 'Falha no envio de texto via Evolution' }
+      }
+    }
+  } catch (errDirect) {
+    console.error('Erro na conexão direta com a Evolution API:', errDirect)
+    return { success: false, error: errDirect.message || 'Erro de conexão com o WhatsApp' }
+  }
+}
+
+/**
  * Envia a notificacao de uma NOVA ENQUETE para o grupo de WhatsApp do condominio.
  * A votacao oficial continua 100% dentro do ERP (Firestore); o WhatsApp serve
  * apenas para notificar e direcionar os moradores para a pagina de enquetes.
@@ -128,23 +221,9 @@ export async function enviarEnqueteWhatsAppGrupo(enquete, condoDoc) {
     : 'https://alpha-solucoes-condominiais.vercel.app'
   const enqueteId = enquete?.id || enquete?._id || ''
   const linkEnquetes = enqueteId ? `${origin}/votacao/${enqueteId}` : `${origin}/votacao`
-  const textoFinal = `\u{1F4CA} *NOVA ENQUETE NO CONDOMINIO!*\n\n\u{1F3E2} *Condominio:* ${condoDoc?.nome || '—'}\n\u2753 *Pergunta:* ${pergunta}\n\n\u{1F5F3}\uFE0F *Opcoes de voto:*\n${listaOpcoes}\n\n\u23F0 *Votacao ate:* ${dataFmt}\n\n\u{1F449} *Vote pelo sistema (registro oficial):*\n${linkEnquetes}\n\n_Respostas neste grupo NAO sao computadas. O voto valido e apenas pelo link acima._\n\nAtenciosamente,\n*Alpha Solucoes Condominiais*`
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000)
-    const res = await fetch('/api/whatsapp-send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ number: grupo, text: textoFinal, instance: 'InstanciaAlpha' }),
-      signal: controller.signal
-    })
-    clearTimeout(timeoutId)
-    const data = await res.json()
-    return data
-  } catch (err) {
-    console.error('Erro no envio de enquete via WhatsApp:', err)
-    return { success: false, error: err.message || 'Tempo limite esgotado no envio' }
-  }
+  const textoFinal = `📊 *NOVA ENQUETE NO CONDOMINIO!*\n\n🏢 *Condominio:* ${condoDoc?.nome || '—'}\n❓ *Pergunta:* ${pergunta}\n\n🗳️ *Opcoes de voto:*\n${listaOpcoes}\n\n⏰ *Votacao ate:* ${dataFmt}\n\n👉 *Vote pelo sistema (registro oficial):*\n${linkEnquetes}\n\n_Respostas neste grupo NAO sao computadas. O voto valido e apenas pelo link acima._\n\nAtenciosamente,\n*Alpha Solucoes Condominiais*`
+  
+  return await enviarMensagemWhatsApp({ number: grupo, text: textoFinal, instance: 'InstanciaAlpha' })
 }
 
 /**

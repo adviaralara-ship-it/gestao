@@ -1238,7 +1238,10 @@ export default function Boletos() {
 
   const [tab, setTab] = useState('boletos')
   const [condoFilter, setCondoFilter] = useState('Todos')
-  const [competenciaFilter, setCompetenciaFilter] = useState('Todas')
+  const [competenciaFilter, setCompetenciaFilter] = useState(() => {
+    const d = new Date()
+    return d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '/')
+  })
   const [statusFilter, setStatusFilter] = useState('Todos')
   const [viewing, setViewing] = useState(null)
   const [modal, setModal] = useState(null)
@@ -1541,6 +1544,8 @@ export default function Boletos() {
   // Lista única de competências presentes nos boletos para o filtro de mês
   const uniqueCompetencias = React.useMemo(() => {
     const setComp = new Set()
+    const mesAtual = new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '/')
+    setComp.add(mesAtual)
     allBoletos.forEach(b => {
       const c = (b.competencia || '').trim()
       if (c) setComp.add(c)
