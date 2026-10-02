@@ -319,12 +319,8 @@ function ModalImportarUnidades({ condominios = [], onImport, onClose }) {
     const parsed = []
 
     for (let i = startIdx; i < lines.length; i++) {
-      const line = lines[i]
+      let line = lines[i]
       if (!line) continue
-
-      // Divide linha pelas colunas
-      const parts = line.split(bestSep).map(p => p.trim().replace(/^["']|["']$/g, ''))
-      if (parts.length === 0 || (parts.length === 1 && !parts[0])) continue
 
       let apt = ''
       let nome = ''
@@ -333,36 +329,81 @@ function ModalImportarUnidades({ condominios = [], onImport, onClose }) {
       let email = ''
       let cpf = ''
 
-      if (colApt !== -1 || colNome !== -1) {
-        if (colApt !== -1 && parts[colApt]) apt = parts[colApt]
-        if (colNome !== -1 && parts[colNome]) nome = parts[colNome]
-        if (colTel !== -1 && parts[colTel]) tel = parts[colTel]
-        if (colBloco !== -1 && parts[colBloco]) bloco = parts[colBloco]
-        if (colEmail !== -1 && parts[colEmail]) email = parts[colEmail]
-        if (colCpf !== -1 && parts[colCpf]) cpf = parts[colCpf]
-      } else {
-        // Modo heurístico / tolerante sem cabeçalho:
-        // Padrão 1: Apt, Nome, Telefone, Bloco
-        // Se a primeira coluna tiver apenas dígitos/números de apartamento (ex: "101", "Apt 101", "101-A")
-        if (/^(apt|ap|bl|casa)?\s*\d+[a-zA-Z]?$/i.test(parts[0]) || /^\d+$/.test(parts[0].replace(/\D/g, ''))) {
-          apt = parts[0].replace(/^(apt|ap|unidade)\s*/i, '').trim()
-          nome = parts[1] || `Morador Apt ${apt}`
-          tel = parts[2] || ''
-          bloco = parts[3] || ''
+      // ── PADRÃO 1: Linha textual com palavras-chave (Ex: "1. Unidade: 101 Morador(a): ANDRESSA MOREIRA" ou com "Bloco: A") ──
+      // Remove numeração de lista no início como "1. ", "01 - ", "1) "
+      const cleanLine = line.replace(/^\s*\d+[\s.)-]+\s*/i, '').trim()
+
+      if (/unidade|morador|apartamento|bloco/i.test(cleanLine)) {
+        // Extrai Bloco se houver: "Bloco: A", "Bl. B", "Bloco 2"
+        const mBloco = cleanLine.match(/(?:bloco|bl\.?|torre)\s*[:=-]?\s*([a-zA-Z0-9]+)/i)
+        if (mBloco) bloco = mBloco[1]
+
+        // Extrai Unidade / Apartamento: "Unidade: 101", "Apt 101", "Apartamento: 204"
+        const mApt = cleanLine.match(/(?:unidade|apartamento|apto?\.?|apt\.?)\s*[:=-]?\s*([a-zA-Z0-9-]+)/i)
+        if (mApt) apt = mApt[1]
+
+        // Extrai Morador: "Morador(a): NOME", "Morador: NOME", "Nome: NOME"
+        const mNome = cleanLine.match(/(?:morador(?:\(a\))?|nome|respons[aá]vel)\s*(?:\(a\))?\s*[:=-]?\s*([^,\n;]+)/i)
+        if (mNome) {
+          // Remove trechos adicionais caso tenha telefone ou bloco no final
+          nome = mNome[1]
+            .replace(/(?:telefone|tel|cel|whats|whatsapp|bloco|torre)\s*[:=-]?.*$/i, '')
+            .trim()
+        }
+
+        // Extrai Telefone se houver
+        const mTel = cleanLine.match(/(?:tel|telefone|cel|whats|whatsapp)\s*[:=-]?\s*([\d()\s+-]+)/i)
+        if (mTel) tel = mTel[1]
+      }
+
+      // ── PADRÃO 2: Colunas delimitadas por CSV / Tabela / Tabulação se não extraiu por texto ──
+      if (!apt && !nome) {
+        // Divide linha pelas colunas
+        const parts = line.split(bestSep).map(p => p.trim().replace(/^["']|["']$/g, ''))
+        if (parts.length === 0 || (parts.length === 1 && !parts[0])) continue
+
+        if (colApt !== -1 || colNome !== -1) {
+          if (colApt !== -1 && parts[colApt]) apt = parts[colApt]
+          if (colNome !== -1 && parts[colNome]) nome = parts[colNome]
+          if (colTel !== -1 && parts[colTel]) tel = parts[colTel]
+          if (colBloco !== -1 && parts[colBloco]) bloco = parts[colBloco]
+          if (colEmail !== -1 && parts[colEmail]) email = parts[colEmail]
+          if (colCpf !== -1 && parts[colCpf]) cpf = parts[colCpf]
         } else {
-          // Padrão 2: Nome, Apt, Telefone, Bloco
-          nome = parts[0]
-          apt = (parts[1] || '').replace(/^(apt|ap|unidade)\s*/i, '').trim()
-          tel = parts[2] || ''
-          bloco = parts[3] || ''
+          // Modo heurístico sem cabeçalho:
+          // Padrão A: Apt, Nome, Telefone, Bloco
+          if (/^(apt|ap|bl|casa)?\s*\d+[a-zA-Z]?$/i.test(parts[0]) || /^\d+$/.test(parts[0].replace(/\D/g, ''))) {
+            apt = parts[0].replace(/^(apt|ap|unidade)\s*/i, '').trim()
+            nome = parts[1] || `Morador Apt ${apt}`
+            tel = parts[2] || ''
+            bloco = parts[3] || ''
+          } else {
+            // Padrão B: Nome, Apt, Telefone, Bloco
+            nome = parts[0]
+            apt = (parts[1] || '').replace(/^(apt|ap|unidade)\s*/i, '').trim()
+            tel = parts[2] || ''
+            bloco = parts[3] || ''
+          }
         }
       }
 
-      // Normaliza
-      apt = String(apt || '').trim()
-      nome = String(nome || '').trim().toUpperCase()
+      // Limpeza e Normalização Final
+      apt = String(apt || '')
+        .replace(/^(unidade|apartamento|apt|ap)\s*[:=-]?\s*/i, '')
+        .trim()
+
+      nome = String(nome || '')
+        .replace(/^(morador(?:\(a\))?|nome)\s*(?:\(a\))?\s*[:=-]?\s*/i, '')
+        .replace(/^[0-9]+[\s.)-]+\s*/, '')
+        .trim()
+        .toUpperCase()
+
+      bloco = String(bloco || '')
+        .replace(/^(bloco|bl\.?|torre)\s*[:=-]?\s*/i, '')
+        .trim()
+        .toUpperCase()
+
       tel = String(tel || '').trim()
-      bloco = String(bloco || '').trim().toUpperCase()
       cpf = String(cpf || '').replace(/\D/g, '')
 
       if (apt) {
@@ -505,17 +546,21 @@ function ModalImportarUnidades({ condominios = [], onImport, onClose }) {
             ) : (
               <div>
                 <textarea
-                  rows={5}
+                  rows={6}
                   value={textoColado}
                   onChange={e => {
                     setTextoColado(e.target.value)
                     processarTexto(e.target.value)
                   }}
                   className="input font-mono text-xs w-full p-3 bg-slate-50"
-                  placeholder="Cole aqui linhas da sua planilha (ex: 101, João da Silva, 83999999999, Bloco A)..."
+                  placeholder={`Exemplos aceitos:
+1. Unidade: 101 Morador(a): ANDRESSA MARIA MOREIRA PALITOT
+2. Unidade: 102 Bloco: A Morador(a): LUAN ACCIOLY MARTINS
+ou colunas de planilha:
+101, ANDRESSA MARIA, 83999999999, Bloco A`}
                 />
-                <p className="text-[11px] text-gray-400 mt-1">
-                  Dica: Você pode copiar direto do Excel ou Google Sheets e colar aqui. O sistema detecta colunas separadas por vírgula, ponto-e-vírgula ou tabulação.
+                <p className="text-[11px] text-gray-500 mt-1">
+                  💡 Aceita formato de lista (ex: <i>1. Unidade: 101 Morador(a): Nome</i>) ou colunas copiadas do Excel/Google Planilhas. O sistema extrai e preenche o <b>Nome</b>, <b>Apartamento</b> e <b>Bloco</b> no lugar correto automaticamente.
                 </p>
               </div>
             )}
