@@ -672,12 +672,13 @@ function ModalFundo({ condo, onClose, onSave }) {
   )
 }
 
-function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, onSave }) {
+function ModalGerarLote({ condominios, moradores, allBoletos = [], initialCondo = '', onClose, onSave }) {
   const condominiosValidos = (condominios || []).filter(c => c && c.nome && c.nome.trim())
   const initialSelectedCondo = (initialCondo && condominiosValidos.find(c => c.nome === initialCondo)) || condominiosValidos[0] || null
   const initialCondoName = initialSelectedCondo?.nome || ''
 
   const [condoNome, setCondoNome] = useState(initialCondoName)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const condoSelecionado = condominiosValidos.find(c => c.nome === condoNome) || initialSelectedCondo
 
   const [valorStr, setValorStr] = useState(() => {
@@ -823,7 +824,9 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
     u.moradores.some(m => selecionados.includes(m.id))
   )
 
-  const handleGerar = () => {
+  const handleGerar = async () => {
+    if (isSubmitting) return
+
     const valorPadraoNum = typeof valorStr === 'number' ? valorStr : (parseFloat(String(valorStr || '').replace(/\./g, '').replace(',', '.')) || 0)
     let taxaNum = typeof taxaStr === 'number' ? taxaStr : (parseFloat(String(taxaStr || '').replace(/\./g, '').replace(',', '.')) || 3.50)
     if (taxaNum <= 0 && discriminarTaxa) taxaNum = 3.50
@@ -841,51 +844,82 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
       return
     }
 
-    // Gera 1 único boleto contábil por unidade no nome do Titular, incluindo a lista de todos os contatos selecionados para envio
-    const listaParaCriar = unidadesSelecionadas.map(u => {
-      const titular = u.titular || u.moradores[0]
-      const valUnidadeRaw = valoresCustom[u.apt] !== undefined ? valoresCustom[u.apt] : valorStr
-      const valFinal = typeof valUnidadeRaw === 'number' ? valUnidadeRaw : (parseFloat(String(valUnidadeRaw || '').replace(/\./g, '').replace(',', '.')) || valorPadraoNum)
+    // Verifica se já existem boletos gerados para o condomínio e competência selecionados
+    const compNormalizada = (competencia || '').trim().toLowerCase()
+    const cTarget = normalizeCondo(condoNome)
+    const boletosExistentes = (allBoletos || []).filter(b => {
+      const bCondo = normalizeCondo(b.condominio)
+      const bComp = (b.competencia || '').trim().toLowerCase()
+      return bCondo === cTarget && bComp === compNormalizada
+    })
 
-      // Contatos selecionados desta unidade que receberão o WhatsApp
-      const contatosEnvio = u.moradores
-        .filter(m => selecionados.includes(m.id))
-        .map(m => ({
-          moradorId: m.id,
-          nome: m.nome,
-          tel: m.tel || m.telefone || m.whatsapp || m.celular || m.fone || '',
-          vinculo: m.status || m.tipo || 'Morador'
-        }))
-        .filter(c => c.tel && c.tel.replace(/\D/g, '').length >= 8)
-
-      return {
-        moradorId: titular?.id || '',
-        morador: titular?.nome || `Morador Apt ${u.apt}`,
-        cpf: titular?.cpf || '',
-        telefone: titular?.tel || titular?.telefone || titular?.whatsapp || '',
-        email: titular?.email || '',
-        apt: u.apt,
-        bloco: u.bloco || titular?.bloco || '',
-        condominio: condoNome,
-        cnpjCondominio: condoSelecionado?.cnpj || '',
-        competencia,
-        vencimento,
-        valor: valFinal,
-        valorOriginal: valFinal,
-        chave_pix: chavePix,
-        status: 'Pendente',
-        emitido: true,
-        discriminarTaxa: Boolean(discriminarTaxa),
-        taxaEmissao: discriminarTaxa ? taxaNum : 0,
-        nomeTaxa: nomeTaxa || 'Serviço de Cobrança Digital',
-        linha: gerarLinhaDigitavel(u.apt, valFinal, vencimento),
-        pix_emv: generateStaticPix(chavePix, valFinal, condoNome, "BR"),
-        contatosEnvio: contatosEnvio,
-        _createdAt: new Date().toISOString()
+    const aptsDuplicados = []
+    unidadesSelecionadas.forEach(u => {
+      const aptKey = String(u.apt).trim().toLowerCase()
+      const jaExiste = boletosExistentes.some(b => String(b.apt || b.unidade || '').trim().toLowerCase() === aptKey)
+      if (jaExiste) {
+        aptsDuplicados.push(u.apt)
       }
     })
 
-    onSave(listaParaCriar, enviarWhatsAppAuto)
+    if (aptsDuplicados.length > 0) {
+      const msgDuplicados = `⚠️ Atenção! Já existem boletos gerados para a competência "${competencia}" no condomínio "${condoNome}" para os seguintes apartamentos:\n\n${aptsDuplicados.map(a => `• Apt ${a}`).join('\n')}\n\nDeseja continuar mesmo assim e sobrescrever/gerar novamente?`
+      if (!window.confirm(msgDuplicados)) {
+        return
+      }
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      // Gera 1 único boleto contábil por unidade no nome do Titular, incluindo a lista de todos os contatos selecionados para envio
+      const listaParaCriar = unidadesSelecionadas.map(u => {
+        const titular = u.titular || u.moradores[0]
+        const valUnidadeRaw = valoresCustom[u.apt] !== undefined ? valoresCustom[u.apt] : valorStr
+        const valFinal = typeof valUnidadeRaw === 'number' ? valUnidadeRaw : (parseFloat(String(valUnidadeRaw || '').replace(/\./g, '').replace(',', '.')) || valorPadraoNum)
+
+        // Contatos selecionados desta unidade que receberão o WhatsApp
+        const contatosEnvio = u.moradores
+          .filter(m => selecionados.includes(m.id))
+          .map(m => ({
+            moradorId: m.id,
+            nome: m.nome,
+            tel: m.tel || m.telefone || m.whatsapp || m.celular || m.fone || '',
+            vinculo: m.status || m.tipo || 'Morador'
+          }))
+          .filter(c => c.tel && c.tel.replace(/\D/g, '').length >= 8)
+
+        return {
+          moradorId: titular?.id || '',
+          morador: titular?.nome || `Morador Apt ${u.apt}`,
+          cpf: titular?.cpf || '',
+          telefone: titular?.tel || titular?.telefone || titular?.whatsapp || '',
+          email: titular?.email || '',
+          apt: u.apt,
+          bloco: u.bloco || titular?.bloco || '',
+          condominio: condoNome,
+          cnpjCondominio: condoSelecionado?.cnpj || '',
+          competencia,
+          vencimento,
+          valor: valFinal,
+          valorOriginal: valFinal,
+          chave_pix: chavePix,
+          status: 'Pendente',
+          emitido: true,
+          discriminarTaxa: Boolean(discriminarTaxa),
+          taxaEmissao: discriminarTaxa ? taxaNum : 0,
+          nomeTaxa: nomeTaxa || 'Serviço de Cobrança Digital',
+          linha: gerarLinhaDigitavel(u.apt, valFinal, vencimento),
+          pix_emv: generateStaticPix(chavePix, valFinal, condoNome, "BR"),
+          contatosEnvio: contatosEnvio,
+          _createdAt: new Date().toISOString()
+        }
+      })
+
+      await onSave(listaParaCriar, enviarWhatsAppAuto)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -1176,12 +1210,13 @@ function ModalGerarLote({ condominios, moradores, initialCondo = '', onClose, on
 
         {/* Rodapé com botão de ação */}
         <div className="p-4 sm:p-5 border-t border-gray-200 bg-white flex items-center justify-between gap-3 shrink-0">
-          <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
+          <button onClick={onClose} disabled={isSubmitting} className="btn-secondary text-xs">Cancelar</button>
           <button
             onClick={handleGerar}
-            className="btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-700/20 py-2.5 px-5 flex items-center gap-2 cursor-pointer"
+            disabled={isSubmitting}
+            className={`btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-700/20 py-2.5 px-5 flex items-center gap-2 ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
-            <CheckCircle2 size={16} /> Gerar {unidadesSelecionadas.length} {unidadesSelecionadas.length === 1 ? 'Boleto' : 'Boletos'} ({selecionados.length} envios de WhatsApp)
+            <CheckCircle2 size={16} /> {isSubmitting ? 'Processando...' : `Gerar ${unidadesSelecionadas.length} ${unidadesSelecionadas.length === 1 ? 'Boleto' : 'Boletos'} (${selecionados.length} envios de WhatsApp)`}
           </button>
         </div>
 
@@ -1203,6 +1238,7 @@ export default function Boletos() {
 
   const [tab, setTab] = useState('boletos')
   const [condoFilter, setCondoFilter] = useState('Todos')
+  const [competenciaFilter, setCompetenciaFilter] = useState('Todas')
   const [statusFilter, setStatusFilter] = useState('Todos')
   const [viewing, setViewing] = useState(null)
   const [modal, setModal] = useState(null)
@@ -1220,15 +1256,47 @@ export default function Boletos() {
     let falhasWhats = 0
 
     try {
-      // 1. Salva todos os boletos primeiro no Firestore
+      // 1. Salva todos os boletos primeiro no Firestore (com validação anti-duplicidade)
       const boletosSalvos = []
       for (let i = 0; i < lista.length; i++) {
         try {
           const b = lista[i]
-          const docRef = await addItem(b)
-          const novoBoleto = { ...b, id: docRef?.id || b.id }
-          boletosSalvos.push(novoBoleto)
-          criados++
+          
+          // Verifica se já existe um boleto com mesmo condomínio, apartamento e competência
+          const bApt = String(b.apt || b.unidade || '').trim().toLowerCase()
+          const bComp = (b.competencia || '').trim().toLowerCase()
+          const bCondo = (b.condominio || '').trim().toLowerCase()
+
+          const jaExiste = (allBoletos || []).find(existente => {
+            const eApt = String(existente.apt || existente.unidade || '').trim().toLowerCase()
+            const eComp = (existente.competencia || '').trim().toLowerCase()
+            const eCondo = (existente.condominio || '').trim().toLowerCase()
+            return eApt === bApt && eComp === bComp && eCondo === bCondo
+          })
+
+          if (jaExiste) {
+            // Se já existe, atualiza o boleto existente em vez de duplicar
+            await updateItem(jaExiste.id, {
+              ...jaExiste,
+              valor: b.valor,
+              valorOriginal: b.valorOriginal,
+              vencimento: b.vencimento,
+              chave_pix: b.chave_pix,
+              linha: b.linha,
+              pix_emv: b.pix_emv,
+              contatosEnvio: b.contatosEnvio,
+              discriminarTaxa: b.discriminarTaxa,
+              taxaEmissao: b.taxaEmissao,
+              nomeTaxa: b.nomeTaxa
+            })
+            boletosSalvos.push({ ...jaExiste, ...b })
+            criados++
+          } else {
+            const docRef = await addItem(b)
+            const novoBoleto = { ...b, id: docRef?.id || b.id }
+            boletosSalvos.push(novoBoleto)
+            criados++
+          }
         } catch (errDb) {
           console.error('Erro ao gravar boleto no banco:', errDb)
         }
@@ -1470,6 +1538,16 @@ export default function Boletos() {
     }
   }
 
+  // Lista única de competências presentes nos boletos para o filtro de mês
+  const uniqueCompetencias = React.useMemo(() => {
+    const setComp = new Set()
+    allBoletos.forEach(b => {
+      const c = (b.competencia || '').trim()
+      if (c) setComp.add(c)
+    })
+    return Array.from(setComp)
+  }, [allBoletos])
+
   const boletosFiltradosPorCondo = allBoletos.filter(b => {
     if (user?.role === 'Morador') {
       const uNome = (user?.nome || '').toLowerCase().trim()
@@ -1483,19 +1561,24 @@ export default function Boletos() {
       const matchApt = uAptDigits && bAptDigits && uAptDigits === bAptDigits
       const matchNome = uNome && bMorador && (uNome === bMorador || uNome.includes(bMorador) || bMorador.includes(uNome))
 
-      return matchEmail || matchApt || matchNome
+      if (!(matchEmail || matchApt || matchNome)) return false
+    } else if (['Síndico', 'Subsíndico', 'Conselheiro'].includes(user?.role)) {
+       const moradorDoc = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase());
+       const bCondo = b.condominio || moradorDoc?.condominio;
+       if (bCondo && bCondo !== user?.condominio) return false;
+    } else if (condoFilter && condoFilter !== 'Todos') {
+       const moradorDoc = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase());
+       const bCondo = b.condominio || moradorDoc?.condominio;
+       if (bCondo !== condoFilter) return false;
     }
 
-    if (['Síndico', 'Subsíndico', 'Conselheiro'].includes(user?.role)) {
-       const moradorDoc = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase());
-       const bCondo = b.condominio || moradorDoc?.condominio;
-       return !bCondo || bCondo === user?.condominio;
+    if (competenciaFilter && competenciaFilter !== 'Todas') {
+      const bComp = (b.competencia || '').trim().toLowerCase()
+      if (bComp !== competenciaFilter.trim().toLowerCase()) {
+        return false
+      }
     }
-    if (condoFilter && condoFilter !== 'Todos') {
-       const moradorDoc = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase());
-       const bCondo = b.condominio || moradorDoc?.condominio;
-       return bCondo === condoFilter;
-    }
+
     return true;
   })
 
@@ -2035,10 +2118,27 @@ export default function Boletos() {
           )}
           {(user?.role === 'Administrador' || user?.role === 'Financeiro') && uniqueCondos.length > 0 && (
             <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-0 block">Filtrar:</label>
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-0 block">Condomínio:</label>
               <select className="input text-sm py-1.5 h-auto w-44" value={condoFilter} onChange={e=>setCondoFilter(e.target.value)}>
                 <option value="Todos">Todos os Condomínios</option>
                 {uniqueCondos.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          )}
+          {tab === 'boletos' && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-0 block">Mês / Competência:</label>
+              <select 
+                className="input text-sm py-1.5 h-auto w-40 font-semibold" 
+                value={competenciaFilter} 
+                onChange={e => setCompetenciaFilter(e.target.value)}
+              >
+                <option value="Todas">📅 Todos os Meses</option>
+                {uniqueCompetencias.map(comp => (
+                  <option key={comp} value={comp}>
+                    {comp}
+                  </option>
+                ))}
               </select>
             </div>
           )}
@@ -2191,6 +2291,7 @@ export default function Boletos() {
                     <th className="table-head">Morador</th>
                     <th className="table-head">Apt/Unidade</th>
                     <th className="table-head">Condomínio</th>
+                    <th className="table-head">Competência</th>
                     <th className="table-head">Vencimento</th>
                     <th className="table-head">Valor</th>
                     <th className="table-head">Status</th>
@@ -2200,7 +2301,7 @@ export default function Boletos() {
                 </thead>
                 <tbody className="divide-y divide-cream-200">
                   {boletos.length === 0 ? (
-                    <tr><td colSpan={(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') ? 9 : 8} className="text-center py-10 text-gray-400">Nenhum boleto encontrado.</td></tr>
+                    <tr><td colSpan={(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') ? 10 : 9} className="text-center py-10 text-gray-400">Nenhum boleto encontrado.</td></tr>
                   ) : (
                     boletos.map(b => (
                       <tr key={b.id} className={`hover:bg-cream-50 transition-colors ${selectedIds.includes(b.id) ? 'bg-indigo-50/40' : ''}`}>
@@ -2219,6 +2320,11 @@ export default function Boletos() {
                         <td className="table-cell">
                           <span className="bg-slate-100 text-slate-800 text-[11px] font-bold px-2 py-0.5 rounded-lg border border-slate-200 inline-block truncate max-w-[150px]">
                             {b.condominio || 'Alpha Condomínios'}
+                          </span>
+                        </td>
+                        <td className="table-cell">
+                          <span className="font-semibold text-xs text-brand-700 bg-brand-50 px-2 py-0.5 rounded-md border border-brand-200">
+                            {b.competencia || '—'}
                           </span>
                         </td>
                         <td className="table-cell text-gray-500">{b.vencimento}</td>
@@ -2394,7 +2500,7 @@ export default function Boletos() {
 
       {viewing && <BoletoPrintModal boleto={viewing} condominio={allCondominios.find(c=>c.nome===(viewing.condominio || moradores.find(m=>m.nome===viewing.morador)?.condominio))} moradores={moradores} onClose={()=>setViewing(null)}/>}
       {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores}/>}
-      {modalLote&&<ModalGerarLote condominios={allCondominios} moradores={moradores} initialCondo={condoFilter !== 'Todos' ? condoFilter : ''} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
+      {modalLote&&<ModalGerarLote condominios={allCondominios} moradores={moradores} allBoletos={allBoletos} initialCondo={condoFilter !== 'Todos' ? condoFilter : ''} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
       {condoFundoEdit&&<ModalFundo condo={condoFundoEdit} onClose={()=>setCondoFundoEdit(null)} onSave={handleSaveFundo}/>}
       <RepassesAlphaModal
         isOpen={showRepasses}

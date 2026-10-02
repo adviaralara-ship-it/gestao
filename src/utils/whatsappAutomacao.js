@@ -26,25 +26,75 @@ export async function enviarBoletoWhatsAppAuto(boleto, morador, condoDoc, custom
     
     const textoFinal = customMsg || `Olá *${boleto.morador}* (Apt *${boleto.apt || '—'}*)!\n\nSegue em anexo o seu *Boleto Condominial* referente a *${boleto.competencia || 'Mês Vigente'}* do *${condoDoc?.nome || boleto.condominio || 'seu condomínio'}*.\n\n💰 *Valor:* R$ ${valorFmt}\n📅 *Vencimento:* ${vencFmt}\n\nVocê pode efetuar o pagamento via *PIX Instantâneo* escaneando o *QR Code* no PDF ou pelo *PIX Copia e Cola*.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
 
-    // 3. Envia diretamente via API em Base64 com timeout de 15 segundos
+    // 3. Envia via API serverless ou fallback direto na Evolution API com timeout de 20 segundos
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000)
+    const timeoutId = setTimeout(() => controller.abort(), 20000)
 
-    const res = await fetch('/api/whatsapp-send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        number: tel,
-        text: textoFinal,
-        mediaBase64: base64Data,
-        fileName: fileName,
-        instance: 'InstanciaAlpha'
-      }),
-      signal: controller.signal
-    })
+    const finalNumber = tel.startsWith('55') ? tel : `55${tel}`
+    let data = null
 
-    clearTimeout(timeoutId)
-    const data = await res.json()
+    try {
+      const res = await fetch('/api/whatsapp-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: finalNumber,
+          text: textoFinal,
+          mediaBase64: base64Data,
+          fileName: fileName,
+          instance: 'InstanciaAlpha'
+        }),
+        signal: controller.signal
+      })
+
+      if (res.ok) {
+        data = await res.json()
+      } else {
+        const errJson = await res.json().catch(() => ({}))
+        console.warn('Rota /api/whatsapp-send retornou status', res.status, errJson)
+      }
+    } catch (routeErr) {
+      console.warn('Falha ao chamar /api/whatsapp-send, acionando fallback direto Evolution:', routeErr)
+    } finally {
+      clearTimeout(timeoutId)
+    }
+
+    // Fallback direto Evolution API (caso a serverless na Vercel não tenha credencial ou dê 401/500)
+    if (!data || !data.success) {
+      try {
+        const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live'
+        const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb'
+        const rawMedia = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data
+
+        const resDirect = await fetch(`${EVOLUTION_URL}/message/sendMedia/InstanciaAlpha`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': API_KEY
+          },
+          body: JSON.stringify({
+            number: finalNumber,
+            mediatype: 'document',
+            mimetype: 'application/pdf',
+            caption: textoFinal,
+            media: rawMedia.replace(/\s+/g, ''),
+            fileName: fileName
+          })
+        })
+
+        if (resDirect.ok) {
+          const directData = await resDirect.json()
+          return { success: true, data: directData }
+        } else {
+          const directErr = await resDirect.json().catch(() => ({}))
+          return { success: false, error: directErr?.response?.message || directErr?.message || 'Falha no envio via Evolution API' }
+        }
+      } catch (errDirect) {
+        console.error('Erro no fallback Evolution:', errDirect)
+        return { success: false, error: errDirect.message || 'Erro de conexão com o WhatsApp' }
+      }
+    }
+
     return data
   } catch (err) {
     console.error('Erro no envio de boleto via WhatsApp:', err)
