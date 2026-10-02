@@ -333,27 +333,38 @@ function ModalImportarUnidades({ condominios = [], onImport, onClose }) {
       // Remove numeração de lista no início como "1. ", "01 - ", "1) "
       const cleanLine = line.replace(/^\s*\d+[\s.)-]+\s*/i, '').trim()
 
-      if (/unidade|morador|apartamento|bloco/i.test(cleanLine)) {
-        // Extrai Bloco se houver: "Bloco: A", "Bl. B", "Bloco 2"
-        const mBloco = cleanLine.match(/(?:bloco|bl\.?|torre)\s*[:=-]?\s*([a-zA-Z0-9]+)/i)
+      if (/unidade|morador|apartamento|bloco|cpf|email|e-mail|tel|cel|whats/i.test(cleanLine)) {
+        // Extrai Bloco se houver: "Bloco: A", "Bl. B", "Bloco 2", "Torre: 1"
+        const mBloco = cleanLine.match(/(?:bloco|bl\.?|torre|quadra)\s*[:=-]?\s*([a-zA-Z0-9]+)/i)
         if (mBloco) bloco = mBloco[1]
 
-        // Extrai Unidade / Apartamento: "Unidade: 101", "Apt 101", "Apartamento: 204"
+        // Extrai Unidade / Apartamento: "Unidade: 101", "Apt: 101", "Apartamento: 204"
         const mApt = cleanLine.match(/(?:unidade|apartamento|apto?\.?|apt\.?)\s*[:=-]?\s*([a-zA-Z0-9-]+)/i)
         if (mApt) apt = mApt[1]
 
-        // Extrai Morador: "Morador(a): NOME", "Morador: NOME", "Nome: NOME"
-        const mNome = cleanLine.match(/(?:morador(?:\(a\))?|nome|respons[aá]vel)\s*(?:\(a\))?\s*[:=-]?\s*([^,\n;]+)/i)
-        if (mNome) {
-          // Remove trechos adicionais caso tenha telefone ou bloco no final
-          nome = mNome[1]
-            .replace(/(?:telefone|tel|cel|whats|whatsapp|bloco|torre)\s*[:=-]?.*$/i, '')
-            .trim()
-        }
+        // Extrai CPF se houver (com ou sem pontuação: "CPF: 123.456.789-00" ou "12345678900")
+        const mCpf = cleanLine.match(/(?:cpf|doc(?:umento)?)\s*[:=-]?\s*(\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{11})/i) 
+          || cleanLine.match(/\b(\d{3}\.\d{3}\.\d{3}-\d{2})\b/)
+        if (mCpf) cpf = mCpf[1].replace(/\D/g, '')
+
+        // Extrai E-mail se houver (com "Email: xxx@xxx" ou formato de e-mail direto)
+        const mEmail = cleanLine.match(/(?:email|e-mail)\s*[:=-]?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i)
+          || cleanLine.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/)
+        if (mEmail) email = mEmail[1].trim().toLowerCase()
 
         // Extrai Telefone se houver
-        const mTel = cleanLine.match(/(?:tel|telefone|cel|whats|whatsapp)\s*[:=-]?\s*([\d()\s+-]+)/i)
-        if (mTel) tel = mTel[1]
+        const mTel = cleanLine.match(/(?:tel|telefone|cel|celular|whats|whatsapp|fone)\s*[:=-]?\s*([\d()\s+-]{8,20})/i)
+          || cleanLine.match(/(?:\(?\d{2}\)?\s*(?:9\s*)?\d{4}[-\s]?\d{4})/)
+        if (mTel) tel = mTel[1].trim()
+
+        // Extrai Morador: "Morador(a): NOME", "Morador: NOME", "Nome: NOME"
+        const mNome = cleanLine.match(/(?:morador(?:\(a\))?|nome|respons[aá]vel|propriet[aá]rio)\s*(?:\(a\))?\s*[:=-]?\s*([^,\n;]+)/i)
+        if (mNome) {
+          // Remove trechos adicionais caso os outros campos venham na mesma string
+          nome = mNome[1]
+            .replace(/(?:telefone|tel|cel|whats|whatsapp|fone|cpf|email|e-mail|bloco|torre|quadra)\s*[:=-]?.*$/i, '')
+            .trim()
+        }
       }
 
       // ── PADRÃO 2: Colunas delimitadas por CSV / Tabela / Tabulação se não extraiu por texto ──
@@ -586,7 +597,9 @@ ou colunas de planilha:
                       <th className="p-2">Apt</th>
                       <th className="p-2">Bloco</th>
                       <th className="p-2">Nome do Titular</th>
+                      <th className="p-2">CPF</th>
                       <th className="p-2">Telefone</th>
+                      <th className="p-2">E-mail</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -595,7 +608,9 @@ ou colunas de planilha:
                         <td className="p-2 font-bold text-brand-700">{u.apt}</td>
                         <td className="p-2 text-gray-500">{u.bloco || '—'}</td>
                         <td className="p-2 font-medium text-gray-800">{u.nome}</td>
+                        <td className="p-2 font-mono text-gray-600">{u.cpf || '—'}</td>
                         <td className="p-2 text-gray-500">{u.tel || '—'}</td>
+                        <td className="p-2 text-gray-500 truncate max-w-[120px]">{u.email || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
