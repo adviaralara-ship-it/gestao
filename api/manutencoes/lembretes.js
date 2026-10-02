@@ -17,7 +17,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://spiritualmacaw-evolution.cloudfy.live';
-const API_KEY = process.env.EVOLUTION_API_KEY;
+const API_KEY = process.env.EVOLUTION_API_KEY || 'Q1CguwvCa34nqB1936dHekPICikeSCHb';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, POST, OPTIONS')) return;
