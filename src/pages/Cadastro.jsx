@@ -124,8 +124,20 @@ export default function Cadastro() {
         }
       }
 
-      const normalizeStr = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
-      const foundCondo = condominiosList.find(c => normalizeStr(c.nome) === normalizeStr(form.condominio) || (c.nome && form.condominio && normalizeStr(c.nome).includes(normalizeStr(form.condominio))))
+      const normalizeStr = (s) => (s || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/^(residencial|condominio|edificio|ed\.)\s+/i, '')
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .trim()
+        .toLowerCase()
+
+      const foundCondo = condominiosList.find(c => {
+        const cNome = normalizeStr(c.nome)
+        const fNome = normalizeStr(form.condominio)
+        return cNome === fNome || (cNome && fNome && (cNome.includes(fNome) || fNome.includes(cNome)))
+      })
+
       const finalCondoNome = foundCondo ? foundCondo.nome : (form.condominio ? form.condominio.trim().toUpperCase() : '')
 
       const localInfo = requiresLocation
@@ -169,16 +181,18 @@ export default function Cadastro() {
           
           const moradorExistenteDoc = mSnap.docs.find(d => {
             const data = d.data()
-            const c = (data.condominio || '').trim().toLowerCase()
+            const cNorm = normalizeStr(data.condominio)
+            const mNorm = normalizeStr(localInfo.condominio)
+            const condoBate = cNorm === mNorm || (cNorm && mNorm && (cNorm.includes(mNorm) || mNorm.includes(cNorm)))
             const a = String(data.apt || data.unidade || '').trim().toLowerCase()
             const tel = (data.tel || data.telefone || data.whatsapp || '').replace(/\D/g, '')
             const formTel = form.telefone.replace(/\D/g, '')
             
-            const matchUnidade = c === mCondo && a === mApt
+            const matchUnidade = condoBate && a === mApt
             const matchTel = tel && formTel && tel === formTel
             const matchEmail = data.email && data.email.toLowerCase().trim() === emailClean
             
-            return (matchUnidade && (matchTel || matchEmail || !data.email)) || (matchTel && c === mCondo)
+            return (matchUnidade && (matchTel || matchEmail || !data.email)) || (matchTel && condoBate)
           })
 
           if (moradorExistenteDoc) {

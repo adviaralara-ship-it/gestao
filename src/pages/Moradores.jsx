@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { collection, query, where, getDocs, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 
-function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialApt, initialBloco, initialCondo }) {
+function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialApt, initialBloco, initialCondo, condominiosList = [] }) {
   const [form, setForm] = useState(data || {
     nome: '',
     cpf: '',
@@ -14,7 +14,7 @@ function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialAp
     tel: '',
     email: '',
     status: isMorador ? 'Dependente' : 'Proprietário',
-    condominio: initialCondo || (isMorador ? currentUser.condominio : ''),
+    condominio: initialCondo || (isMorador ? currentUser.condominio : (condominiosList[0]?.nome || '')),
     fotoRosto: ''
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -76,8 +76,20 @@ function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialAp
             </select>
           </div>
           <div>
-            <label className="label">Condomínio</label>
-            <input className="input uppercase" value={form.condominio} onChange={e => set('condominio', e.target.value.toUpperCase())} disabled={isMorador} placeholder="NOME DO CONDOMÍNIO" />
+            <label className="label">Condomínio *</label>
+            <input
+              list="lista-condos-morador"
+              className="input uppercase font-bold"
+              value={form.condominio}
+              onChange={e => set('condominio', e.target.value.toUpperCase())}
+              disabled={isMorador}
+              placeholder="SELECIONE OU DIGITE O CONDOMÍNIO"
+            />
+            <datalist id="lista-condos-morador">
+              {condominiosList.map(c => (
+                <option key={c.id || c.nome} value={c.nome} />
+              ))}
+            </datalist>
           </div>
           <div>
             <label className="label">Apartamento / Unidade *</label>
@@ -670,33 +682,73 @@ export default function Moradores() {
   const [textoMsgLote, setTextoMsgLote] = useState('')
   const [enviandoWhatsLote, setEnviandoWhatsLote] = useState(false)
 
-  // Lista unificada de condomínios combinando o cadastro oficial de condomínios e eventuais nomes em moradores
+  // Função universal de normalização e comparação de condomínios
+  const normalizarNomeCondo = (nome) => {
+    return String(nome || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/^(residencial|condominio|edificio|ed\.)\s+/i, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .trim()
+      .toLowerCase()
+  }
+
+  const condoMatch = (c1, c2) => {
+    if (!c1 || !c2) return false
+    if (c1 === 'Todos' || c2 === 'Todos') return true
+    const n1 = normalizarNomeCondo(c1)
+    const n2 = normalizarNomeCondo(c2)
+    if (!n1 || !n2) return false
+    return n1 === n2 || n1.includes(n2) || n2.includes(n1)
+  }
+
+  // Identifica o nome canônico do condomínio baseado no cadastro oficial
+  const getNomeCanonicoCondo = (nomeOriginal) => {
+    if (!nomeOriginal) return 'Sem Condomínio'
+    const oficial = allCondominios.find(c => condoMatch(c.nome, nomeOriginal))
+    return oficial?.nome || nomeOriginal.trim().toUpperCase()
+  }
+
+  // Lista unificada e desduplicada de condomínios
   const condominiosUnicos = React.useMemo(() => {
-    const setC = new Set()
-    allCondominios.forEach(c => { if (c.nome) setC.add(c.nome) })
-    moradores.forEach(m => { if (m.condominio) setC.add(m.condominio) })
-    return ['Todos', ...Array.from(setC).sort()]
+    const mapaCanonico = new Map() // normKey -> nomeOficial
+    allCondominios.forEach(c => {
+      if (c.nome) {
+        const norm = normalizarNomeCondo(c.nome)
+        if (!mapaCanonico.has(norm)) mapaCanonico.set(norm, c.nome)
+      }
+    })
+    moradores.forEach(m => {
+      if (m.condominio) {
+        const norm = normalizarNomeCondo(m.condominio)
+        if (!mapaCanonico.has(norm)) {
+          mapaCanonico.set(norm, m.condominio.trim().toUpperCase())
+        }
+      }
+    })
+    const lista = Array.from(mapaCanonico.values()).sort((a, b) => a.localeCompare(b))
+    return ['Todos', ...lista]
   }, [allCondominios, moradores])
 
-  const aptsUnicos = ['Todos', ...Array.from(new Set(moradores.filter(m => filtroCondominio === 'Todos' || m.condominio === filtroCondominio).map(m => m.apt).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))]
+  const aptsUnicos = ['Todos', ...Array.from(new Set(moradores.filter(m => filtroCondominio === 'Todos' || condoMatch(m.condominio, filtroCondominio)).map(m => m.apt).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))]
 
   const filtered = moradores.filter(m => {
     if (isMorador) {
       const uApt = String(user?.unidade || user?.apt || '').replace(/\D/g, '')
       const mApt = String(m.apt || '').replace(/\D/g, '')
       const matchApt = uApt && mApt && uApt === mApt
-      const matchCondo = !user?.condominio || m.condominio?.toLowerCase() === user?.condominio?.toLowerCase()
+      const matchCondo = !user?.condominio || condoMatch(m.condominio, user?.condominio)
       return matchApt && matchCondo
     }
     const okSearch = m.nome?.toLowerCase().includes(search.toLowerCase()) || m.apt?.includes(search) || m.email?.includes(search)
-    const okCondo = filtroCondominio === 'Todos' || m.condominio === filtroCondominio
+    const okCondo = filtroCondominio === 'Todos' || condoMatch(m.condominio, filtroCondominio)
     const okApt = filtroApt === 'Todos' || m.apt === filtroApt
     return okSearch && okCondo && okApt
   })
 
   const unidadesMap = {}
   filtered.forEach(m => {
-    const condo = m.condominio || 'Sem Condomínio'
+    const condo = getNomeCanonicoCondo(m.condominio)
     const bloco = m.bloco ? `Bl. ${m.bloco}` : ''
     const apt = m.apt ? `Apt ${m.apt}` : 'Sem Unidade'
     const key = `${condo}__${bloco}__${apt}`
@@ -714,7 +766,7 @@ export default function Moradores() {
   })
 
   pets.forEach(p => {
-    const condo = p.condominio || 'Sem Condomínio'
+    const condo = getNomeCanonicoCondo(p.condominio)
     const bloco = p.bloco ? `Bl. ${p.bloco}` : ''
     const apt = p.apt ? `Apt ${p.apt}` : 'Sem Unidade'
     const key = `${condo}__${bloco}__${apt}`
@@ -1033,7 +1085,7 @@ export default function Moradores() {
                   onClick={() => setFiltroCondominio(c)}
                   className="px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-medium text-gray-700 hover:border-brand-500 hover:text-brand-700 whitespace-nowrap transition-all shrink-0 shadow-sm"
                 >
-                  🏢 {c} <span className="ml-1 text-brand-600 font-bold">({moradores.filter(m => m.condominio === c).length} pessoas)</span>
+                  🏢 {c} <span className="ml-1 text-brand-600 font-bold">({moradores.filter(m => condoMatch(m.condominio, c)).length} pessoas)</span>
                 </button>
               ))}
             </div>
@@ -1394,7 +1446,8 @@ export default function Moradores() {
           currentUser={user}
           initialApt={targetUnidade?.apt}
           initialBloco={targetUnidade?.bloco}
-          initialCondo={targetUnidade?.condominio}
+          initialCondo={targetUnidade?.condominio || (filtroCondominio !== 'Todos' ? filtroCondominio : (allCondominios[0]?.nome || ''))}
+          condominiosList={allCondominios}
         />
       )}
 

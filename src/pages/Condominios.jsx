@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Building2, Plus, Search, Edit2, Trash2, Home, DollarSign, TrendingUp } from 'lucide-react'
+import { Building2, Plus, Search, Edit2, Trash2, Home, DollarSign, TrendingUp, Share2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { CurrencyInput } from '../utils/currency'
 
@@ -204,8 +204,22 @@ export default function Condominios() {
               <div className="pt-2 border-t border-cream-300 flex items-center justify-between">
                 <div><p className="text-xs text-gray-500">Síndico</p><p className="text-xs font-semibold text-gray-600">{c.sindico}</p></div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={()=>setModal(c)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-brand-100 text-gray-400 hover:text-brand-700 transition-all"><Edit2 size={13}/></button>
-                  <button onClick={()=>deleteItem(c.id)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={13}/></button>
+                  <button
+                    onClick={() => {
+                      const origin = typeof window !== 'undefined' && window.location.origin
+                        ? window.location.origin
+                        : 'https://alpha-solucoes-condominiais.vercel.app'
+                      const link = `${origin}/cadastro?condominio=${encodeURIComponent(c.nome)}`
+                      navigator.clipboard.writeText(link)
+                      alert(`🔗 Link oficial de cadastro do condomínio "${c.nome}" copiado com sucesso!\n\nLink: ${link}\n\nEnvie este link para os novos moradores. Eles já cairão vinculados a este condomínio automaticamente.`)
+                    }}
+                    className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-all"
+                    title="Copiar Link de Auto-Cadastro deste Condomínio"
+                  >
+                    <Share2 size={13} />
+                  </button>
+                  <button onClick={()=>setModal(c)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-brand-100 text-gray-400 hover:text-brand-700 transition-all" title="Editar"><Edit2 size={13}/></button>
+                  <button onClick={()=>deleteItem(c.id)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all" title="Excluir"><Trash2 size={13}/></button>
                 </div>
               </div>
             </div>
