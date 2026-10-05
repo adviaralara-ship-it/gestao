@@ -576,10 +576,27 @@ export default function RateioAgua({ lancamentos, condoFilter, condominiosDispon
 
       {/* Cards de Resumo */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="card bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
-          <span className="text-[11px] font-bold text-gray-500 uppercase">Valor da Fatura</span>
-          <span className="text-xl sm:text-2xl font-black text-blue-700 mt-1">R$ {fmt(totais.vTotal)}</span>
-          <span className="text-[10px] text-gray-400 mt-0.5">Conta Concessionária</span>
+        {/* Card 1: Valor Total da Fatura com Edição Direta e Destaque */}
+        <div className="card bg-linear-to-br from-blue-50 to-white p-4 rounded-2xl border-2 border-blue-300 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black text-blue-900 uppercase tracking-wide">
+              💰 Valor da Fatura (Total R$)
+            </span>
+            <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">
+              Conta de Água
+            </span>
+          </div>
+          <div className="mt-2">
+            <CurrencyInput 
+              value={valorTotalConta} 
+              onChange={v => setValorTotalConta(v)} 
+              placeholder="0,00" 
+              className="w-full text-xl sm:text-2xl font-black text-blue-700 bg-white border border-blue-200 rounded-xl px-2.5 py-1.5 shadow-2xs focus:ring-2 focus:ring-blue-500 font-mono"
+            />
+          </div>
+          <span className="text-[10px] text-gray-500 mt-1">
+            Digite o valor total emitido pela concessionária
+          </span>
         </div>
 
         <div className="card bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
@@ -693,13 +710,27 @@ export default function RateioAgua({ lancamentos, condoFilter, condominiosDispon
                       </td>
 
                       <td className="p-2.5 text-center">
-                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                          l.vinculo === 'Inquilino' 
-                            ? 'bg-amber-100 text-amber-900 border border-amber-300' 
-                            : 'bg-blue-100 text-blue-900 border border-blue-200'
-                        }`}>
-                          {l.vinculo || 'Proprietário'}
-                        </span>
+                        <select
+                          value={l.vinculo || 'Proprietário'}
+                          onChange={e => {
+                            const novoVinculo = e.target.value
+                            handleUpdateLinha(idx, 'vinculo', novoVinculo)
+                            if (novoVinculo === 'Inquilino' && !l.observacao) {
+                              handleUpdateLinha(idx, 'observacao', 'Alugado')
+                            } else if (novoVinculo === 'Proprietário' && l.observacao === 'Alugado') {
+                              handleUpdateLinha(idx, 'observacao', '')
+                            }
+                          }}
+                          className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg border transition-all cursor-pointer ${
+                            l.vinculo === 'Inquilino'
+                              ? 'bg-amber-100 text-amber-900 border-amber-300'
+                              : 'bg-blue-100 text-blue-900 border-blue-300'
+                          }`}
+                          title="Clique para alternar entre Proprietário e Inquilino para este rateio"
+                        >
+                          <option value="Proprietário">Proprietário</option>
+                          <option value="Inquilino">Inquilino</option>
+                        </select>
                       </td>
 
                       <td className="p-2.5 text-right">
