@@ -7,7 +7,7 @@ import {
   CreditCard, DollarSign, FileText, Bell, Clock, Wrench, Shield, Plus,
   FileSpreadsheet, ArrowRight, CheckCircle2, AlertCircle, Sparkles, ChevronRight,
   ExternalLink, Layers, Eye, EyeOff, Bot, Megaphone, Car, QrCode, Gavel, FolderOpen, Check, User, Camera,
-  DoorOpen, Package, PhoneCall, AlertOctagon, Truck, BookOpen, RefreshCw, PawPrint, Home, Trash2,
+  DoorOpen, Package, PhoneCall, AlertOctagon, Truck, BookOpen, RefreshCw, PawPrint, Home, Trash2, X,
   PieChart as PieIcon, Percent, ArrowUpRight, Filter, ShieldAlert
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
