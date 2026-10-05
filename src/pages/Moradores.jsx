@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Users, Plus, Search, Edit2, Trash2, Phone, Mail, Filter, PawPrint, Home, UserCheck, LayoutGrid, Table as TableIcon, X, Upload, FileSpreadsheet, Share2, Copy, Check, MessageSquare, CheckCircle2, AlertCircle, CheckSquare, Square, Send, Loader2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
-import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore'
+import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 
 function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialApt, initialBloco, initialCondo, condominiosList = [] }) {
@@ -409,19 +409,52 @@ function ModalImportarUnidades({ condominios = [], onImport, onClose }) {
               statusMorador = 'Inquilino'
             }
           }
-        } else {
-          // Heurística de colunas posicionais
-          // [0] Apt ou Nome
-          if (/^(apt|ap|bl|casa)?\s*\d+[a-zA-Z]?$/i.test(parts[0]) || /^\d+$/.test(parts[0].replace(/\D/g, ''))) {
-            apt = parts[0]
-            nome = parts[1] || ''
-            email = parts.find(p => p.includes('@')) || ''
-            tel = parts.find(p => p.replace(/\D/g, '').length >= 8 && !p.includes('@')) || ''
-          } else {
-            nome = parts[0]
-            apt = parts[1] || ''
-            email = parts.find(p => p.includes('@')) || ''
-            tel = parts.find(p => p.replace(/\D/g, '').length >= 8 && !p.includes('@')) || ''
+        }
+
+        // Complemento Semântico inteligente: se faltou algum campo (como CPF, Email, Tel ou DDD),
+        // varre os tokens não-vazios da linha para encontrar os dados pelo padrão de formato
+        const nonBlank = parts.filter(Boolean)
+        for (const tok of nonBlank) {
+          const t = tok.trim()
+          if (!t) continue
+
+          // E-mail
+          if (t.includes('@') && !email) {
+            email = t.replace(/;+$/, '').toLowerCase()
+            continue
+          }
+
+          // CPF / CNPJ formatado ou 11 dígitos com pontuação
+          if ((/^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(t) || /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(t) || (/^\d{11}$/.test(t) && !t.startsWith('9') && !tel)) && !cpf) {
+            cpf = t.replace(/\D/g, '')
+            continue
+          }
+
+          // DDI (55)
+          if (t === '55') continue
+
+          // DDD (ex: 83, 21, 11)
+          if (/^\d{2}$/.test(t) && !ddd) {
+            ddd = t
+            continue
+          }
+
+          // Telefone (8 a 11 dígitos)
+          if (/^\d{8,11}$/.test(t.replace(/\D/g, '')) && !tel && t !== cpf) {
+            tel = t
+            continue
+          }
+
+          // Se ainda não temos apt, tenta detectar se é número da unidade
+          if (!apt && (/^\d{1,5}[a-zA-Z]?$/.test(t) || /^(apt|ap|unid|unidade)\s*\d+/i.test(t))) {
+            apt = t.replace(/^(apt|ap|unid|unidade)\s*/i, '')
+            continue
+          }
+
+          // Se ainda não temos nome
+          if (!nome && /[a-zA-Z]{3,}/.test(t) && !t.includes('@') && !/^(apt|unidade|bloco)/i.test(t)) {
+            nome = t.replace(/;+$/, '').trim().toUpperCase()
+            continue
           }
         }
       }
@@ -858,8 +891,60 @@ export default function Moradores() {
   })
 
   const handleSave = async form => {
-    if (modal === 'new') await addItem(form)
-    else await updateItem(modal.id, form)
+    if (modal === 'new') {
+      await addItem(form)
+    } else {
+      const modalId = String(modal.id || '')
+      if (modalId.startsWith('usr_')) {
+        const uId = modalId.replace(/^usr_/, '')
+        // Atualiza na coleção de usuários
+        await updateDoc(doc(db, 'usuarios', uId), {
+          nome: form.nome || '',
+          cpf: form.cpf || '',
+          telefone: form.tel || '',
+          tel: form.tel || '',
+          email: form.email || '',
+          statusMorador: form.status || 'Proprietário',
+          condominio: form.condominio || '',
+          unidade: form.apt || '',
+          apt: form.apt || '',
+          bloco: form.bloco || '',
+          foto: form.fotoRosto || '',
+          fotoRosto: form.fotoRosto || ''
+        }).catch(err => console.warn('Erro ao atualizar usuario:', err))
+
+        // Também salva/atualiza na coleção de moradores para garantir persistência total
+        const moradorExistente = moradoresRaw.find(m => 
+          (form.email && (m.email || '').toLowerCase() === form.email.toLowerCase()) ||
+          (m.condominio === form.condominio && m.apt === form.apt && (m.bloco || '') === (form.bloco || ''))
+        )
+        if (moradorExistente) {
+          await updateItem(moradorExistente.id, form)
+        } else {
+          await addItem({ ...form, idOriginalUsuario: uId })
+        }
+      } else {
+        await updateItem(modal.id, form)
+        // Se houver usuário correspondente por e-mail, atualiza também
+        if (form.email) {
+          try {
+            const qU = query(collection(db, 'usuarios'), where('email', '==', form.email.toLowerCase().trim()))
+            const sU = await getDocs(qU)
+            sU.forEach(async d => {
+              await updateDoc(d.ref, {
+                nome: form.nome || '',
+                cpf: form.cpf || '',
+                telefone: form.tel || '',
+                tel: form.tel || '',
+                condominio: form.condominio || '',
+                unidade: form.apt || '',
+                bloco: form.bloco || ''
+              })
+            })
+          } catch(e) {}
+        }
+      }
+    }
     setModal(null)
     setTargetUnidade(null)
   }
@@ -912,17 +997,48 @@ export default function Moradores() {
         email: item.email || '',
         cpf: item.cpf || '',
         status: item.status || 'Proprietário',
-        cadastroCompleto: Boolean(existente?.cadastroCompleto),
+        cadastroCompleto: Boolean(existente?.cadastroCompleto || item.cpf),
         _updatedAt: new Date().toISOString()
       }
 
       if (existente) {
-        await updateItem(existente.id, {
-          ...existente,
-          ...dadosParaSalvar,
-          nome: item.nome || existente.nome,
-          tel: item.tel || existente.tel
-        })
+        if (String(existente.id).startsWith('usr_')) {
+          const uId = String(existente.id).replace(/^usr_/, '')
+          await updateDoc(doc(db, 'usuarios', uId), {
+            nome: item.nome || existente.nome,
+            cpf: item.cpf || existente.cpf || '',
+            telefone: item.tel || existente.tel || '',
+            tel: item.tel || existente.tel || '',
+            email: item.email || existente.email || '',
+            condominio: nomeCondo,
+            unidade: item.apt,
+            bloco: item.bloco || ''
+          }).catch(e => console.warn(e))
+
+          // Também grava na coleção moradores para persistência garantida
+          const moradorColecao = moradoresRaw.find(m => m.id === existente.id)
+          if (moradorColecao) {
+            await updateItem(moradorColecao.id, {
+              ...moradorColecao,
+              ...dadosParaSalvar
+            })
+          } else {
+            await addItem({
+              ...dadosParaSalvar,
+              idOriginalUsuario: uId,
+              _createdAt: new Date().toISOString()
+            })
+          }
+        } else {
+          await updateItem(existente.id, {
+            ...existente,
+            ...dadosParaSalvar,
+            nome: item.nome || existente.nome,
+            tel: item.tel || existente.tel,
+            email: item.email || existente.email || '',
+            cpf: item.cpf || existente.cpf || ''
+          })
+        }
         atualizados++
       } else {
         await addItem({
