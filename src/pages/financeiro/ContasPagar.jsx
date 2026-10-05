@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Eye, Download, Copy, Check, ExternalLink, Sparkles, Building2, Crown, Send, Loader2, Square, CheckSquare, DollarSign } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Eye, Download, Copy, Check, ExternalLink, Sparkles, Building2, Crown, Send, Loader2, Square, CheckSquare, DollarSign, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 import { isAlphaInterno } from '../Financeiro'
 
@@ -13,6 +13,7 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
   const [copiadoId, setCopiadoId] = useState(null)
   const [disparandoAlertas, setDisparandoAlertas] = useState(false)
   const [selectedIds, setSelectedIds] = useState([])
+  const [ordemVencimento, setOrdemVencimento] = useState('asc') // 'asc' (outubro -> dezembro) | 'desc'
 
   const handleDispararAlertasAgora = async () => {
     if (!window.confirm('Deseja disparar agora a notificação no WhatsApp das Administradoras com todas as contas vencendo hoje?')) return
@@ -179,7 +180,12 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
     )
   }
 
-  contasPagar.sort((a, b) => new Date(b.data) - new Date(a.data))
+  // Ordenação cronológica: padrão ascendente (ex: outubro -> novembro -> dezembro)
+  contasPagar.sort((a, b) => {
+    const timeA = new Date(a.data || 0).getTime()
+    const timeB = new Date(b.data || 0).getTime()
+    return ordemVencimento === 'asc' ? timeA - timeB : timeB - timeA
+  })
 
   // Lançamentos de despesa filtrados pelo período selecionado para os cards de resumo
   const despesasPeriodo = lancamentos.filter(t => {
@@ -332,7 +338,21 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                     )}
                   </button>
                 </th>
-                <th className="p-3.5">Vencimento</th>
+                <th className="p-3.5">
+                  <button
+                    type="button"
+                    onClick={() => setOrdemVencimento(prev => prev === 'asc' ? 'desc' : 'asc')}
+                    className="flex items-center gap-1.5 hover:text-brand-600 transition-colors uppercase font-black cursor-pointer group"
+                    title={`Ordenação atual: ${ordemVencimento === 'asc' ? 'Do mais antigo ao mais recente (Outubro → Dezembro)' : 'Do mais recente ao mais antigo (Dezembro → Outubro)'}. Clique para alternar.`}
+                  >
+                    <span>Vencimento</span>
+                    {ordemVencimento === 'asc' ? (
+                      <ArrowUp size={14} className="text-brand-600" />
+                    ) : (
+                      <ArrowDown size={14} className="text-brand-600" />
+                    )}
+                  </button>
+                </th>
                 <th className="p-3.5">Descrição / Fornecedor</th>
                 <th className="p-3.5">Origem / Condomínio</th>
                 <th className="p-3.5">Categoria</th>
