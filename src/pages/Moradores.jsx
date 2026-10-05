@@ -285,47 +285,63 @@ function ModalImportarUnidades({ condominios = [], onImport, onClose }) {
       return
     }
 
-    // Tenta detectar cabeçalho na primeira linha
-    let startIdx = 0
-    const firstLineLower = lines[0].toLowerCase()
-    let colApt = -1, colNome = -1, colTel = -1, colBloco = -1, colEmail = -1, colCpf = -1
+    // Procura a linha de cabeçalho nas primeiras 5 linhas
+    let headerIdx = -1
+    let bestSep = '\t'
+    let colApt = -1, colNome = -1, colTel = -1, colDdd = -1, colBloco = -1, colEmail = -1, colCpf = -1, colInquilino = -1
 
-    const separadores = [';', '\t', ',']
-    let bestSep = ','
-    let maxSplits = 0
-    for (const sep of separadores) {
-      const count = lines[0].split(sep).length
-      if (count > maxSplits) {
-        maxSplits = count
-        bestSep = sep
+    for (let i = 0; i < Math.min(lines.length, 5); i++) {
+      const lineLower = lines[i].toLowerCase()
+      if (lineLower.includes('unidade') || lineLower.includes('apt') || lineLower.includes('apartamento') || lineLower.includes('morador') || lineLower.includes('moradores')) {
+        headerIdx = i
+        // Detecta melhor separador nesta linha de cabeçalho
+        const seps = ['\t', ';', ',']
+        let maxS = 0
+        for (const s of seps) {
+          const count = lines[i].split(s).length
+          if (count > maxS) {
+            maxS = count
+            bestSep = s
+          }
+        }
+        break
       }
     }
 
-    const headers = lines[0].split(bestSep).map(h => h.trim().toLowerCase().replace(/["']/g, ''))
-    
-    // Verifica se a primeira linha é cabeçalho
-    const temPalavraChave = headers.some(h => 
-      h.includes('apt') || h.includes('apartamento') || h.includes('unidade') || 
-      h.includes('nome') || h.includes('morador') || h.includes('tel') || h.includes('bloco')
-    )
-
-    if (temPalavraChave) {
-      startIdx = 1
+    let startIdx = 0
+    if (headerIdx !== -1) {
+      startIdx = headerIdx + 1
+      const headers = lines[headerIdx].split(bestSep).map(h => h.trim().toLowerCase().replace(/["']/g, ''))
       headers.forEach((h, idx) => {
-        if (h.includes('apt') || h.includes('apartamento') || h.includes('unidade') || h.includes('numero') || h.includes('num')) {
+        if (h.includes('unidade') || h.includes('apt') || h.includes('apartamento') || h.includes('numero') || h.includes('num')) {
           if (colApt === -1) colApt = idx
-        } else if (h.includes('nome') || h.includes('morador') || h.includes('responsavel') || h.includes('proprietario')) {
+        } else if (h.includes('morador') || h.includes('moradores') || h.includes('responsavel') || h.includes('proprietario') || h.includes('nome')) {
           if (colNome === -1) colNome = idx
-        } else if (h.includes('tel') || h.includes('whats') || h.includes('cel') || h.includes('fone')) {
+        } else if (h === 'ddd' || h.includes('ddd')) {
+          colDdd = idx
+        } else if (h.includes('tel') || h.includes('telefone') || h.includes('whats') || h.includes('cel') || h.includes('fone')) {
           if (colTel === -1) colTel = idx
         } else if (h.includes('bloco') || h.includes('torre') || h.includes('quadra')) {
           if (colBloco === -1) colBloco = idx
         } else if (h.includes('email') || h.includes('e-mail')) {
           if (colEmail === -1) colEmail = idx
-        } else if (h.includes('cpf') || h.includes('doc')) {
+        } else if (h.includes('cpf') || h.includes('cnpj') || h.includes('doc')) {
           if (colCpf === -1) colCpf = idx
+        } else if (h.includes('inquilino')) {
+          colInquilino = idx
         }
       })
+    } else {
+      // Se não achou linha com cabeçalho explícito, detecta separador na primeira linha
+      const seps = ['\t', ';', ',']
+      let maxS = 0
+      for (const s of seps) {
+        const count = lines[0].split(s).length
+        if (count > maxS) {
+          maxS = count
+          bestSep = s
+        }
+      }
     }
 
     const parsed = []
@@ -337,107 +353,112 @@ function ModalImportarUnidades({ condominios = [], onImport, onClose }) {
       let apt = ''
       let nome = ''
       let tel = ''
+      let ddd = ''
       let bloco = ''
       let email = ''
       let cpf = ''
+      let statusMorador = 'Proprietário'
 
-      // ── PADRÃO 1: Linha textual com palavras-chave (Ex: "1. Unidade: 101 Morador(a): ANDRESSA MOREIRA" ou com "Bloco: A") ──
-      // Remove numeração de lista no início como "1. ", "01 - ", "1) "
+      // ── PADRÃO 1: Linha textual rotulada (Ex: "Unidade: 101 Morador: Fulano") ──
       const cleanLine = line.replace(/^\s*\d+[\s.)-]+\s*/i, '').trim()
 
-      if (/unidade|morador|apartamento|bloco|cpf|email|e-mail|tel|cel|whats/i.test(cleanLine)) {
-        // Extrai Bloco se houver: "Bloco: A", "Bl. B", "Bloco 2", "Torre: 1"
+      if (/unidade|apartamento|morador|responsavel|bloco/i.test(cleanLine) && cleanLine.includes(':')) {
         const mBloco = cleanLine.match(/(?:bloco|bl\.?|torre|quadra)\s*[:=-]?\s*([a-zA-Z0-9]+)/i)
         if (mBloco) bloco = mBloco[1]
 
-        // Extrai Unidade / Apartamento: "Unidade: 101", "Apt: 101", "Apartamento: 204"
         const mApt = cleanLine.match(/(?:unidade|apartamento|apto?\.?|apt\.?)\s*[:=-]?\s*([a-zA-Z0-9-]+)/i)
         if (mApt) apt = mApt[1]
 
-        // Extrai CPF se houver (com ou sem pontuação: "CPF: 123.456.789-00" ou "12345678900")
         const mCpf = cleanLine.match(/(?:cpf|doc(?:umento)?)\s*[:=-]?\s*(\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{11})/i) 
           || cleanLine.match(/\b(\d{3}\.\d{3}\.\d{3}-\d{2})\b/)
         if (mCpf) cpf = mCpf[1].replace(/\D/g, '')
 
-        // Extrai E-mail se houver (com "Email: xxx@xxx" ou formato de e-mail direto)
         const mEmail = cleanLine.match(/(?:email|e-mail)\s*[:=-]?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i)
           || cleanLine.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/)
         if (mEmail) email = mEmail[1].trim().toLowerCase()
 
-        // Extrai Telefone se houver
         const mTel = cleanLine.match(/(?:tel|telefone|cel|celular|whats|whatsapp|fone)\s*[:=-]?\s*([\d()\s+-]{8,20})/i)
           || cleanLine.match(/(?:\(?\d{2}\)?\s*(?:9\s*)?\d{4}[-\s]?\d{4})/)
         if (mTel) tel = mTel[1].trim()
 
-        // Extrai Morador: "Morador(a): NOME", "Morador: NOME", "Nome: NOME"
         const mNome = cleanLine.match(/(?:morador(?:\(a\))?|nome|respons[aá]vel|propriet[aá]rio)\s*(?:\(a\))?\s*[:=-]?\s*([^,\n;]+)/i)
         if (mNome) {
-          // Remove trechos adicionais caso os outros campos venham na mesma string
           nome = mNome[1]
             .replace(/(?:telefone|tel|cel|whats|whatsapp|fone|cpf|email|e-mail|bloco|torre|quadra)\s*[:=-]?.*$/i, '')
             .trim()
         }
       }
 
-      // ── PADRÃO 2: Colunas delimitadas por CSV / Tabela / Tabulação se não extraiu por texto ──
+      // ── PADRÃO 2: Colunas delimitadas por Tabulação (\t), Ponto e Vírgula (;) ou Vírgula (,) ──
       if (!apt && !nome) {
-        // Divide linha pelas colunas
         const parts = line.split(bestSep).map(p => p.trim().replace(/^["']|["']$/g, ''))
         if (parts.length === 0 || (parts.length === 1 && !parts[0])) continue
 
+        // Se encontrou cabeçalho
         if (colApt !== -1 || colNome !== -1) {
           if (colApt !== -1 && parts[colApt]) apt = parts[colApt]
           if (colNome !== -1 && parts[colNome]) nome = parts[colNome]
           if (colTel !== -1 && parts[colTel]) tel = parts[colTel]
+          if (colDdd !== -1 && parts[colDdd]) ddd = parts[colDdd]
           if (colBloco !== -1 && parts[colBloco]) bloco = parts[colBloco]
           if (colEmail !== -1 && parts[colEmail]) email = parts[colEmail]
           if (colCpf !== -1 && parts[colCpf]) cpf = parts[colCpf]
+          if (colInquilino !== -1 && parts[colInquilino]) {
+            const inqVal = parts[colInquilino].toLowerCase()
+            if (inqVal.includes('sim') || inqVal.includes('inquilino') || inqVal === 'x') {
+              statusMorador = 'Inquilino'
+            }
+          }
         } else {
-          // Modo heurístico sem cabeçalho:
-          // Padrão A: Apt, Nome, Telefone, Bloco
+          // Heurística de colunas posicionais
+          // [0] Apt ou Nome
           if (/^(apt|ap|bl|casa)?\s*\d+[a-zA-Z]?$/i.test(parts[0]) || /^\d+$/.test(parts[0].replace(/\D/g, ''))) {
-            apt = parts[0].replace(/^(apt|ap|unidade)\s*/i, '').trim()
-            nome = parts[1] || `Morador Apt ${apt}`
-            tel = parts[2] || ''
-            bloco = parts[3] || ''
+            apt = parts[0]
+            nome = parts[1] || ''
+            email = parts.find(p => p.includes('@')) || ''
+            tel = parts.find(p => p.replace(/\D/g, '').length >= 8 && !p.includes('@')) || ''
           } else {
-            // Padrão B: Nome, Apt, Telefone, Bloco
             nome = parts[0]
-            apt = (parts[1] || '').replace(/^(apt|ap|unidade)\s*/i, '').trim()
-            tel = parts[2] || ''
-            bloco = parts[3] || ''
+            apt = parts[1] || ''
+            email = parts.find(p => p.includes('@')) || ''
+            tel = parts.find(p => p.replace(/\D/g, '').length >= 8 && !p.includes('@')) || ''
           }
         }
       }
 
-      // Limpeza e Normalização Final
+      // Limpeza de campos
       apt = String(apt || '')
         .replace(/^(unidade|apartamento|apt|ap)\s*[:=-]?\s*/i, '')
+        .replace(/;+$/, '')
         .trim()
 
       nome = String(nome || '')
         .replace(/^(morador(?:\(a\))?|nome)\s*(?:\(a\))?\s*[:=-]?\s*/i, '')
         .replace(/^[0-9]+[\s.)-]+\s*/, '')
+        .replace(/;+$/, '')
         .trim()
         .toUpperCase()
 
-      bloco = String(bloco || '')
-        .replace(/^(bloco|bl\.?|torre)\s*[:=-]?\s*/i, '')
-        .trim()
-        .toUpperCase()
+      // Se tiver DDD separado e telefone, unifica
+      let telFinal = tel ? String(tel).replace(/;+$/, '').trim() : ''
+      if (ddd && telFinal && !telFinal.startsWith(ddd) && telFinal.replace(/\D/g, '').length <= 9) {
+        telFinal = `(${ddd.replace(/\D/g, '')}) ${telFinal}`
+      }
 
-      tel = String(tel || '').trim()
+      bloco = String(bloco || '').replace(/^(bloco|bl\.?|torre)\s*[:=-]?\s*/i, '').replace(/;+$/, '').trim().toUpperCase()
+      email = String(email || '').replace(/;+$/, '').trim().toLowerCase()
       cpf = String(cpf || '').replace(/\D/g, '')
 
-      if (apt) {
+      // Apenas adiciona se for uma unidade válida (número ou código de apto)
+      if (apt && apt.toLowerCase() !== 'unidade' && apt.toLowerCase() !== 'apt') {
         parsed.push({
           apt,
           bloco,
           nome: nome || `MORADOR APT ${apt}`,
-          tel,
+          tel: telFinal,
           email,
           cpf,
-          status: 'Proprietário',
+          status: statusMorador,
           cadastroCompleto: false
         })
       }
