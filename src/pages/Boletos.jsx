@@ -457,11 +457,15 @@ function BoletoPrintModal({ boleto, condominio, moradores = [], onClose }) {
                 const rawTaxa = boleto.nomeTaxa || condominio?.nomeTaxa || 'Serviço de Cobrança Digital'
                 const nomeTaxa = (rawTaxa.includes('Processamento') || rawTaxa.includes('Tarifa')) ? 'Serviço de Cobrança Digital' : rawTaxa
 
+                const descPrincipal = boleto.tipoCobranca 
+                  ? `${boleto.tipoCobranca} (${boleto.competencia || 'Mês Atual'})`
+                  : `Taxa Condominial Ordinária (${boleto.competencia || 'Mês Atual'})`
+
                 if (taxaEmissao > 0) {
                   return (
                     <>
                       <div className="py-1 flex justify-between items-center">
-                        <span className="text-gray-700 font-medium">Taxa Condominial Ordinária ({boleto.competencia || 'Mês Atual'})</span>
+                        <span className="text-gray-700 font-medium">{descPrincipal}</span>
                         <span className="font-bold text-gray-900 font-mono">R$ {cotaBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                       </div>
                       <div className="py-1 flex justify-between items-center text-brand-900 bg-brand-50/70 px-2 rounded-lg">
@@ -473,7 +477,7 @@ function BoletoPrintModal({ boleto, condominio, moradores = [], onClose }) {
                 } else {
                   return (
                     <div className="py-1 flex justify-between items-center">
-                      <span className="text-gray-700 font-medium">Taxa Ordinária de Condomínio ({boleto.competencia || 'Mês Atual'})</span>
+                      <span className="text-gray-700 font-medium">{descPrincipal}</span>
                       <span className="font-bold text-gray-900 font-mono">R$ {valCheio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                     </div>
                   )
@@ -561,79 +565,256 @@ function BoletoPrintModal({ boleto, condominio, moradores = [], onClose }) {
   )
 }
 
-function ModalBoleto({ data, onClose, onSave, moradores = [] }) {
-  const [form, setForm] = useState(data || { morador:'', apt:'', vencimento:'', valor:'', status:'Pendente', competencia:'', emitido:false, linha:'', url:'', pix_emv:'', invoice_id:'' })
-  const set = (k,v) => setForm(f=>({...f,[k]:v}))
+function ModalBoleto({ data, onClose, onSave, moradores = [], condominios = [], initialCondo = '' }) {
+  const condominiosValidos = (condominios || []).filter(c => c && c.nome && c.nome.trim())
+  const condPadrao = data?.condominio || initialCondo || (condominiosValidos[0]?.nome || '')
+
+  const [form, setForm] = useState(data || { 
+    morador: '', 
+    tipoMorador: 'Proprietário',
+    tipoCobranca: 'Taxa Condominial', 
+    apt: '', 
+    bloco: '',
+    vencimento: '', 
+    valor: '', 
+    status: 'Pendente', 
+    competencia: '', 
+    condominio: condPadrao,
+    chave_pix: '',
+    emitido: false, 
+    linha: '', 
+    url: '', 
+    pix_emv: '', 
+    invoice_id: '' 
+  })
   
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Atualiza chave pix ao trocar condomínio se não tiver preenchida
+  useEffect(() => {
+    if (!form.condominio) return
+    const cDoc = condominiosValidos.find(c => c.nome === form.condominio)
+    if (cDoc?.chave_pix && !form.chave_pix) {
+      setForm(f => ({ ...f, chave_pix: cDoc.chave_pix }))
+    }
+  }, [form.condominio, condominiosValidos])
+
+  // Normalização para comparar nomes de condomínio sem estresse de acentos ou espaços
+  const normalize = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+
+  // Moradores filtrados pelo condomínio selecionado
+  const moradoresDoCondo = moradores.filter(m => {
+    if (!form.condominio) return true
+    const cForm = normalize(form.condominio)
+    const cM = normalize(m.condominio)
+    const cMN = normalize(m.condominioNome)
+    return cM === cForm || cMN === cForm || (cM && cForm && (cM.includes(cForm) || cForm.includes(cM)))
+  })
+
+  // Permite selecionar qualquer morador daquele condomínio (Proprietários, Inquilinos e outros)
+  const moradoresOpcoes = moradoresDoCondo.length > 0 ? moradoresDoCondo : moradores
+
   const handleMoradorChange = (e) => {
     const nome = e.target.value
-    const mor = moradores.find(m => m.nome === nome)
+    const mor = moradoresOpcoes.find(m => m.nome === nome)
     if (mor) {
-      setForm(f => ({ ...f, morador: nome, apt: mor.apt, condominio: mor.condominio || '' }))
+      const vinculo = mor.status || mor.tipo || mor.tipoMorador || 'Proprietário'
+      const condoNomeMor = mor.condominio || form.condominio || ''
+      const cDoc = condominiosValidos.find(c => c.nome === condoNomeMor)
+      setForm(f => ({ 
+        ...f, 
+        morador: nome, 
+        tipoMorador: vinculo,
+        apt: mor.apt || mor.unidade || '', 
+        bloco: mor.bloco || f.bloco || '',
+        condominio: condoNomeMor,
+        chave_pix: f.chave_pix || cDoc?.chave_pix || ''
+      }))
     } else {
       set('morador', nome)
     }
   }
 
+  const handleCondoChange = (e) => {
+    const novoCondo = e.target.value
+    const cDoc = condominiosValidos.find(c => c.nome === novoCondo)
+    setForm(f => ({
+      ...f,
+      condominio: novoCondo,
+      morador: '',
+      apt: '',
+      bloco: '',
+      chave_pix: cDoc?.chave_pix || f.chave_pix || ''
+    }))
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e=>e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
-          <h3 className="font-bold text-gray-800">{data?'Editar Boleto':'Novo Boleto'}</h3>
-          <button onClick={onClose}><X size={18} className="text-gray-400 hover:text-gray-700"/></button>
+      <div className="modal-content max-w-xl w-full" onClick={e=>e.stopPropagation()}>
+        <div className="p-5 sm:p-6 border-b border-cream-300 flex items-center justify-between">
+          <div>
+            <h3 className="font-black text-gray-900 text-base sm:text-lg">
+              {data ? 'Editar Cobrança / Boleto' : 'Nova Cobrança / Boleto Individual'}
+            </h3>
+            <p className="text-xs text-gray-500">Emita taxa condominial, água ou energia para Proprietário ou Inquilino</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-gray-700"><X size={20}/></button>
         </div>
-        <div className="p-6 grid grid-cols-2 gap-4">
-          <div className="col-span-2">
-            <label className="label">Morador Responsável (Titular/Inquilino)</label>
-            <select className="input" value={form.morador} onChange={handleMoradorChange}>
-               <option value="">Selecione um morador cadastrado...</option>
-               {moradores.filter(m => m.status !== 'Dependente' && m.tipo !== 'Dependente').map(m => (
-                 <option key={m.id} value={m.nome}>{m.nome} (Apt {m.apt || m.unidade || '—'}) {m.status ? `• ${m.status}` : ''}</option>
-               ))}
-            </select>
+
+        <div className="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          {/* 1. SELEÇÃO DO CONDOMÍNIO */}
+          <div className="sm:col-span-2">
+            <label className="label text-xs font-black">1. Condomínio *</label>
+            {condominiosValidos.length > 0 ? (
+              <select className="input font-bold text-xs bg-slate-50" value={form.condominio} onChange={handleCondoChange}>
+                <option value="">Selecione o Condomínio...</option>
+                {condominiosValidos.map(c => (
+                  <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                ))}
+              </select>
+            ) : (
+              <input 
+                className="input text-xs font-bold uppercase" 
+                value={form.condominio || ''} 
+                onChange={e => set('condominio', e.target.value)} 
+                placeholder="Digite o nome do condomínio" 
+              />
+            )}
           </div>
-          <div><label className="label">Unidade / Apt.</label><input className="input" value={form.apt} onChange={e=>set('apt',e.target.value)} placeholder="Ex: 101-A"/></div>
-          <div><label className="label">Competência</label><input className="input" value={form.competencia} onChange={e=>set('competencia',e.target.value)} placeholder="Ex: Mar/2025"/></div>
-          <div><label className="label">Vencimento</label><input type="date" className="input" value={form.vencimento} onChange={e=>set('vencimento',e.target.value)}/></div>
-          <div><label className="label">Valor</label><CurrencyInput value={form.valor} onChange={v=>set('valor',v)} placeholder="0,00"/></div>
-          <div className="col-span-2"><label className="label">Status</label>
-            <select className="input" value={form.status} onChange={e=>set('status',e.target.value)}>
-              <option>Pendente</option><option>Pago</option><option>Vencido</option>
+
+          {/* 2. MORADOR RESPONSÁVEL (COM DISTINÇÃO CLARA DE INQUILINO / PROPRIETÁRIO) */}
+          <div className="sm:col-span-2">
+            <div className="flex items-center justify-between mb-1">
+              <label className="label text-xs font-black mb-0">2. Pagador / Morador Responsável *</label>
+              {form.tipoMorador && (
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                  form.tipoMorador === 'Inquilino' ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-blue-100 text-blue-900 border border-blue-200'
+                }`}>
+                  {form.tipoMorador === 'Inquilino' ? '🔑 Inquilino' : '🏠 Proprietário'}
+                </span>
+              )}
+            </div>
+            <select className="input text-xs font-semibold" value={form.morador} onChange={handleMoradorChange}>
+               <option value="">Selecione quem vai pagar (Proprietário ou Inquilino)...</option>
+               {moradoresOpcoes.map(m => {
+                 const vinculo = m.status || m.tipo || m.tipoMorador || 'Morador'
+                 const ehInquilino = vinculo.toLowerCase().includes('inquilino')
+                 return (
+                   <option key={m.id} value={m.nome}>
+                     {ehInquilino ? '🔑 [INQUILINO] ' : '🏠 '} 
+                     {m.nome} — Apt {m.apt || m.unidade || '—'} {m.bloco ? `(Bloco ${m.bloco})` : ''} • {vinculo}
+                   </option>
+                 )
+               })}
+            </select>
+            <p className="text-[10px] text-gray-500 mt-1">
+              Listando moradores cadastrados {form.condominio ? `no ${form.condominio}` : ''}. Inquilinos identificados com 🔑.
+            </p>
+          </div>
+
+          {/* 3. TIPO / FINALIDADE DA COBRANÇA */}
+          <div className="sm:col-span-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <label className="label text-xs font-black text-slate-900 mb-1">3. Tipo de Cobrança / Finalidade</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { id: 'Taxa Condominial', label: '🏢 Condomínio', cor: 'border-blue-400 text-blue-900 bg-blue-50' },
+                { id: 'Consumo de Água', label: '💧 Água', cor: 'border-cyan-400 text-cyan-900 bg-cyan-50' },
+                { id: 'Consumo de Energia', label: '⚡ Energia', cor: 'border-amber-400 text-amber-900 bg-amber-50' },
+                { id: 'Outros / Rateio', label: '🏷️ Outros', cor: 'border-purple-400 text-purple-900 bg-purple-50' },
+              ].map(tipo => {
+                const ativo = (form.tipoCobranca || 'Taxa Condominial') === tipo.id
+                return (
+                  <button
+                    type="button"
+                    key={tipo.id}
+                    onClick={() => set('tipoCobranca', tipo.id)}
+                    className={`py-2 px-2 text-xs font-bold rounded-xl border text-center transition-all cursor-pointer ${
+                      ativo ? `${tipo.cor} font-black shadow-xs ring-2 ring-brand-500` : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {tipo.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* DADOS DA UNIDADE */}
+          <div>
+            <label className="label text-xs font-black">Unidade / Apartamento *</label>
+            <input className="input text-xs font-bold uppercase" value={form.apt} onChange={e=>set('apt', e.target.value.toUpperCase())} placeholder="Ex: 101" />
+          </div>
+          <div>
+            <label className="label text-xs font-black">Bloco (Opcional)</label>
+            <input className="input text-xs uppercase" value={form.bloco || ''} onChange={e=>set('bloco', e.target.value.toUpperCase())} placeholder="Ex: A" />
+          </div>
+
+          {/* COMPETÊNCIA E VENCIMENTO */}
+          <div>
+            <label className="label text-xs font-black">Competência *</label>
+            <input className="input text-xs font-bold" value={form.competencia} onChange={e=>set('competencia', e.target.value)} placeholder="Ex: Out/2026" />
+          </div>
+          <div>
+            <label className="label text-xs font-black">Data de Vencimento *</label>
+            <input type="date" className="input text-xs font-bold" value={form.vencimento} onChange={e=>set('vencimento', e.target.value)} />
+          </div>
+
+          {/* VALOR E STATUS */}
+          <div>
+            <label className="label text-xs font-black">Valor a Pagar (R$) *</label>
+            <CurrencyInput value={form.valor} onChange={v=>set('valor', v)} placeholder="0,00" />
+          </div>
+          <div>
+            <label className="label text-xs font-black">Status do Boleto</label>
+            <select className="input text-xs font-bold" value={form.status} onChange={e=>set('status', e.target.value)}>
+              <option>Pendente</option>
+              <option>Pago</option>
+              <option>Vencido</option>
             </select>
           </div>
 
-          <div>
-            <label className="label">Condomínio</label>
-            <input className="input" value={form.condominio || ''} onChange={e=>set('condominio',e.target.value)} placeholder="Nome do condomínio"/>
-          </div>
-          <div>
-            <label className="label">Chave PIX para Recebimento</label>
-            <input className="input" value={form.chave_pix || ''} onChange={e=>set('chave_pix',e.target.value)} placeholder="CNPJ, E-mail, Celular ou Aleatória"/>
+          {/* CHAVE PIX */}
+          <div className="sm:col-span-2">
+            <label className="label text-xs font-black">Chave PIX para Recebimento (do Condomínio)</label>
+            <input className="input text-xs font-mono" value={form.chave_pix || ''} onChange={e=>set('chave_pix', e.target.value)} placeholder="CNPJ, E-mail, Celular ou Aleatória" />
           </div>
 
-          <div className="col-span-2 mt-2 pt-4 border-t border-cream-200">
-             <label className="flex items-center gap-2 cursor-pointer mb-3">
-               <input type="checkbox" checked={form.emitido} onChange={e=>set('emitido', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-4 h-4"/>
-               <span className="font-bold text-gray-700 text-sm">Boleto gerado externamente (Sem API)</span>
+          {/* BOLETO EXTERNO OPCIONAL */}
+          <div className="sm:col-span-2 mt-1 pt-3 border-t border-cream-200">
+             <label className="flex items-center gap-2 cursor-pointer mb-2">
+               <input type="checkbox" checked={form.emitido} onChange={e=>set('emitido', e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-4 h-4" />
+               <span className="font-bold text-gray-700 text-xs">Boleto gerado externamente (Link em PDF ou Copia e Cola)</span>
              </label>
              
              {form.emitido && (
-               <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-cream-200">
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-gray-50 p-3 rounded-xl border border-cream-200">
                   <div>
-                    <label className="label text-xs">Link do Boleto PDF (Opcional)</label>
-                    <input className="input text-xs" value={form.url} onChange={e=>set('url',e.target.value)} placeholder="https://..."/>
+                    <label className="label text-[10px]">Link do Boleto PDF (Opcional)</label>
+                    <input className="input text-xs" value={form.url} onChange={e=>set('url', e.target.value)} placeholder="https://..." />
                   </div>
                   <div>
-                    <label className="label text-xs">PIX Copia e Cola (Opcional)</label>
-                    <input className="input text-xs" value={form.pix_emv} onChange={e=>set('pix_emv',e.target.value)} placeholder="0002012658..."/>
+                    <label className="label text-[10px]">PIX Copia e Cola (Opcional)</label>
+                    <input className="input text-xs" value={form.pix_emv} onChange={e=>set('pix_emv', e.target.value)} placeholder="0002012658..." />
                   </div>
                </div>
              )}
           </div>
         </div>
-        <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
-          <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={()=>{if(!form.morador || form.valor === undefined || form.valor === null || form.valor === '') return; onSave(form)}} className="btn-primary">Salvar</button>
+
+        <div className="p-4 sm:p-6 border-t border-cream-300 flex gap-3 justify-end bg-slate-50 rounded-b-3xl">
+          <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
+          <button 
+            onClick={() => {
+              if (!form.morador || form.valor === undefined || form.valor === null || form.valor === '') {
+                alert("Por favor, preencha o Morador Responsável e o Valor.")
+                return
+              }
+              onSave(form)
+            }} 
+            className="btn-primary text-xs font-black"
+          >
+            Salvar e Gerar Boleto
+          </button>
         </div>
       </div>
     </div>
@@ -1775,7 +1956,8 @@ export default function Boletos() {
     const valorFormatado = Number(b.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
     const dataVenc = b.vencimento ? (b.vencimento.includes('-') ? b.vencimento.split('-').reverse().join('/') : b.vencimento) : '—'
 
-    const msg = `*Alpha Soluções Condominiais*\nOlá *${b.morador}* (Apt ${b.apt}), segue sua fatura referente a *${b.competencia || 'Taxa Condominial'}*:\n\n💰 *Valor:* R$ ${valorFormatado}\n📅 *Vencimento:* ${dataVenc}\n\n💠 *PIX Copia e Cola:*\n\`\`\`${pix}\`\`\`\n\nAbra o aplicativo do seu banco, escolha *PIX Copia e Cola* e cole o código acima para efetuar o pagamento.`
+    const tipoDesc = b.tipoCobranca ? `${b.tipoCobranca} (${b.competencia || 'Mês Vigente'})` : (b.competencia || 'Taxa Condominial')
+    const msg = `*Alpha Soluções Condominiais*\nOlá *${b.morador}* (Apt ${b.apt}), segue sua fatura referente a *${tipoDesc}*:\n\n💰 *Valor:* R$ ${valorFormatado}\n📅 *Vencimento:* ${dataVenc}\n\n💠 *PIX Copia e Cola:*\n\`\`\`${pix}\`\`\`\n\nAbra o aplicativo do seu banco, escolha *PIX Copia e Cola* e cole o código acima para efetuar o pagamento.`
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
@@ -1824,7 +2006,9 @@ export default function Boletos() {
     }
     if (modal !== 'new') await updateItem(modal.id, clean); else await addItem(clean)
     setModal(null)
-    alert(`🎉 Boleto Salvo com Sucesso!\n\n👤 Morador: ${clean.morador} (Apt ${clean.apt || '—'})\n🏢 Condomínio: ${clean.condominio}\n💰 Valor: R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)
+    const rotuloTipo = clean.tipoCobranca || 'Taxa Condominial'
+    const rotuloVinculo = clean.tipoMorador ? ` (${clean.tipoMorador})` : ''
+    alert(`🎉 Cobrança / Boleto Salvo com Sucesso!\n\n📋 Cobrança: ${rotuloTipo}\n👤 Pagador: ${clean.morador}${rotuloVinculo} (Apt ${clean.apt || '—'})\n🏢 Condomínio: ${clean.condominio}\n💰 Valor: R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)
   }
   
   const gerarSegundaVia = async b => {
@@ -2368,7 +2552,27 @@ export default function Boletos() {
                             />
                           </td>
                         )}
-                        <td className="table-cell font-medium text-gray-800">{b.morador}</td>
+                        <td className="table-cell font-medium text-gray-800">
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-gray-900">{b.morador}</span>
+                              {b.tipoMorador === 'Inquilino' && (
+                                <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md">
+                                  🔑 Inquilino
+                                </span>
+                              )}
+                            </div>
+                            {b.tipoCobranca && b.tipoCobranca !== 'Taxa Condominial' && (
+                              <span className={`text-[10px] font-black uppercase px-1.5 py-0.2 rounded-md w-fit inline-flex items-center gap-1 ${
+                                b.tipoCobranca.includes('Água') ? 'bg-cyan-100 text-cyan-900 border border-cyan-300' :
+                                b.tipoCobranca.includes('Energia') ? 'bg-amber-100 text-amber-950 border border-amber-300' :
+                                'bg-purple-100 text-purple-900 border border-purple-200'
+                              }`}>
+                                {b.tipoCobranca.includes('Água') ? '💧' : b.tipoCobranca.includes('Energia') ? '⚡' : '🏷️'} {b.tipoCobranca}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="table-cell text-gray-500 font-bold">{b.apt ? `Apt ${b.apt}` : '—'}</td>
                         <td className="table-cell">
                           <span className="bg-slate-100 text-slate-800 text-[11px] font-bold px-2 py-0.5 rounded-lg border border-slate-200 inline-block truncate max-w-[150px]">
@@ -2560,7 +2764,7 @@ export default function Boletos() {
       )}
 
       {viewing && <BoletoPrintModal boleto={viewing} condominio={allCondominios.find(c=>c.nome===(viewing.condominio || moradores.find(m=>m.nome===viewing.morador)?.condominio))} moradores={moradores} onClose={()=>setViewing(null)}/>}
-      {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores}/>}
+      {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores} condominios={allCondominios} initialCondo={condoFilter !== 'Todos' ? condoFilter : ''}/>}
       {modalLote&&<ModalGerarLote condominios={allCondominios} moradores={moradores} allBoletos={allBoletos} initialCondo={condoFilter !== 'Todos' ? condoFilter : ''} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
       {condoFundoEdit&&<ModalFundo condo={condoFundoEdit} onClose={()=>setCondoFundoEdit(null)} onSave={handleSaveFundo}/>}
       <RepassesAlphaModal
