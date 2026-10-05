@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Users, Plus, Search, Edit2, Trash2, Phone, Mail, Filter, PawPrint, Home, UserCheck, LayoutGrid, Table as TableIcon, X, Upload, FileSpreadsheet, Share2, Copy, Check, MessageSquare, CheckCircle2, AlertCircle, CheckSquare, Square, Send, Loader2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
-import { collection, query, where, getDocs, deleteDoc } from 'firebase/firestore'
+import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore'
 import { db } from '../firebase'
 
 function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialApt, initialBloco, initialCondo, condominiosList = [] }) {
@@ -662,11 +662,56 @@ ou colunas de planilha:
 }
 
 export default function Moradores() {
-  const { items: moradores, addItem, updateItem, deleteItem } = useFirestore('moradores')
+  const { items: moradoresRaw, addItem, updateItem, deleteItem } = useFirestore('moradores')
+  const { items: usuarios = [] } = useFirestore('usuarios')
   const { items: allCondominios } = useFirestore('condominios')
   const { items: pets, addItem: addPet } = useFirestore('pets')
   const { user } = useAuth()
   const isMorador = user?.role === 'Morador'
+
+  // Sincroniza e mescla automaticamente moradores com contas criadas em usuários (perfil Morador/Síndico/etc.)
+  const moradores = React.useMemo(() => {
+    const lista = [...moradoresRaw]
+    const emailsExistentes = new Set(lista.map(m => (m.email || '').toLowerCase().trim()).filter(Boolean))
+    const telefonesExistentes = new Set(lista.map(m => String(m.tel || '').replace(/\D/g, '')).filter(Boolean))
+
+    usuarios.forEach(u => {
+      const uEmail = (u.email || '').toLowerCase().trim()
+      const uTel = String(u.telefone || u.tel || '').replace(/\D/g, '')
+      const uRole = u.role || 'Morador'
+
+      // Considera usuários com perfil de morador ou que possuam condomínio e unidade preenchidos
+      const isPerfilMorador = ['Morador', 'Proprietário', 'Inquilino', 'Dependente', 'Síndico', 'Subsíndico', 'Conselheiro'].includes(uRole)
+      const temLocalizacao = u.condominio && (u.unidade || u.apt)
+
+      if (isPerfilMorador || temLocalizacao) {
+        const jaCadastrado = (uEmail && emailsExistentes.has(uEmail)) || (uTel && telefonesExistentes.has(uTel))
+        if (!jaCadastrado) {
+          // Extrai o apartamento limpando prefixos como "Apt", "APTO."
+          const aptLimpo = String(u.unidade || u.apt || '')
+            .replace(/^(apto\.?|apt\.?|unidade|bl\.?\s*\d+\s*apt\.?)\s*/i, '')
+            .trim()
+
+          lista.push({
+            id: `usr_${u.id}`,
+            nome: u.nome || 'Morador',
+            email: u.email || '',
+            tel: u.telefone || u.tel || '',
+            condominio: u.condominio || '',
+            bloco: u.bloco || '',
+            apt: aptLimpo || u.unidade || u.apt || '1',
+            cpf: u.cpf || '',
+            status: u.statusMorador || (uRole === 'Morador' ? 'Proprietário' : uRole),
+            fotoRosto: u.foto || u.fotoRosto || '',
+            origem: 'usuario-sincronizado',
+            cadastroCompleto: true
+          })
+        }
+      }
+    })
+
+    return lista
+  }, [moradoresRaw, usuarios])
 
   const [search, setSearch] = useState('')
   const [filtroCondominio, setFiltroCondominio] = useState('Todos')
@@ -874,7 +919,12 @@ export default function Moradores() {
   const handleDeleteMorador = async (m) => {
     if (!window.confirm(`Deseja realmente remover o morador "${m.nome}"?`)) return
     try {
-      await deleteItem(m.id)
+      if (String(m.id).startsWith('usr_')) {
+        const uId = String(m.id).replace(/^usr_/, '')
+        await deleteDoc(doc(db, 'usuarios', uId))
+      } else {
+        await deleteItem(m.id)
+      }
       // Sincroniza e remove usuário vinculado se houver, evitando resquícios
       if (m.email) {
         const qU = query(collection(db, 'usuarios'), where('email', '==', m.email.toLowerCase().trim()))
@@ -911,7 +961,12 @@ export default function Moradores() {
     try {
       const moradoresParaExcluir = moradores.filter(m => selectedIds.includes(m.id))
       for (const m of moradoresParaExcluir) {
-        await deleteItem(m.id)
+        if (String(m.id).startsWith('usr_')) {
+          const uId = String(m.id).replace(/^usr_/, '')
+          await deleteDoc(doc(db, 'usuarios', uId)).catch(() => {})
+        } else {
+          await deleteItem(m.id)
+        }
         if (m.email) {
           try {
             const qU = query(collection(db, 'usuarios'), where('email', '==', m.email.toLowerCase().trim()))

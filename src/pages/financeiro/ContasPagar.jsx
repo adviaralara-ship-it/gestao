@@ -27,9 +27,14 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
         return
       }
 
-      // 2. Se estiver rodando local (localhost) onde /api/cron não está ativo, monta o envio direto aqui
-      const hojeStr = new Date().toISOString().split('T')[0]
-      const dataFmt = hojeStr.split('-').reverse().join('/')
+      // 1. Monta o envio direto com dados em tempo real da aplicação
+      const hoje = new Date()
+      const yyyy = hoje.getFullYear()
+      const mm = String(hoje.getMonth() + 1).padStart(2, '0')
+      const dd = String(hoje.getDate()).padStart(2, '0')
+      const hojeStr = `${yyyy}-${mm}-${dd}`
+      const dataFmt = `${dd}/${mm}/${yyyy}`
+
       const contasHoje = lancamentos.filter(item => {
         const isDespesa = item.tipo === 'Despesa' || (item.categoria && String(item.categoria).toLowerCase().includes('despesa'))
         if (!isDespesa) return false
@@ -40,7 +45,7 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
       })
 
       if (contasHoje.length === 0) {
-        alert('Nenhuma conta com vencimento para a data de hoje encontrada.')
+        alert(`ℹ️ Nenhuma conta com vencimento para hoje (${dataFmt}) pendente de pagamento.`)
         setDisparandoAlertas(false)
         return
       }
@@ -48,12 +53,21 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
       const alphaInterno = contasHoje.filter(c => isAlphaInterno(c.condominio))
       const condominios = contasHoje.filter(c => !isAlphaInterno(c.condominio))
 
-      let msg = `🔔 *ALERTAS DE VENCIMENTO DO DIA (${dataFmt})*\n`
-      msg += `Total de contas vencendo hoje: ${contasHoje.length}\n\n`
+      // Agrupa condomínios por nome
+      const contasPorCondo = {}
+      condominios.forEach(c => {
+        const nomeCondo = c.condominio || 'Sem Condomínio'
+        if (!contasPorCondo[nomeCondo]) contasPorCondo[nomeCondo] = []
+        contasPorCondo[nomeCondo].push(c)
+      })
 
+      let msg = `🔔 *ALERTAS DE VENCIMENTO DO DIA (${dataFmt})*\n`
+      msg += `Total de contas a pagar hoje: *${contasHoje.length}*\n\n`
+
+      // BLOCO A) Alpha Interno
       msg += `🏢 *BLOCO A: ALPHA INTERNO*\n`
       if (alphaInterno.length === 0) {
-        msg += `_Nenhuma conta da Alpha vencendo hoje._\n\n`
+        msg += `_Nenhuma conta interna vencendo hoje._\n\n`
       } else {
         let tot = 0
         alphaInterno.forEach(c => {
@@ -64,20 +78,33 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
         msg += `*Total Alpha:* R$ ${fmt(tot)} (${alphaInterno.length} contas)\n\n`
       }
 
+      // BLOCO B) Condomínios Cadastrados Agrupados
       msg += `🏘️ *BLOCO B: CONTAS DOS CONDOMÍNIOS*\n`
-      if (condominios.length === 0) {
-        msg += `_Nenhuma conta de condomínios vencendo hoje._\n\n`
+      const nomesCondos = Object.keys(contasPorCondo)
+      if (nomesCondos.length === 0) {
+        msg += `_Nenhuma conta de condomínio vencendo hoje._\n\n`
       } else {
-        condominios.forEach(c => {
-          const val = parseFloat(c.valor) || 0
-          msg += `• *${c.condominio || 'Geral'}* - ${c.descricao || 'Despesa'}: R$ ${fmt(val)}\n`
+        nomesCondos.sort().forEach(condo => {
+          const lista = contasPorCondo[condo]
+          const subtotal = lista.reduce((acc, c) => acc + (parseFloat(c.valor) || 0), 0)
+          msg += `\n📍 *${condo.toUpperCase()}* (${lista.length} conta(s) - R$ ${fmt(subtotal)}):\n`
+          lista.forEach(c => {
+            const val = parseFloat(c.valor) || 0
+            msg += `  - ${c.descricao || 'Despesa'}: R$ ${fmt(val)}${c.categoria ? ` (${c.categoria})` : ''}\n`
+          })
         })
         msg += `\n`
       }
 
       msg += `🔗 *Acesse o módulo Financeiro:* https://alpha-solucoes-condominiais.vercel.app/financeiro`
 
-      const telefones = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
+      const telefones = [
+        '558396885931',
+        '5583996806325',
+        '5583999797285',
+        '5583998350321',
+        '5583998468997'
+      ]
 
       let enviados = 0
       for (const num of telefones) {
@@ -85,15 +112,15 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
           await fetch('/api/whatsapp-send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ number: num, text: msg })
+            body: JSON.stringify({ number: num, text: msg, instance: 'InstanciaAlpha' })
           })
           enviados++
         } catch (e) {
-          console.warn('Falha no envio:', num, e)
+          console.warn('Falha no envio WhatsApp:', num, e)
         }
       }
 
-      alert(`✓ Notificação enviada para os WhatsApps das Administradoras!\n${contasHoje.length} conta(s) encontrada(s).`)
+      alert(`✅ Notificações de vencimento disparadas com sucesso!\n\n🏢 Alpha Interno: ${alphaInterno.length} contas\n🏘️ Condomínios: ${condominios.length} contas\n📲 Enviado para ${enviados} números das Administradoras.`)
     } catch (err) {
       alert(`Erro ao disparar alertas: ${err.message}`)
     } finally {
