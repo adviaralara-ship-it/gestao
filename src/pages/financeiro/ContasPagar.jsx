@@ -182,8 +182,22 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
 
   // Ordenação cronológica: padrão ascendente (ex: outubro -> novembro -> dezembro)
   contasPagar.sort((a, b) => {
-    const timeA = new Date(a.data || 0).getTime()
-    const timeB = new Date(b.data || 0).getTime()
+    const rawA = String(a.data || a.vencimento || '').trim()
+    const rawB = String(b.data || b.vencimento || '').trim()
+    
+    // Converte se estiver em dd/mm/yyyy para yyyy-mm-dd
+    const parseDateStr = (str) => {
+      if (!str) return 0
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+        const [d, m, y] = str.split('/')
+        return new Date(`${y}-${m}-${d}T00:00:00`).getTime()
+      }
+      return new Date(str.includes('T') ? str : `${str}T00:00:00`).getTime() || 0
+    }
+
+    const timeA = parseDateStr(rawA)
+    const timeB = parseDateStr(rawB)
+
     return ordemVencimento === 'asc' ? timeA - timeB : timeB - timeA
   })
 
