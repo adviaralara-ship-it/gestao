@@ -22,8 +22,8 @@ export default function Dashboard() {
 
   // Buscar dados reais do Firestore
   const { items: condominios }  = useFirestore('condominios')
-  const { items: financeiro }   = useFirestore('financeiro_lancamentos')
-  const { items: boletos }      = useFirestore('boletos')
+  const { items: financeiro, deleteItem: deleteFinanceiro }   = useFirestore('financeiro_lancamentos')
+  const { items: boletos, deleteItem: deleteBoleto }      = useFirestore('boletos')
   const { items: cotacoes }     = useFirestore('cotacoes')
   const { items: manutencoes }  = useFirestore('manutencoes')
   const { items: apolices }     = useFirestore('apolices')
@@ -733,6 +733,9 @@ export default function Dashboard() {
     })
   }
 
+  const [modalInadimplencia, setModalInadimplencia] = useState(false)
+  const [limpandoInadimp, setLimpandoInadimp] = useState(false)
+
   const fmtVal = (v) => {
     if (!saldoVisivel) return '••••••••'
     return `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -753,7 +756,7 @@ export default function Dashboard() {
   const apoFiltradas = useMemo(() => filterByCondo(apolices), [apolices, condoFiltro])
   const ocFiltradas = useMemo(() => filterByCondo(ocorrencias), [ocorrencias, condoFiltro])
 
-  const { saldoAtual, capitalDeGiro, aReceber, aPagar, inadimplenciaTotal, contasVencidas, chartData } = useMemo(() => {
+  const { saldoAtual, capitalDeGiro, aReceber, aPagar, inadimplenciaTotal, itensInadimplentes = [], contasVencidas, chartData } = useMemo(() => {
     let recPagasTotal = 0
     let desPagasTotal = 0
     let recPendentesMes = 0
@@ -764,6 +767,8 @@ export default function Dashboard() {
     const refHoje = new Date()
     refHoje.setHours(0, 0, 0, 0)
     const histMeses = {}
+
+    let itensInadimp = []
 
     // Processamento de Boletos (Receitas de Cotas Condominiais)
     bolFiltrado.forEach(b => {
@@ -798,6 +803,17 @@ export default function Dashboard() {
             const d = parseISO(dStr)
             if (differenceInDays(d, refHoje) < 0) {
               inadimp += val
+              itensInadimp.push({
+                origem: 'boletos',
+                id: b.id,
+                morador: b.morador || 'Sem Nome',
+                apt: b.apt || b.unidade || '—',
+                condominio: b.condominio || 'Geral',
+                valor: val,
+                vencimento: b.vencimento || '—',
+                competencia: b.competencia || '—',
+                status: b.status || 'Pendente'
+              })
             }
           } catch(e) {}
         }
@@ -806,6 +822,11 @@ export default function Dashboard() {
 
     // Processamento de Lançamentos Financeiros (Despesas e Receitas Avulsas)
     finFiltrado.forEach(f => {
+      // Ignorar lançamentos cancelados ou excluídos
+      if (f.status === 'Cancelado' || f.status === 'Excluído' || f.excluido || f.deletado) {
+        return
+      }
+
       const val = parseFloat(f.valor) || 0
       const isDespesa = f.tipo === 'Despesa' || f.categoria?.toLowerCase().includes('despesa')
       const dStr = f.vencimento || f.data || ''
@@ -847,6 +868,21 @@ export default function Dashboard() {
           if (!mesFiltro || mesKey === mesFiltro) {
             recPendentesMes += val
           }
+          // Se for receita avulsa marcada como atrasada ou vencida
+          if (f.status === 'Atrasado' || f.status === 'Vencido') {
+            inadimp += val
+            itensInadimp.push({
+              origem: 'financeiro_lancamentos',
+              id: f.id,
+              morador: f.descricao || f.pagador || 'Lançamento Financeiro',
+              apt: f.apt || f.unidade || '—',
+              condominio: f.condominio || 'Geral',
+              valor: val,
+              vencimento: f.vencimento || f.data || '—',
+              competencia: f.competencia || '—',
+              status: f.status
+            })
+          }
         }
       }
     })
@@ -864,6 +900,7 @@ export default function Dashboard() {
       aReceber: recPendentesMes,
       aPagar: desPendentesMes,
       inadimplenciaTotal: inadimp,
+      itensInadimplentes: itensInadimp,
       contasVencidas: vencidas,
       chartData: sortedChart.length > 0 ? sortedChart : [
         { mes: format(new Date(), 'MMM'), receitas: 0, despesas: 0 }
@@ -1410,8 +1447,15 @@ export default function Dashboard() {
 
         {/* Inadimplência */}
         <div 
-          onClick={() => navigate('/inadimplencia')}
+          onClick={() => {
+            if (inadimplenciaTotal > 0 || itensInadimplentes.length > 0) {
+              setModalInadimplencia(true)
+            } else {
+              navigate('/inadimplencia')
+            }
+          }}
           className="bg-white p-5 rounded-2xl border border-pale-300 shadow-sm hover:shadow-md hover:border-brand-400 transition-all cursor-pointer group flex flex-col justify-between"
+          title="Clique para auditar ou limpar os boletos/lançamentos em atraso"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Inadimplência</span>
@@ -1424,9 +1468,16 @@ export default function Dashboard() {
               {fmtVal(inadimplenciaTotal)}
             </span>
           </div>
-          <div className="flex items-center gap-1 text-[11px] text-rose-600 font-bold">
-            <span>Cobrança & Jurídico</span>
-            <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+          <div className="flex items-center justify-between text-[11px] font-bold">
+            <span className="text-rose-600 flex items-center gap-1">
+              {inadimplenciaTotal > 0 ? 'Auditar & Resolver' : 'Cobrança & Jurídico'}
+              <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+            </span>
+            {inadimplenciaTotal > 0 && (
+              <span className="text-[10px] bg-rose-50 border border-rose-200 text-rose-700 px-1.5 py-0.5 rounded-md">
+                Ver Faturas ({itensInadimplentes.length})
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -2061,6 +2112,141 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Modal de Auditoria e Limpeza Direta de Inadimplência */}
+      {modalInadimplencia && (
+        <div className="modal-overlay" onClick={() => !limpandoInadimp && setModalInadimplencia(false)}>
+          <div className="modal-content max-w-xl" onClick={e => e.stopPropagation()}>
+            <div className="p-4 sm:p-5 border-b border-gray-200 flex items-center justify-between gap-3 bg-rose-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
+                  <AlertTriangle size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base">
+                    Auditoria de Inadimplência & Cobrança
+                  </h3>
+                  <p className="text-[11px] text-gray-500">
+                    {itensInadimplentes.length} fatura(s) ou boleto(s) constando em atraso no painel
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => !limpandoInadimp && setModalInadimplencia(false)}
+                className="text-gray-400 hover:text-gray-700 p-1"
+                disabled={limpandoInadimp}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-6 space-y-4">
+              <div className="p-3 bg-slate-50 border border-gray-200 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">Valor Total Acumulado</span>
+                  <span className="text-xl font-black text-rose-600">{fmtVal(inadimplenciaTotal)}</span>
+                </div>
+                {itensInadimplentes.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm(`⚠️ Deseja realmente EXCLUIR DEFINITIVAMENTE todas as ${itensInadimplentes.length} pendências em atraso (incluindo o boleto/lançamento de teste de R$ 2,50)? Esta ação zerará a inadimplência imediatamente no banco de dados.`)) return
+                      setLimpandoInadimp(true)
+                      try {
+                        for (const item of itensInadimplentes) {
+                          if (item.origem === 'boletos') {
+                            await deleteBoleto(item.id)
+                          } else if (item.origem === 'financeiro_lancamentos') {
+                            await deleteFinanceiro(item.id)
+                          }
+                        }
+                        setModalInadimplencia(false)
+                        alert("✅ Todas as pendências de inadimplência foram excluídas com sucesso do banco de dados!")
+                      } catch(err) {
+                        console.error(err)
+                        alert("Erro ao excluir algumas pendências. Tente novamente.")
+                      } finally {
+                        setLimpandoInadimp(false)
+                      }
+                    }}
+                    disabled={limpandoInadimp}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    title="Excluir tudo o que está gerando inadimplência"
+                  >
+                    <Trash2 size={13} />
+                    <span>Excluir Todas ({itensInadimplentes.length})</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-64 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-xl">
+                {itensInadimplentes.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-gray-400">
+                    Nenhuma fatura em atraso encontrada. Inadimplência zerada!
+                  </div>
+                ) : (
+                  itensInadimplentes.map((item, idx) => (
+                    <div key={item.id || idx} className="p-3 bg-white hover:bg-slate-50 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-bold text-slate-900 text-xs truncate">{item.morador}</p>
+                          <span className="text-[10px] bg-slate-100 text-gray-600 font-bold px-1.5 py-0.5 rounded">
+                            Apt {item.apt}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-500 mt-0.5">
+                          🏢 {item.condominio} • Vencimento: <b className="text-rose-600">{item.vencimento}</b> ({item.origem === 'boletos' ? 'Boleto' : 'Lançamento'})
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-black text-rose-600 text-xs">
+                          {fmtVal(item.valor)}
+                        </span>
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm(`Deseja excluir este item de "${item.morador}" no valor de ${fmtVal(item.valor)}?`)) return
+                            try {
+                              if (item.origem === 'boletos') {
+                                await deleteBoleto(item.id)
+                              } else {
+                                await deleteFinanceiro(item.id)
+                              }
+                            } catch(e) {
+                              console.error(e)
+                            }
+                          }}
+                          className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors border border-red-200 cursor-pointer"
+                          title="Excluir este boleto/lançamento"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-gray-200 flex items-center justify-between">
+              <button
+                onClick={() => {
+                  setModalInadimplencia(false)
+                  navigate('/boletos')
+                }}
+                className="text-xs font-bold text-brand-600 hover:underline cursor-pointer"
+              >
+                Abrir Tela de Boletos →
+              </button>
+              <button
+                onClick={() => setModalInadimplencia(false)}
+                className="btn-secondary text-xs"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
