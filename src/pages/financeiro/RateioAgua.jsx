@@ -188,7 +188,7 @@ export default function RateioAgua({ lancamentos, condoFilter, condominiosDispon
     })
 
     setLinhas(novasLinhas)
-  }, [rateioGravadoAtual, moradoresDoCondo, rateioMesAnterior, condomínio])
+  }, [rateioGravadoAtual, moradoresDoCondo, rateioMesAnterior, condominio])
 
   // Atualiza um campo de uma linha específica
   const handleUpdateLinha = (idx, campo, valor) => {
