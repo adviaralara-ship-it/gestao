@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { FileText, Plus, Download, DollarSign, Printer, CheckCircle2, Clock, AlertCircle, Trash2, Edit2, X, MessageSquare, Sparkles, Check, TrendingUp, Bell, Building, Upload, Copy, Share2, QrCode, Package } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import html2canvas from 'html2canvas'
@@ -1226,9 +1227,10 @@ function ModalGerarLote({ condominios, moradores, allBoletos = [], initialCondo 
 }
 
 export default function Boletos() {
+  const location = useLocation()
   const { user } = useAuth()
   const { items: allBoletos, addItem, updateItem, deleteItem } = useFirestore('boletos')
-  const { items: allLancamentos, addItem: addFinanceiroLancamento, updateItem: updateFinanceiroLancamento } = useFirestore('financeiro_lancamentos')
+  const { items: allLancamentos, addItem: addFinanceiroLancamento, updateItem: updateFinanceiroLancamento, deleteItem: deleteFinanceiroLancamento } = useFirestore('financeiro_lancamentos')
   const { items: allCondominios, updateItem: updateCondominio } = useFirestore('condominios')
   const { items: allMoradoresDocs } = useFirestore('moradores')
   const { items: allUsuariosDocs } = useFirestore('usuarios')
@@ -1237,11 +1239,24 @@ export default function Boletos() {
   const moradores = allMoradoresDocs
 
   const [tab, setTab] = useState('boletos')
-  const [condoFilter, setCondoFilter] = useState('Todos')
+  const [condoFilter, setCondoFilter] = useState(() => {
+    return location.state?.condominio || 'Todos'
+  })
   const [competenciaFilter, setCompetenciaFilter] = useState(() => {
+    if (location.state?.competencia) return location.state.competencia
     const d = new Date()
     return d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '/')
   })
+
+  // Sincronizar se navegar novamente para esta página com novo estado
+  useEffect(() => {
+    if (location.state?.condominio) {
+      setCondoFilter(location.state.condominio)
+    }
+    if (location.state?.competencia) {
+      setCompetenciaFilter(location.state.competencia)
+    }
+  }, [location.state])
   const [statusFilter, setStatusFilter] = useState('Todos')
   const [viewing, setViewing] = useState(null)
   const [modal, setModal] = useState(null)
@@ -1571,6 +1586,11 @@ export default function Boletos() {
   }, [allBoletos])
 
   const boletosFiltradosPorCondo = allBoletos.filter(b => {
+    // Ignorar boletos cancelados ou excluídos
+    if (b.status === 'Cancelado' || b.status === 'Excluído' || b.status === 'Excluido' || b.excluido || b.deletado) {
+      return false
+    }
+
     if (user?.role === 'Morador') {
       const uNome = (user?.nome || '').toLowerCase().trim()
       const uAptDigits = String(user?.apt || user?.unidade || '').replace(/\D/g, '')
@@ -2275,7 +2295,16 @@ export default function Boletos() {
                           if (window.confirm(`⚠️ Tem certeza que deseja EXCLUIR os ${selectedIds.length} boletos selecionados? Esta ação não pode ser desfeita.`)) {
                             const total = selectedIds.length
                             for (const id of selectedIds) {
-                              await deleteItem(id)
+                              try {
+                                await deleteItem(id)
+                                // Remove lançamentos vinculados em financeiro_lancamentos
+                                const lances = (allLancamentos || []).filter(l => l.boletoId === id || l.boleto_id === id)
+                                for (const lan of lances) {
+                                  if (lan.id) await deleteFinanceiroLancamento(lan.id)
+                                }
+                              } catch(e) {
+                                console.warn("Erro ao excluir boleto/lançamento:", e)
+                              }
                             }
                             setSelectedIds([])
                             alert(`✅ ${total} boletos foram excluídos com sucesso.`)
@@ -2384,9 +2413,17 @@ export default function Boletos() {
                                 {b.status !== 'Pago' && <button onClick={()=>marcarPago(b)} className="btn-success py-1 px-2 text-xs flex items-center gap-1"><CheckCircle2 size={11}/>Pago</button>}
                                 <button onClick={()=>setModal(b)} title="Editar Boleto" className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={12}/></button>
                                 <button 
-                                  onClick={() => {
+                                  onClick={async () => {
                                     if (window.confirm(`Deseja realmente excluir o boleto de ${b.morador} (Apt ${b.apt}) no valor de R$ ${fmt(b.valor)}?`)) {
-                                      deleteItem(b.id)
+                                      try {
+                                        await deleteItem(b.id)
+                                        const lances = (allLancamentos || []).filter(l => l.boletoId === b.id || l.boleto_id === b.id)
+                                        for (const lan of lances) {
+                                          if (lan.id) await deleteFinanceiroLancamento(lan.id)
+                                        }
+                                      } catch(e) {
+                                        console.warn("Erro ao excluir boleto:", e)
+                                      }
                                     }
                                   }} 
                                   title="Excluir Boleto" 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Users, Plus, Search, Edit2, Trash2, Phone, Mail, Filter, PawPrint, Home, UserCheck, LayoutGrid, Table as TableIcon, X, Upload, FileSpreadsheet, Share2, Copy, Check, MessageSquare, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Users, Plus, Search, Edit2, Trash2, Phone, Mail, Filter, PawPrint, Home, UserCheck, LayoutGrid, Table as TableIcon, X, Upload, FileSpreadsheet, Share2, Copy, Check, MessageSquare, CheckCircle2, AlertCircle, CheckSquare, Square, Send, Loader2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { collection, query, where, getDocs, deleteDoc } from 'firebase/firestore'
@@ -665,6 +665,10 @@ export default function Moradores() {
   const [modalImport, setModalImport] = useState(false)
   const [modalShareLink, setModalShareLink] = useState(null)
   const [targetUnidade, setTargetUnidade] = useState(null)
+  const [selectedIds, setSelectedIds] = useState([])
+  const [modalMsgWhatsLote, setModalMsgWhatsLote] = useState(false)
+  const [textoMsgLote, setTextoMsgLote] = useState('')
+  const [enviandoWhatsLote, setEnviandoWhatsLote] = useState(false)
 
   // Lista unificada de condomínios combinando o cadastro oficial de condomínios e eventuais nomes em moradores
   const condominiosUnicos = React.useMemo(() => {
@@ -830,6 +834,98 @@ export default function Moradores() {
     }
   }
 
+  const toggleSelectMorador = (id) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  const toggleSelectAll = () => {
+    const todosFiltradosIds = filtered.map(m => m.id)
+    const todosJaSelecionados = todosFiltradosIds.length > 0 && todosFiltradosIds.every(id => selectedIds.includes(id))
+    if (todosJaSelecionados) {
+      setSelectedIds(prev => prev.filter(id => !todosFiltradosIds.includes(id)))
+    } else {
+      setSelectedIds(Array.from(new Set([...selectedIds, ...todosFiltradosIds])))
+    }
+  }
+
+  const handleDeleteLote = async () => {
+    if (selectedIds.length === 0) return
+    const total = selectedIds.length
+    const condoNomeAviso = filtroCondominio !== 'Todos' ? ` do condomínio "${filtroCondominio}"` : ''
+    if (!window.confirm(`⚠️ Atenção: Deseja realmente EXCLUIR os ${total} moradores selecionados${condoNomeAviso}? Esta ação não pode ser desfeita.`)) {
+      return
+    }
+
+    try {
+      const moradoresParaExcluir = moradores.filter(m => selectedIds.includes(m.id))
+      for (const m of moradoresParaExcluir) {
+        await deleteItem(m.id)
+        if (m.email) {
+          try {
+            const qU = query(collection(db, 'usuarios'), where('email', '==', m.email.toLowerCase().trim()))
+            const sU = await getDocs(qU)
+            sU.forEach(async d => await deleteDoc(d.ref))
+          } catch(e) {}
+        }
+      }
+      setSelectedIds([])
+      alert(`✅ ${total} morador(es) foram excluídos com sucesso.`)
+    } catch (err) {
+      console.error('Erro na exclusão em lote:', err)
+      alert('Erro ao excluir alguns moradores. Tente novamente.')
+    }
+  }
+
+  const handleEnviarWhatsLote = async () => {
+    if (!textoMsgLote?.trim()) {
+      alert('Por favor, digite o texto da mensagem a ser enviada.')
+      return
+    }
+    const selecionadosDocs = moradores.filter(m => selectedIds.includes(m.id))
+    const comTelefone = selecionadosDocs.filter(m => {
+      const num = String(m.tel || m.telefone || '').replace(/\D/g, '')
+      return num.length >= 8
+    })
+
+    if (comTelefone.length === 0) {
+      alert('Nenhum dos moradores selecionados possui telefone válido cadastrado.')
+      return
+    }
+
+    setEnviandoWhatsLote(true)
+    let enviados = 0
+
+    for (const m of comTelefone) {
+      const rawTel = String(m.tel || m.telefone || '').replace(/\D/g, '')
+      const foneWhats = rawTel.length <= 11 ? `55${rawTel}` : rawTel
+      
+      const msgPersonalizada = textoMsgLote
+        .replace(/\{nome\}/gi, m.nome || '')
+        .replace(/\{apartamento\}/gi, m.apt || '')
+        .replace(/\{condominio\}/gi, m.condominio || '')
+
+      try {
+        await fetch('/api/whatsapp-send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            number: foneWhats,
+            text: msgPersonalizada,
+            instance: 'InstanciaAlpha'
+          })
+        })
+        enviados++
+      } catch (err) {
+        console.warn(`Falha no envio WhatsApp para ${m.nome}:`, err)
+      }
+    }
+
+    setEnviandoWhatsLote(false)
+    setModalMsgWhatsLote(false)
+    setTextoMsgLote('')
+    alert(`🎉 Disparo via WhatsApp concluído!\n\n✅ ${enviados} de ${comTelefone.length} moradores com telefone receberam a mensagem com sucesso.`)
+  }
+
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -942,6 +1038,67 @@ export default function Moradores() {
               ))}
             </div>
           )}
+
+          {/* Barra de Ações em Lote para o Condomínio Selecionado */}
+          <div className="bg-white p-3 sm:p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={toggleSelectAll}
+                className="btn-secondary text-xs font-bold flex items-center gap-2 py-1.5 px-3 bg-slate-50 hover:bg-slate-100 border-gray-300 shadow-xs cursor-pointer"
+                title="Selecionar ou desmarcar todos os moradores listados"
+              >
+                {filtered.length > 0 && filtered.every(m => selectedIds.includes(m.id)) ? (
+                  <>
+                    <CheckSquare size={16} className="text-brand-600" />
+                    <span>Desmarcar Todos ({filtered.length})</span>
+                  </>
+                ) : (
+                  <>
+                    <Square size={16} className="text-gray-400" />
+                    <span>Selecionar Todos {filtroCondominio !== 'Todos' ? `de "${filtroCondominio}"` : ''} ({filtered.length})</span>
+                  </>
+                )}
+              </button>
+              {selectedIds.length > 0 && (
+                <span className="text-xs font-bold text-brand-800 bg-brand-50 border border-brand-200 px-2.5 py-1 rounded-lg">
+                  {selectedIds.length} selecionado(s)
+                </span>
+              )}
+            </div>
+
+            {selectedIds.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => {
+                    const condoNome = filtroCondominio !== 'Todos' ? filtroCondominio : 'do Condomínio'
+                    setTextoMsgLote(`Olá {nome}! Comunicado importante da administração do ${condoNome}.\n\n`)
+                    setModalMsgWhatsLote(true)
+                  }}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                  title="Enviar mensagem no WhatsApp para os moradores selecionados"
+                >
+                  <MessageSquare size={14} />
+                  <span>Enviar WhatsApp ({selectedIds.length})</span>
+                </button>
+
+                <button
+                  onClick={handleDeleteLote}
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                  title="Excluir moradores selecionados"
+                >
+                  <Trash2 size={14} />
+                  <span>Excluir Selecionados ({selectedIds.length})</span>
+                </button>
+
+                <button
+                  onClick={() => setSelectedIds([])}
+                  className="px-2.5 py-1.5 text-gray-500 hover:text-gray-800 text-xs font-bold bg-white border border-gray-300 rounded-xl cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -1039,9 +1196,20 @@ export default function Moradores() {
                           window.open(`https://wa.me/${foneWhats}?text=${encodeURIComponent(msg)}`, '_blank')
                         }
 
+                        const isSelected = selectedIds.includes(m.id)
+
                         return (
-                          <div key={m.id} className="p-3 bg-slate-50/60 hover:bg-slate-50 rounded-xl border border-gray-200 flex items-center justify-between gap-3">
+                          <div key={m.id} className={`p-3 rounded-xl border flex items-center justify-between gap-3 transition-colors ${isSelected ? 'bg-brand-50/50 border-brand-300' : 'bg-slate-50/60 hover:bg-slate-50 border-gray-200'}`}>
                             <div className="flex items-center gap-3 min-w-0">
+                              {!isMorador && (
+                                <button
+                                  onClick={() => toggleSelectMorador(m.id)}
+                                  className="text-gray-400 hover:text-brand-600 transition-colors cursor-pointer shrink-0"
+                                  title={isSelected ? "Desmarcar morador" : "Selecionar morador"}
+                                >
+                                  {isSelected ? <CheckSquare size={17} className="text-brand-600" /> : <Square size={17} className="text-gray-400" />}
+                                </button>
+                              )}
                               {m.fotoRosto ? (
                                 <img
                                   src={m.fotoRosto}
@@ -1147,14 +1315,40 @@ export default function Moradores() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-cream-100 border-b border-cream-400">
-                <tr>{['Morador', 'Condomínio', 'Unidade', 'Contato', 'Status', 'Ações'].map(h => <th key={h} className="table-head">{h}</th>)}</tr>
+                <tr>
+                  <th className="table-head w-10 text-center">
+                    <button
+                      onClick={toggleSelectAll}
+                      className="text-gray-500 hover:text-brand-600 cursor-pointer"
+                      title="Selecionar / Desmarcar todos"
+                    >
+                      {filtered.length > 0 && filtered.every(m => selectedIds.includes(m.id)) ? (
+                        <CheckSquare size={16} className="text-brand-600" />
+                      ) : (
+                        <Square size={16} className="text-gray-400" />
+                      )}
+                    </button>
+                  </th>
+                  {['Morador', 'Condomínio', 'Unidade', 'Contato', 'Status', 'Ações'].map(h => <th key={h} className="table-head">{h}</th>)}
+                </tr>
               </thead>
               <tbody className="divide-y divide-cream-200">
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-8 text-gray-400 text-sm">Nenhum morador encontrado.</td></tr>
+                  <tr><td colSpan={7} className="text-center py-8 text-gray-400 text-sm">Nenhum morador encontrado.</td></tr>
                 ) : (
-                  filtered.map(m => (
-                    <tr key={m.id} className="hover:bg-cream-50 transition-colors">
+                  filtered.map(m => {
+                    const isSelected = selectedIds.includes(m.id)
+                    return (
+                    <tr key={m.id} className={`transition-colors ${isSelected ? 'bg-brand-50/60' : 'hover:bg-cream-50'}`}>
+                      <td className="table-cell text-center w-10">
+                        <button
+                          onClick={() => toggleSelectMorador(m.id)}
+                          className="text-gray-400 hover:text-brand-600 cursor-pointer"
+                          title={isSelected ? "Desmarcar" : "Selecionar"}
+                        >
+                          {isSelected ? <CheckSquare size={16} className="text-brand-600" /> : <Square size={16} className="text-gray-400" />}
+                        </button>
+                      </td>
                       <td className="table-cell">
                         <div className="flex items-center gap-3">
                           {m.fotoRosto ? (
@@ -1182,7 +1376,8 @@ export default function Moradores() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -1227,6 +1422,86 @@ export default function Moradores() {
           descricao={modalShareLink.descricao}
           onClose={() => setModalShareLink(null)}
         />
+      )}
+
+      {/* Modal para Envio de Mensagem WhatsApp em Lote */}
+      {modalMsgWhatsLote && (
+        <div className="modal-overlay" onClick={() => !enviandoWhatsLote && setModalMsgWhatsLote(false)}>
+          <div className="modal-content max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="p-4 sm:p-6 border-b border-gray-200 flex items-center justify-between gap-3 bg-emerald-50/50">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                  <MessageSquare size={16} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+                    Enviar WhatsApp em Lote
+                  </h3>
+                  <p className="text-[11px] text-gray-500">
+                    Disparo para {selectedIds.length} morador(es) selecionado(s) {filtroCondominio !== 'Todos' ? `de ${filtroCondominio}` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => !enviandoWhatsLote && setModalMsgWhatsLote(false)}
+                className="text-gray-400 hover:text-gray-700 p-1"
+                disabled={enviandoWhatsLote}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-6 space-y-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-900 space-y-1">
+                <p className="font-bold">💡 Dica de Personalização Automática:</p>
+                <p>Você pode usar as tags no seu texto: <b>{'{nome}'}</b> (nome do morador), <b>{'{apartamento}'}</b> (número do apto) e <b>{'{condominio}'}</b> (nome do condomínio).</p>
+              </div>
+
+              <div>
+                <label className="label text-xs font-bold text-gray-700">Mensagem do WhatsApp *</label>
+                <textarea
+                  className="input min-h-[140px] resize-none text-xs"
+                  placeholder="Escreva a mensagem aqui..."
+                  value={textoMsgLote}
+                  onChange={e => setTextoMsgLote(e.target.value)}
+                  disabled={enviandoWhatsLote}
+                />
+              </div>
+
+              <div className="text-[11px] text-gray-500 flex items-center justify-between">
+                <span>Total de moradores na fila: <b>{selectedIds.length}</b></span>
+                <span>Com telefone cadastrado: <b>{moradores.filter(m => selectedIds.includes(m.id) && String(m.tel || m.telefone || '').replace(/\D/g, '').length >= 8).length}</b></span>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-gray-200 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setModalMsgWhatsLote(false)}
+                disabled={enviandoWhatsLote}
+                className="btn-secondary text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleEnviarWhatsLote}
+                disabled={enviandoWhatsLote || !textoMsgLote?.trim()}
+                className="btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                {enviandoWhatsLote ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Disparando mensagens...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send size={14} />
+                    <span>Confirmar e Disparar WhatsApp</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

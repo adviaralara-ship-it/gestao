@@ -767,6 +767,11 @@ export default function Dashboard() {
 
     // Processamento de Boletos (Receitas de Cotas Condominiais)
     bolFiltrado.forEach(b => {
+      // Ignorar boletos cancelados, excluídos ou soft-deleted
+      if (b.status === 'Cancelado' || b.status === 'Excluído' || b.status === 'Excluido' || b.excluido || b.deletado) {
+        return
+      }
+
       const val = parseFloat(b.valor) || 0
       const dStr = b.vencimento || b.data || ''
       let dObj = refHoje
@@ -1109,6 +1114,11 @@ export default function Dashboard() {
 
     // Processar boletos
     boletos.forEach(b => {
+      // Ignorar boletos cancelados, excluídos ou soft-deleted
+      if (b.status === 'Cancelado' || b.status === 'Excluído' || b.status === 'Excluido' || b.excluido || b.deletado) {
+        return
+      }
+
       const cNome = (b.condominio || 'Geral').trim()
       if (!mapCondos[cNome]) {
         mapCondos[cNome] = {
@@ -1686,7 +1696,7 @@ export default function Dashboard() {
                       <button
                         onClick={() => {
                           setCondoFiltro(c.nome)
-                          navigate('/boletos')
+                          navigate('/boletos', { state: { condominio: c.nome, competencia: 'Todas' } })
                         }}
                         className="p-1.5 bg-slate-100 hover:bg-brand-50 hover:text-brand-700 text-gray-600 rounded-lg transition-colors font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
                         title="Ver boletos deste condomínio"

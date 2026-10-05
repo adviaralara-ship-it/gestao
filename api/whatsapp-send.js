@@ -67,6 +67,12 @@ export default async function handler(req, res) {
       text: text || caption || ''
     };
 
+    const evolutionHeaders = {
+      'Content-Type': 'application/json',
+      'apikey': API_KEY,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+    };
+
     if (mediaBase64 || mediaUrl) {
       endpoint = `${EVOLUTION_URL}/message/sendMedia/${instance}`;
       let mediaData = '';
@@ -104,10 +110,7 @@ export default async function handler(req, res) {
 
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': API_KEY
-      },
+      headers: evolutionHeaders,
       body: JSON.stringify(payload)
     });
 

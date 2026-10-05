@@ -446,6 +446,10 @@ export default function Manutencoes() {
         // 2. Disparo imediato para os números de WhatsApp dos Administradores e Síndico
         const telefonesDestino = new Set()
         telefonesDestino.add('558396885931') // Número oficial padrão da Alpha
+        telefonesDestino.add('5583996806325') // 83 99680-6325
+        telefonesDestino.add('5583999797285') // 83 99979-7285
+        telefonesDestino.add('5583998350321') // 83 99835-0321
+        telefonesDestino.add('5583998468997') // 83 99846-8997
 
         if (allUsuarios && allUsuarios.length > 0) {
           allUsuarios.forEach(u => {
@@ -529,6 +533,11 @@ export default function Manutencoes() {
 
       // 3. Notificar via WhatsApp se houver telefone ou administradores
       const telefonesAlvo = new Set()
+      telefonesAlvo.add('558396885931')
+      telefonesAlvo.add('5583996806325')
+      telefonesAlvo.add('5583999797285')
+      telefonesAlvo.add('5583998350321')
+      telefonesAlvo.add('5583998468997')
       if (telefoneWhats) {
         const limpo = telefoneWhats.replace(/\D/g, '')
         if (limpo.length >= 8) telefonesAlvo.add(limpo.length <= 11 ? `55${limpo}` : limpo)

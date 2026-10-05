@@ -59,6 +59,10 @@ export default async function handler(req, res) {
       // Telefones destinatários
       const telefonesDestino = new Set();
       telefonesDestino.add('558396885931');
+      telefonesDestino.add('5583996806325'); // 83 99680-6325
+      telefonesDestino.add('5583999797285'); // 83 99979-7285
+      telefonesDestino.add('5583998350321'); // 83 99835-0321
+      telefonesDestino.add('5583998468997'); // 83 99846-8997
 
       usuarios.forEach(u => {
         const isAdm = u.role === 'Administrador' || u.role === 'Financeiro';

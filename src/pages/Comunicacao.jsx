@@ -384,6 +384,22 @@ export default function Comunicacao() {
             })
           }).catch(e => console.error("Push erro", e))
 
+          // Disparo automático via WhatsApp para os números cadastrados de avisos
+          const telefonesAvisos = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
+          const msgAvisoWhats = `📢 *NOVO ${a.tipo ? a.tipo.toUpperCase() : 'COMUNICADO'} - ALPHA GESTÃO*\n\n📌 *Título:* ${a.titulo}\n🏢 *Condomínio:* ${a.condominio || 'Todos'}\n🎯 *Destino:* ${a.destino || 'Todos'}\n\n📝 *Mensagem:*\n${a.texto}\n\n🔗 *Acesse o Mural Completo:*\nhttps://alpha-solucoes-condominiais.vercel.app/mural`
+
+          for (const tel of telefonesAvisos) {
+            fetch('/api/whatsapp-send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                number: tel,
+                text: msgAvisoWhats,
+                instance: 'InstanciaAlpha'
+              })
+            }).catch(e => console.warn('Falha no envio de aviso WhatsApp:', tel, e))
+          }
+
           setModal(null)
         }}/>
       )}

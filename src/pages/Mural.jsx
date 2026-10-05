@@ -115,6 +115,22 @@ export default function Mural() {
         data: format(new Date(), 'dd/MM/yyyy'),
         createdAt: new Date().toISOString()
       })
+      // Disparo automático via WhatsApp para os números cadastrados de avisos
+      const telefonesAvisos = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
+      const msgAvisoWhats = `📢 *NOVO ${form.tipo ? form.tipo.toUpperCase() : 'COMUNICADO'} NO MURAL - ALPHA GESTÃO*\n\n📌 *Título:* ${form.titulo}\n🏢 *Condomínio:* ${form.condominio || 'Todos'}\n🎯 *Destino:* ${form.destino || 'Todos'}\n\n📝 *Mensagem:*\n${form.texto}\n\n🔗 *Acesse o Mural:* https://alpha-solucoes-condominiais.vercel.app/mural`
+
+      for (const tel of telefonesAvisos) {
+        fetch('/api/whatsapp-send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            number: tel,
+            text: msgAvisoWhats,
+            instance: 'InstanciaAlpha'
+          })
+        }).catch(e => console.warn('Falha no envio de aviso WhatsApp Mural:', tel, e))
+      }
+
       setModalNovoAberto(false)
       setForm({
         titulo: '',
