@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Eye, Download, Copy, Check, ExternalLink, Sparkles, Building2, Crown, Send, Loader2 } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Eye, Download, Copy, Check, ExternalLink, Sparkles, Building2, Crown, Send, Loader2, Square, CheckSquare, DollarSign } from 'lucide-react'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 import { isAlphaInterno } from '../Financeiro'
 
@@ -12,6 +12,7 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
   const [statusFilter, setStatusFilter] = useState('Todas')
   const [copiadoId, setCopiadoId] = useState(null)
   const [disparandoAlertas, setDisparandoAlertas] = useState(false)
+  const [selectedIds, setSelectedIds] = useState([])
 
   const handleDispararAlertasAgora = async () => {
     if (!window.confirm('Deseja disparar agora a notificação no WhatsApp das Administradoras com todas as contas vencendo hoje?')) return
@@ -196,6 +197,30 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+  // Seleção e soma dinâmica das contas selecionadas
+  const toggleSelectConta = (id) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    )
+  }
+
+  const allVisibleSelected = contasPagar.length > 0 && contasPagar.every(c => selectedIds.includes(c.id))
+
+  const toggleSelectAll = () => {
+    if (allVisibleSelected) {
+      // Remove da seleção os que estão visíveis atualmente
+      const visibleIds = new Set(contasPagar.map(c => c.id))
+      setSelectedIds(prev => prev.filter(id => !visibleIds.has(id)))
+    } else {
+      // Adiciona todos os visíveis na seleção
+      const newIds = new Set([...selectedIds, ...contasPagar.map(c => c.id)])
+      setSelectedIds(Array.from(newIds))
+    }
+  }
+
+  const contasSelecionadas = contasPagar.filter(t => selectedIds.includes(t.id))
+  const totalSelecionado = contasSelecionadas.reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
+
   const marcarComoPago = async (t) => {
     const novoStatus = t.status === 'Pago' ? 'Pendente' : 'Pago'
     const acao = novoStatus === 'Pago' ? 'Confirmar pagamento' : 'Voltar para Pendente'
@@ -256,11 +281,57 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
         <MonthRangeFilter mesDe={mesDe} setMesDe={setMesDe} mesAte={mesAte} setMesAte={setMesAte} />
       </div>
 
-      <div className="bg-white rounded-2xl border border-pale-300 shadow-sm overflow-hidden mt-2">
+      {/* Barra Informativa de Seleção e Soma de Contas */}
+      {selectedIds.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-brand-50 to-indigo-50 border border-brand-200 p-3.5 rounded-2xl shadow-sm animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <DollarSign size={22} className="stroke-[2.5]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-brand-900">Contas Selecionadas:</span>
+                <span className="px-2 py-0.5 rounded-full bg-brand-600 text-white text-[11px] font-black">
+                  {selectedIds.length} {selectedIds.length === 1 ? 'conta' : 'contas'}
+                </span>
+              </div>
+              <div className="text-sm font-medium text-gray-700 mt-0.5">
+                Soma total: <span className="text-lg font-black text-rose-600">R$ {fmt(totalSelecionado)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            <button
+              onClick={() => setSelectedIds([])}
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-gray-100 text-gray-700 border border-gray-200 font-bold text-xs transition-all cursor-pointer shadow-sm"
+            >
+              Desmarcar Todas
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl border border-pale-300 shadow-sm overflow-hidden mt-1">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[11px]">
               <tr>
+                <th className="p-3.5 w-10 text-center">
+                  <button 
+                    onClick={toggleSelectAll} 
+                    className="p-1 hover:text-brand-600 transition-colors inline-flex items-center justify-center cursor-pointer"
+                    title={allVisibleSelected ? "Desmarcar todos" : "Selecionar todos visíveis"}
+                  >
+                    {allVisibleSelected ? (
+                      <CheckSquare size={17} className="text-brand-600" />
+                    ) : selectedIds.length > 0 ? (
+                      <div className="w-4 h-4 rounded border-2 border-brand-600 bg-brand-100 flex items-center justify-center text-[10px] font-black text-brand-700 leading-none">-</div>
+                    ) : (
+                      <Square size={17} className="text-gray-400" />
+                    )}
+                  </button>
+                </th>
                 <th className="p-3.5">Vencimento</th>
                 <th className="p-3.5">Descrição / Fornecedor</th>
                 <th className="p-3.5">Origem / Condomínio</th>
@@ -274,7 +345,7 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
             <tbody className="divide-y divide-gray-100">
               {contasPagar.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-gray-400 text-sm">
+                  <td colSpan={9} className="text-center py-12 text-gray-400 text-sm">
                     Nenhuma conta a pagar encontrada para este período ou filtro.
                   </td>
                 </tr>
@@ -284,9 +355,30 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                   const atrasado = t.status === 'Pendente' && vencimento < hoje
                   const temCodigo = !!(t.linhaDigitavel || t.pix)
                   const ehAlpha = isAlphaInterno(t.condominio)
+                  const isSelected = selectedIds.includes(t.id)
 
                   return (
-                    <tr key={t.id} className={`hover:bg-slate-50/80 transition-colors ${atrasado ? 'bg-rose-50/50' : ''}`}>
+                    <tr 
+                      key={t.id} 
+                      className={`hover:bg-slate-50/80 transition-colors ${
+                        isSelected ? 'bg-brand-50/60 font-medium' : atrasado ? 'bg-rose-50/50' : ''
+                      }`}
+                    >
+                      <td className="p-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleSelectConta(t.id)}
+                          className="p-1 hover:text-brand-600 transition-colors inline-flex items-center justify-center cursor-pointer"
+                          title={isSelected ? "Desmarcar conta" : "Selecionar conta"}
+                        >
+                          {isSelected ? (
+                            <CheckSquare size={17} className="text-brand-600" />
+                          ) : (
+                            <Square size={17} className="text-gray-300 hover:text-gray-500" />
+                          )}
+                        </button>
+                      </td>
+
                       <td className="p-3.5 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           {atrasado && <AlertCircle size={14} className="text-red-500 shrink-0" title="Vencido!" />}
