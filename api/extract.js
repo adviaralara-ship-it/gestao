@@ -42,7 +42,44 @@ export default async function handler(req, res) {
     const base64Data = file.split(',')[1] || file;
 
     let prompt = "";
-    if (type === 'notafiscal') {
+    if (type === 'rateio_agua') {
+      prompt = `Você é um assistente especialista em leitura de contas de água (concessionárias de saneamento) e planilhas/folhas de medição de hidrômetros de condomínio.
+Analise a imagem enviada.
+Extraia as informações estruturadas estritamente em formato JSON, sem markdown ou explicações.
+
+Se a imagem for uma CONTA DE ÁGUA DA CONCESSIONÁRIA:
+Retorne:
+{
+  "tipoDocumento": "conta_concessionaria",
+  "concessionaria": "Nome da concessionária (ex: Cagepa, Sabesp, Copasa, etc.)",
+  "mesReferencia": "Mês de referência (ex: 2026-09 ou Setembro/2026)",
+  "vencimento": "YYYY-MM-DD",
+  "valorTotal": 0.00,
+  "consumoTotalM3": 0,
+  "leituras": []
+}
+
+Se a imagem for uma PLANILHA / TABELA DE MEDIÇÃO DE HIDRÔMETROS POR APARTAMENTO:
+Retorne:
+{
+  "tipoDocumento": "tabela_medicao",
+  "mesReferencia": "Mês/Ano se identificado",
+  "valorTotal": 0.00,
+  "leituras": [
+    {
+      "apt": "101",
+      "leituraAnterior": 451.18,
+      "leituraAtual": 464.51,
+      "consumoM3": 13,
+      "excessoM3": 3,
+      "observacao": "Alugado ou vazio se não houver"
+    }
+  ]
+}
+
+Se encontrar números com vírgula (ex: 451,18), converta para formato numérico com ponto (451.18).
+Retorne APENAS o JSON puro.`;
+    } else if (type === 'notafiscal') {
       prompt = `Extraia as seguintes informações desta nota fiscal ou recibo. Se houver mais de uma nota no arquivo, retorne um ARRAY de objetos JSON. Se houver apenas uma, retorne um ARRAY com um objeto. Use APENAS o seguinte formato, sem markdown:
       [{
         "numero": "número da nota ou recibo (se houver, senao vazio)",

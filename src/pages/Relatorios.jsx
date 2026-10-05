@@ -64,11 +64,19 @@ export default function Relatorios() {
       const snapBol = await getDocs(collection(db, 'boletos'))
       let boletos = snapBol.docs.map(d => ({ id: d.id, ...d.data() }))
 
+      // Buscar Rateio de Água do Mês
+      const snapAgua = await getDocs(collection(db, 'rateios_agua'))
+      let rateiosAgua = snapAgua.docs.map(d => ({ id: d.id, ...d.data() }))
+
       // Filtro de condomínio
       if (filtroCondominio) {
         lancamentos = lancamentos.filter(l => !l.condominio || l.condominio === filtroCondominio)
         boletos = boletos.filter(b => !b.condominio || b.condominio === filtroCondominio)
+        rateiosAgua = rateiosAgua.filter(r => !r.condominio || r.condominio.toLowerCase().includes(filtroCondominio.toLowerCase()) || filtroCondominio.toLowerCase().includes(r.condominio.toLowerCase()))
       }
+
+      // Identifica o rateio de água específico daquele mês
+      const rateioAguaMes = rateiosAgua.find(r => r.competencia === mesAlvo)
 
       // Filtro de mês para Lançamentos
       lancamentos = lancamentos.filter(l => {
@@ -205,6 +213,47 @@ export default function Relatorios() {
           headStyles: { fillColor: [16, 110, 80] },
           styles: { fontSize: 8 },
           columnStyles: { 4: { halign: 'right', fontStyle: 'bold' } }
+        })
+      }
+
+      // Seção 4: Demonstrativo e Rateio Individualizado de Água por Hidrômetro (se houver medição registrada)
+      if (rateioAguaMes && Array.isArray(rateioAguaMes.linhas) && rateioAguaMes.linhas.length > 0) {
+        doc.addPage()
+        let aguaStartY = 20
+
+        doc.setFontSize(13)
+        doc.setTextColor(14, 116, 144) // Azul ciano
+        doc.text(`4. Demonstrativo e Rateio de Água por Hidrômetro — ${rateioAguaMes.condominio || filtroCondominio || 'Condomínio'}`, 14, aguaStartY)
+
+        doc.setFontSize(9)
+        doc.setTextColor(71, 85, 105)
+        const subAgua = `Fatura Total da Concessionária: R$ ${(parseFloat(rateioAguaMes.valorTotalConta) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} | Consumo Medido Total: ${rateioAguaMes.consumoTotalM3 || 0} m³ | Excesso Total: ${rateioAguaMes.excessoTotalM3 || 0} m³`
+        doc.text(subAgua, 14, aguaStartY + 6)
+
+        const aguaBody = rateioAguaMes.linhas.map(l => [
+          String(l.apt || '-'),
+          l.morador || '-',
+          l.vinculo || 'Proprietário',
+          `${l.leituraAnterior !== undefined && l.leituraAnterior !== '' ? l.leituraAnterior : '-'} m³`,
+          `${l.leituraAtual !== undefined && l.leituraAtual !== '' ? l.leituraAtual : '-'} m³`,
+          `${l.consumoM3 || 0} m³`,
+          `${l.excessoM3 || 0} m³`,
+          `R$ ${(parseFloat(l.valorRateio) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+          l.observacao || '-'
+        ])
+
+        autoTable(doc, {
+          startY: aguaStartY + 10,
+          head: [['Apto', 'Morador / Pagador', 'Vínculo', 'Leit. Ant.', 'Leit. Atual', 'Consumo', 'Excesso', 'Valor (R$)', 'Obs']],
+          body: aguaBody,
+          theme: 'striped',
+          headStyles: { fillColor: [8, 145, 178], fontSize: 8 },
+          styles: { fontSize: 8, halign: 'center' },
+          columnStyles: { 
+            0: { fontStyle: 'bold' },
+            1: { halign: 'left' },
+            7: { halign: 'right', fontStyle: 'bold', textColor: [4, 120, 87] }
+          }
         })
       }
 

@@ -698,7 +698,7 @@ export default function Financeiro() {
       {activeTab === 'Dashboard' && <DashboardFinanceiro lancamentos={lancamentos} contas={contas} setModalLanc={setModalLanc} />}
       {activeTab === 'ContasPagar' && <ContasPagar lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
       {activeTab === 'ContasReceber' && <ContasReceber lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
-      {activeTab === 'RateioAgua' && <RateioAgua lancamentos={lancamentos} />}
+      {activeTab === 'RateioAgua' && <RateioAgua lancamentos={lancamentos} condoFilter={condoFilter} condominiosDisponiveis={condominiosDisponiveis} />}
       {activeTab === 'FluxoCaixa' && <FluxoCaixa lancamentos={lancamentos} contas={contas} />}
       {activeTab === 'Conciliacao' && <Conciliacao lancamentos={lancamentos} setModalLanc={setModalLanc} updateLancamento={updateLancamento} />}
       {activeTab === 'ReservaEmergencia' && (
