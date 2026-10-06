@@ -48,11 +48,50 @@ export default function Mural() {
 
   // Formulário de Disparo Rápido por Residencial
   const [formDisparo, setFormDisparo] = useState({
+    recadoId: '', // ID do recado selecionado, se houver
     condominio: user?.condominio || (condominios[0]?.nome || 'Todos'),
     titulo: '',
     mensagem: '',
     tipo: 'Comunicado'
   })
+
+  // Função para abrir o disparo já com um recado específico carregado
+  const abrirDisparoParaRecado = (recado) => {
+    setFormDisparo({
+      recadoId: recado.id,
+      condominio: recado.condominio && recado.condominio !== 'Todos' ? recado.condominio : (user?.condominio || condominios[0]?.nome || 'Todos'),
+      titulo: recado.titulo || '',
+      mensagem: recado.texto || '',
+      tipo: recado.tipo || 'Comunicado'
+    })
+    setStatusEnvio(null)
+    setModalDisparoAberto(true)
+  }
+
+  // Ao selecionar um recado na lista suspensa do modal de disparo
+  const handleSelecionarRecadoNoModal = (id) => {
+    if (!id) {
+      setFormDisparo(prev => ({
+        ...prev,
+        recadoId: '',
+        titulo: '',
+        mensagem: '',
+        tipo: 'Comunicado'
+      }))
+      return
+    }
+    const r = avisos.find(a => a.id === id)
+    if (r) {
+      setFormDisparo(prev => ({
+        ...prev,
+        recadoId: r.id,
+        titulo: r.titulo || '',
+        mensagem: r.texto || '',
+        tipo: r.tipo || 'Comunicado',
+        condominio: r.condominio && r.condominio !== 'Todos' ? r.condominio : prev.condominio
+      }))
+    }
+  }
 
   const [enviandoRecado, setEnviandoRecado] = useState(false)
   const [enviandoDisparo, setEnviandoDisparo] = useState(false)
@@ -440,6 +479,17 @@ export default function Mural() {
                 >
                   <Share2 size={16} /> Compartilhar
                 </button>
+
+                {['Administrador', 'Síndico'].includes(user?.role) && (
+                  <button
+                    onClick={() => abrirDisparoParaRecado(post)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 transition-all shadow-xs"
+                    title="Enviar este recado diretamente via WhatsApp para os moradores de um residencial"
+                  >
+                    <Smartphone size={14} className="text-emerald-600" />
+                    <span>Enviar para Residencial</span>
+                  </button>
+                )}
               </div>
 
               <button 
@@ -598,10 +648,37 @@ export default function Mural() {
             </div>
 
             <div className="flex flex-col gap-3 text-xs">
+              {/* Seletor de Recado já criado */}
+              <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3">
+                <label className="label font-bold text-amber-900 flex items-center justify-between mb-1">
+                  <span>📌 Usar um Recado já Criado (Opcional)</span>
+                  {formDisparo.recadoId && (
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                      Recado Carregado
+                    </span>
+                  )}
+                </label>
+                <select
+                  className="input font-medium bg-white text-gray-800 border-amber-300"
+                  value={formDisparo.recadoId}
+                  onChange={e => handleSelecionarRecadoNoModal(e.target.value)}
+                >
+                  <option value="">— Criar mensagem avulsa ou selecione um recado abaixo —</option>
+                  {avisos.map(a => (
+                    <option key={a.id} value={a.id}>
+                      [{a.tipo || 'Aviso'}] {a.titulo} {a.condominio ? `(Original: ${a.condominio})` : ''} - {a.data || ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-amber-700 mt-1">
+                  Você pode selecionar qualquer recado já postado no mural para dispará-lo aos moradores do residencial escolhido.
+                </p>
+              </div>
+
               <div>
                 <label className="label font-bold text-gray-700 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
-                    <Building2 size={14} className="text-brand-600" /> Selecione o Residencial / Condomínio *
+                    <Building2 size={14} className="text-brand-600" /> Residencial de Destino para o Disparo *
                   </span>
                   <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
                     {moradoresAlvoDisparo.length} moradores encontrados
