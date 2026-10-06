@@ -3,6 +3,9 @@ import { Megaphone, MessageSquare, Heart, Share2, AlertCircle, Calendar, MapPin,
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { format } from 'date-fns'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '../firebase'
+import { enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
 
 const tipoBadge = t => ({
   Aviso: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -22,6 +25,7 @@ export default function Mural() {
   const { user } = useAuth()
   const { items: avisos, add: addAviso, remove: removeAviso } = useFirestore('avisos')
   const { items: condominios } = useFirestore('condominios')
+  const { items: moradores } = useFirestore('moradores')
 
   const [search, setSearch] = useState('')
   const [curtidas, setCurtidas] = useState({})
@@ -115,21 +119,82 @@ export default function Mural() {
         data: format(new Date(), 'dd/MM/yyyy'),
         createdAt: new Date().toISOString()
       })
-      // Disparo automático via WhatsApp para os números cadastrados de avisos
+
+      // 1. Notificação geral / administrativa no sistema
+      await addDoc(collection(db, 'notificacoes'), {
+        text: `📢 Novo comunicado no Mural: "${form.titulo}" – para ${form.destino}${form.condominio !== 'Todos' ? ` (${form.condominio})` : ''}`,
+        time: new Date().toISOString(),
+        tipo: 'comunicado',
+        lida: false,
+        _createdAt: serverTimestamp(),
+        destino: form.destino,
+        condominio: form.condominio
+      })
+
+      // Filtrar moradores do condomínio selecionado
+      const moradoresAlvo = (moradores || []).filter(m => {
+        if (form.condominio && form.condominio !== 'Todos') {
+          return m.condominio === form.condominio
+        }
+        return true
+      })
+
+      // 2. Notificações individuais no Firestore para cada morador
+      for (const m of moradoresAlvo) {
+        try {
+          await addDoc(collection(db, 'notificacoes'), {
+            text: `📢 Novo recado no Mural: "${form.titulo}"`,
+            time: new Date().toISOString(),
+            tipo: 'comunicado',
+            lida: false,
+            _createdAt: serverTimestamp(),
+            condominio: m.condominio || form.condominio,
+            moradorId: m.id,
+            moradorNome: m.nome,
+            moradorEmail: m.email || '',
+            link: '/mural'
+          })
+        } catch (errNotif) {
+          console.warn('Erro ao salvar notificação individual no Mural:', m.nome, errNotif)
+        }
+      }
+
+      // 3. Disparo Push OneSignal para os moradores do condomínio
+      let targetEmails = null
+      if (form.condominio && form.condominio !== 'Todos') {
+        targetEmails = moradoresAlvo.filter(m => m.email).map(m => m.email)
+        if (targetEmails.length === 0) targetEmails = ['dummy_para_nao_enviar_para_todos@local.host']
+      }
+
+      fetch('/api/onesignal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `📢 ${form.tipo || 'Comunicado'}: ${form.titulo}`,
+          message: form.texto,
+          targetUserIds: targetEmails,
+          targetUrl: window.location.origin + '/mural'
+        })
+      }).catch(e => console.error('Push erro Mural:', e))
+
+      // 4. Disparo automático via WhatsApp para os números cadastrados e moradores do condomínio
       const telefonesAvisos = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
       const msgAvisoWhats = `📢 *NOVO ${form.tipo ? form.tipo.toUpperCase() : 'COMUNICADO'} NO MURAL - ALPHA GESTÃO*\n\n📌 *Título:* ${form.titulo}\n🏢 *Condomínio:* ${form.condominio || 'Todos'}\n🎯 *Destino:* ${form.destino || 'Todos'}\n\n📝 *Mensagem:*\n${form.texto}\n\n🔗 *Acesse o Mural:* https://alpha-solucoes-condominiais.vercel.app/mural`
 
-      for (const tel of telefonesAvisos) {
-        fetch('/api/whatsapp-send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            number: tel,
-            text: msgAvisoWhats,
-            instance: 'InstanciaAlpha'
-          })
+      const telefonesMoradores = moradoresAlvo
+        .map(m => (m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || '').replace(/\D/g, ''))
+        .filter(t => t && t.length >= 8)
+        .map(t => t.startsWith('55') ? t : `55${t}`)
+
+      const todosTelefones = Array.from(new Set([...telefonesAvisos, ...telefonesMoradores]))
+
+      todosTelefones.forEach(tel => {
+        enviarMensagemWhatsApp({
+          number: tel,
+          text: msgAvisoWhats,
+          instance: 'InstanciaAlpha'
         }).catch(e => console.warn('Falha no envio de aviso WhatsApp Mural:', tel, e))
-      }
+      })
 
       setModalNovoAberto(false)
       setForm({

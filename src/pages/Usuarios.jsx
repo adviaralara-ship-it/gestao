@@ -58,7 +58,7 @@ const getDefaultPerms = (r) => {
     return ['dashboard', 'condominios', 'moradores', 'prestadores', 'usuarios', 'financeiro', 'boletos', 'notas-fiscais', 'assembleias', 'reservas', 'eventos', 'portaria', 'veiculos', 'cameras', 'seguro', 'regime', 'documentos', 'comunicacao', 'tarefas', 'calculadora', 'propostas', 'seguranca']
   }
   if (r === 'Morador') {
-    return ['dashboard', 'boletos', 'assembleias', 'reservas', 'portaria', 'veiculos', 'cameras', 'regime', 'documentos', 'comunicacao']
+    return ['dashboard', 'boletos', 'assembleias', 'reservas', 'veiculos', 'cameras', 'regime', 'documentos', 'comunicacao']
   }
   if (r === 'Porteiro') {
     return ['dashboard', 'moradores', 'portaria', 'veiculos', 'comunicacao', 'reservas', 'eventos', 'cameras']
@@ -340,12 +340,67 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
 export default function Usuarios() {
   const navigate = useNavigate()
   const { user: currentUser } = useAuth()
-  const { items: users, addItem, updateItem, deleteItem } = useFirestore('usuarios')
+  const { items: usersRaw, addItem, updateItem, deleteItem } = useFirestore('usuarios')
+  const { items: moradoresRaw = [] } = useFirestore('moradores')
   const { items: allCondominios } = useFirestore('condominios')
   const [modal, setModal] = useState(null)
   const [condoFilter, setCondoFilter] = useState('Todos')
   const [roleFilter, setRoleFilter] = useState('Todos')
   const [search, setSearch] = useState('')
+
+  // Unifica moradores cadastrados com usuários para que todos apareçam na listagem de usuários e permissões
+  const defaultMoradorPerms = [
+    'dashboard',
+    'boletos',
+    'assembleias',
+    'reservas',
+    'veiculos',
+    'cameras',
+    'regime',
+    'documentos',
+    'comunicacao'
+  ]
+
+  const users = React.useMemo(() => {
+    const lista = [...usersRaw]
+    const emailsExistentes = new Set(lista.map(u => (u.email || '').toLowerCase().trim()).filter(Boolean))
+    const phonesExistentes = new Set(lista.map(u => String(u.telefone || u.tel || '').replace(/\D/g, '')).filter(Boolean))
+    const chavesExistentes = new Set(lista.map(u => `${String(u.condominio || '').trim().toLowerCase()}__${String(u.unidade || u.apt || '').trim().toLowerCase()}`))
+
+    moradoresRaw.forEach(m => {
+      const mEmail = (m.email || '').toLowerCase().trim()
+      const mTel = String(m.tel || m.telefone || '').replace(/\D/g, '')
+      const mCondo = String(m.condominio || '').trim().toLowerCase()
+      const mApt = String(m.apt || m.unidade || '').trim().toLowerCase()
+      const chave = `${mCondo}__${mApt}`
+
+      const jaExiste = (mEmail && emailsExistentes.has(mEmail)) || (mTel && phonesExistentes.has(mTel)) || chavesExistentes.has(chave)
+
+      if (!jaExiste) {
+        lista.push({
+          id: m.idOriginalUsuario || `morador_${m.id}`,
+          moradorDocId: m.id,
+          nome: m.nome || 'Morador',
+          email: m.email || (m.cpf ? `${m.cpf.replace(/\D/g, '')}@alpha.local` : `morador_${m.apt || '1'}@alpha.local`),
+          telefone: m.tel || m.telefone || '',
+          tel: m.tel || m.telefone || '',
+          condominio: m.condominio || '',
+          bloco: m.bloco || '',
+          unidade: m.apt || m.unidade || '',
+          apt: m.apt || m.unidade || '',
+          role: 'Morador',
+          status: 'Ativo',
+          ativo: true,
+          statusMorador: m.status || 'Proprietário',
+          permissoes: m.permissoes || defaultMoradorPerms,
+          origem: 'morador-vinculado',
+          _createdAt: m._createdAt || m.createdAt || new Date().toISOString()
+        })
+      }
+    })
+
+    return lista
+  }, [usersRaw, moradoresRaw])
 
   const isPendente = u => u.ativo === false || u.status === 'Pendente' || u.status === 'Inativo' || u.pendenteAprovacao === true
   const pendingUsers = users.filter(isPendente)
@@ -478,10 +533,20 @@ export default function Usuarios() {
         email: emailClean,
         ativo: form.status === 'Ativo',
       }
-      // Se não digitou senha nova, remove a chave para não sobrescrever a antiga
-      if (!updated.senha && modal.senha) updated.senha = modal.senha
-      
-      await updateItem(modal.id, updated)
+      if (String(modal.id).startsWith('morador_')) {
+        const docIdMorador = modal.moradorDocId || String(modal.id).replace('morador_', '')
+        await updateDoc(doc(db, 'moradores', docIdMorador), {
+          nome: nomeNorm,
+          condominio: condoNorm,
+          bloco: blocoNorm,
+          apt: unidadeNorm,
+          email: emailClean,
+          tel: form.telefone || ''
+        }).catch(() => {})
+        await addItem(updated)
+      } else {
+        await updateItem(modal.id, updated)
+      }
 
       // ALARME: Usuário comum virou Administrador
       if (viraAdmin) {
@@ -500,7 +565,12 @@ export default function Usuarios() {
   const handleDelete = async (u) => {
     if (!window.confirm(`Deseja realmente excluir o usuário "${u.nome || ''}"?`)) return
     try {
-      await deleteItem(u.id)
+      if (u.moradorDocId) {
+        await deleteDoc(doc(db, 'moradores', u.moradorDocId)).catch(() => {})
+      }
+      if (!String(u.id).startsWith('morador_')) {
+        await deleteItem(u.id).catch(() => {})
+      }
       // Se for perfil de morador ou tiver e-mail, limpa também em moradores
       if (u.email) {
         const qM = query(collection(db, 'moradores'), where('email', '==', u.email.toLowerCase().trim()))

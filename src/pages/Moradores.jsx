@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Users, Plus, Search, Edit2, Trash2, Phone, Mail, Filter, PawPrint, Home, UserCheck, LayoutGrid, Table as TableIcon, X, Upload, FileSpreadsheet, Share2, Copy, Check, MessageSquare, CheckCircle2, AlertCircle, CheckSquare, Square, Send, Loader2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
-import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, setDoc } from 'firebase/firestore'
+import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, setDoc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 
 function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialApt, initialBloco, initialCondo, condominiosList = [] }) {
@@ -1046,6 +1046,84 @@ export default function Moradores() {
           _createdAt: new Date().toISOString()
         })
         cadastrados++
+      }
+
+      // Sincroniza criação em usuarios e permissoes
+      const emailFinal = (item.email || existente?.email || '').toLowerCase().trim()
+      const telFinal = item.tel || existente?.tel || ''
+      const nomeFinal = item.nome || existente?.nome || 'MORADOR'
+
+      const moradorPerms = [
+        'dashboard',
+        'boletos',
+        'assembleias',
+        'reservas',
+        'veiculos',
+        'cameras',
+        'regime',
+        'documentos',
+        'comunicacao'
+      ]
+
+      try {
+        let usuarioExistenteDoc = null
+        if (emailFinal) {
+          const qU = query(collection(db, 'usuarios'), where('email', '==', emailFinal))
+          const sU = await getDocs(qU)
+          if (!sU.empty) usuarioExistenteDoc = sU.docs[0]
+        }
+
+        if (!usuarioExistenteDoc) {
+          const sTodosU = await getDocs(collection(db, 'usuarios'))
+          const achado = sTodosU.docs.find(d => {
+            const dt = d.data()
+            const matchCondo = String(dt.condominio || '').trim().toLowerCase() === String(nomeCondo).trim().toLowerCase()
+            const matchApt = String(dt.unidade || dt.apt || '').trim().toLowerCase() === String(item.apt).trim().toLowerCase()
+            const matchBloco = String(dt.bloco || '').trim().toLowerCase() === String(item.bloco || '').trim().toLowerCase()
+            return matchCondo && matchApt && matchBloco
+          })
+          if (achado) usuarioExistenteDoc = achado
+        }
+
+        if (usuarioExistenteDoc) {
+          await updateDoc(usuarioExistenteDoc.ref, {
+            nome: nomeFinal,
+            telefone: telFinal,
+            tel: telFinal,
+            condominio: nomeCondo,
+            unidade: item.apt,
+            apt: item.apt,
+            bloco: item.bloco || '',
+            role: 'Morador',
+            statusMorador: item.status || 'Proprietário',
+            permissoes: moradorPerms,
+            ativo: true,
+            status: 'Ativo'
+          })
+        } else {
+          // Cria novo registro de usuário para aparecer na tela de Usuários & Permissões
+          const userEmailParaSalvar = emailFinal || `morador_${String(nomeCondo).toLowerCase().replace(/[^a-z0-9]/g, '')}_${String(item.apt).replace(/[^a-z0-9]/g, '')}@alpha.local`
+          await addDoc(collection(db, 'usuarios'), {
+            nome: nomeFinal,
+            email: userEmailParaSalvar,
+            telefone: telFinal,
+            tel: telFinal,
+            condominio: nomeCondo,
+            unidade: item.apt,
+            apt: item.apt,
+            bloco: item.bloco || '',
+            role: 'Morador',
+            statusMorador: item.status || 'Proprietário',
+            permissoes: moradorPerms,
+            ativo: true,
+            status: 'Ativo',
+            pendenteAprovacao: false,
+            origem: 'importacao-arquivo',
+            _createdAt: serverTimestamp()
+          })
+        }
+      } catch (errSyncUser) {
+        console.warn('Erro ao sincronizar morador com coleção usuarios:', nomeFinal, errSyncUser)
       }
     }
 

@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
 import { MessageSquare, Plus, Send, Megaphone, Trash2, Search, User, Smartphone, CheckSquare, Square, ExternalLink, Sparkles, Loader2, Bot } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
+import { useAuth } from '../context/AuthContext'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { enviarEmail } from '../emailjs.config'
+import { enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const API_KEYS = [
@@ -178,6 +180,7 @@ function ModalMensagem({ onClose, onSave, moradores }) {
 }
 
 export default function Comunicacao() {
+  const { user } = useAuth()
   const { items: avisos,   addItem: addAviso,   deleteItem: delAviso }   = useFirestore('avisos')
   const { items: mensagens,addItem: addMensagem,updateItem: updMsg,deleteItem: delMensagem } = useFirestore('mensagens')
   const { items: moradores } = useFirestore('moradores')
@@ -191,6 +194,9 @@ export default function Comunicacao() {
   const [selecionadosWpp, setSelecionadosWpp] = useState([])
   const [statusWpp, setStatusWpp] = useState('')
 
+  const isMorador = user?.role === 'Morador'
+  const condoUser = user?.condominio ? user.condominio.trim().toLowerCase() : ''
+
   const toggleWpp    = id  => setSelecionadosWpp(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])
   const toggleTodos  = ()  => setSelecionadosWpp(selecionadosWpp.length===moradores.length?[]:moradores.map(m=>m.id))
 
@@ -203,9 +209,43 @@ export default function Comunicacao() {
     setTimeout(()=>setStatusWpp(''),5000)
   }
 
-  const avisosFiltrados    = avisos.filter(a=>a.titulo?.toLowerCase().includes(search.toLowerCase())||a.texto?.toLowerCase().includes(search.toLowerCase()))
-  const mensagensFiltradas = mensagens.filter(m=>m.de?.toLowerCase().includes(search.toLowerCase())||m.texto?.toLowerCase().includes(search.toLowerCase()))
-  const naoLidas           = mensagens.filter(m=>!m.lida).length
+  // Filtragem de comunicados: administradores e síndicos veem tudo ou seus condomínios; morador vê estritamente o seu condomínio ou os direcionados a ele
+  const avisosFiltrados = avisos.filter(a => {
+    if (isMorador && condoUser) {
+      const aCondo = (a.condominio || '').trim().toLowerCase()
+      // Se tiver condomínio especificado e for diferente do condomínio do morador, não exibe
+      if (aCondo && aCondo !== 'todos' && aCondo !== condoUser) {
+        return false
+      }
+      if (a.destino === 'Colaboradores') return false
+      if (a.destino && a.destino !== 'Todos' && a.destino !== 'Proprietários' && a.destino !== 'Inquilinos') {
+        const uNome = (user?.nome || '').trim().toLowerCase()
+        const dStr = String(a.destino).trim().toLowerCase()
+        if (!dStr.includes(uNome) && !uNome.includes(dStr)) {
+          return false
+        }
+      }
+    }
+    const matchSearch = a.titulo?.toLowerCase().includes(search.toLowerCase()) || a.texto?.toLowerCase().includes(search.toLowerCase())
+    return matchSearch
+  })
+
+  // Filtragem de mensagens: moradores só veem mensagens pertinentes à sua unidade/nome/email
+  const mensagensFiltradas = mensagens.filter(m => {
+    if (isMorador) {
+      const uApt = String(user?.unidade || user?.apt || '').trim().toLowerCase()
+      const uNome = (user?.nome || '').trim().toLowerCase()
+      const uEmail = (user?.email || '').trim().toLowerCase()
+      const mApt = String(m.apt || '').trim().toLowerCase()
+      const mDe = String(m.de || '').trim().toLowerCase()
+      const mEmail = String(m.moradorEmail || '').trim().toLowerCase()
+      const match = (uEmail && mEmail === uEmail) || (uNome && mDe.includes(uNome)) || (uApt && mApt === uApt)
+      if (!match) return false
+    }
+    const matchSearch = m.de?.toLowerCase().includes(search.toLowerCase()) || m.texto?.toLowerCase().includes(search.toLowerCase())
+    return matchSearch
+  })
+  const naoLidas           = mensagensFiltradas.filter(m=>!m.lida).length
 
   const handleResponder = async id => {
     const texto = respostas[id]
@@ -358,47 +398,83 @@ export default function Comunicacao() {
       {modal==='comunicado'&&(
         <ModalComunicado moradores={moradores} condominios={condominios} onClose={()=>setModal(null)} onSave={async a=>{
           await addAviso(a)
-          // Notificação sistema
+
+          // 1. Notificação geral / administrativa no sistema
           await addDoc(collection(db,'notificacoes'),{
             text:`📢 Novo comunicado: "${a.titulo}" – para ${a.destino}${a.condominio !== 'Todos' ? ` (${a.condominio})` : ''}`,
             time:new Date().toISOString(),tipo:'comunicado',lida:false,_createdAt:serverTimestamp(),
             destino: a.destino,
             condominio: a.condominio
           })
+
+          // Filtrar moradores do condomínio selecionado (ou todos caso seja 'Todos')
+          const moradoresAlvo = moradores.filter(m => {
+            if (a.condominio && a.condominio !== 'Todos') {
+              return m.condominio === a.condominio
+            }
+            return true
+          })
+
+          // 2. Criar notificações individuais no Firestore para cada morador do condomínio
+          for (const m of moradoresAlvo) {
+            try {
+              await addDoc(collection(db, 'notificacoes'), {
+                text: `📢 Novo comunicado no condomínio: "${a.titulo}"`,
+                time: new Date().toISOString(),
+                tipo: 'comunicado',
+                lida: false,
+                _createdAt: serverTimestamp(),
+                condominio: m.condominio || a.condominio,
+                moradorId: m.id,
+                moradorNome: m.nome,
+                moradorEmail: m.email || '',
+                link: '/comunicacao'
+              })
+            } catch (errNotif) {
+              console.warn('Erro ao salvar notificação individual do morador:', m.nome, errNotif)
+            }
+          }
           
           let targetEmails = null;
           if (a.condominio && a.condominio !== 'Todos') {
-            targetEmails = moradores.filter(m => m.condominio === a.condominio && m.email).map(m => m.email);
+            targetEmails = moradoresAlvo.filter(m => m.email).map(m => m.email);
             if (targetEmails.length === 0) targetEmails = ['dummy_para_nao_enviar_para_todos@local.host'];
           }
           
-          // Disparo Push OneSignal para todos ou apenas condomínio específico
+          // 3. Disparo Push OneSignal para o condomínio específico ou geral
           fetch('/api/onesignal', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-              title: `Novo ${a.tipo}: ${a.titulo}`, 
+              title: `📢 ${a.tipo || 'Comunicado'}: ${a.titulo}`, 
               message: a.texto,
               targetUserIds: targetEmails,
               targetUrl: window.location.origin + '/mural'
             })
           }).catch(e => console.error("Push erro", e))
 
-          // Disparo automático via WhatsApp para os números cadastrados de avisos
-          const telefonesAvisos = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
+          // 4. Disparo WhatsApp para os telefones administrativos e para os moradores cadastrados no condomínio
           const msgAvisoWhats = `📢 *NOVO ${a.tipo ? a.tipo.toUpperCase() : 'COMUNICADO'} - ALPHA GESTÃO*\n\n📌 *Título:* ${a.titulo}\n🏢 *Condomínio:* ${a.condominio || 'Todos'}\n🎯 *Destino:* ${a.destino || 'Todos'}\n\n📝 *Mensagem:*\n${a.texto}\n\n🔗 *Acesse o Mural Completo:*\nhttps://alpha-solucoes-condominiais.vercel.app/mural`
 
-          for (const tel of telefonesAvisos) {
-            fetch('/api/whatsapp-send', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                number: tel,
-                text: msgAvisoWhats,
-                instance: 'InstanciaAlpha'
-              })
+          // Telefones de avisos administrativos
+          const telefonesAvisos = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
+          
+          // Coletar telefones únicos dos moradores do condomínio
+          const telefonesMoradores = moradoresAlvo
+            .map(m => (m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || '').replace(/\D/g, ''))
+            .filter(t => t && t.length >= 8)
+            .map(t => t.startsWith('55') ? t : `55${t}`)
+
+          const todosTelefones = Array.from(new Set([...telefonesAvisos, ...telefonesMoradores]))
+
+          // Enviar via whatsappAutomacao (tenta endpoint da API e possui fallback direto na Evolution API)
+          todosTelefones.forEach(tel => {
+            enviarMensagemWhatsApp({
+              number: tel,
+              text: msgAvisoWhats,
+              instance: 'InstanciaAlpha'
             }).catch(e => console.warn('Falha no envio de aviso WhatsApp:', tel, e))
-          }
+          })
 
           setModal(null)
         }}/>
