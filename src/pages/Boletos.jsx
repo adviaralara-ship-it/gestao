@@ -2672,7 +2672,7 @@ export default function Boletos() {
                               <>
                                 <button onClick={()=>enviarWhats(b)} className="btn-secondary py-1 px-2 text-xs text-green-700 bg-green-50 border-green-200 hover:bg-green-100 flex items-center gap-1"><MessageSquare size={11}/>Whats</button>
                                 {b.status !== 'Pago' && <button onClick={()=>marcarPago(b)} className="btn-success py-1 px-2 text-xs flex items-center gap-1"><CheckCircle2 size={11}/>Pago</button>}
-                                <button onClick={()=>setModal(b)} title="Editar Boleto" className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={12}/></button>
+                                <button onClick={()=>setModal(b)} title="Editar Boleto" className="p-1.5 rounded-lg bg-slate-100 hover:bg-brand-100 text-slate-700 hover:text-brand-900 border border-slate-300 hover:border-brand-300 transition-all shadow-xs"><Edit2 size={13} className="stroke-[2.2]"/></button>
                                 <button 
                                   onClick={async () => {
                                     if (window.confirm(`Deseja realmente excluir o boleto de ${b.morador} (Apt ${b.apt}) no valor de R$ ${fmt(b.valor)}?`)) {
@@ -2688,9 +2688,9 @@ export default function Boletos() {
                                     }
                                   }} 
                                   title="Excluir Boleto" 
-                                  className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 transition-all border border-red-200"
+                                  className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-700 hover:text-red-700 transition-all border border-slate-300 hover:border-red-300 shadow-xs"
                                 >
-                                  <Trash2 size={12}/>
+                                  <Trash2 size={13} className="stroke-[2.2]"/>
                                 </button>
                               </>
                             )}

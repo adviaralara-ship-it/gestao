@@ -27,23 +27,54 @@ export const isAlphaInterno = (condo) => {
   return c.includes('alpha') || c === 'interno' || c === 'administração' || c === 'administracao' || c === 'matriz'
 }
 
-// ─── Modal: Lançamento Financeiro ────────────────────────────────────
-function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onClose, onSave }) {
+function ModalLancamento({ data, allLancamentos = [], user, condominiosDisponiveis, filtroAtual, onClose, onSave }) {
   const defaultCondo = filtroAtual && filtroAtual !== 'Todos' ? filtroAtual : (user?.condominio || 'Alpha (Interno)');
   
-  const [form, setForm] = useState(data || {
-    descricao: '', 
-    tipo: 'Despesa', 
-    categoria: '', 
-    valor: '', 
-    data: new Date().toISOString().split('T')[0], 
-    status: 'Pendente', 
-    condominio: defaultCondo, 
-    arquivoUrl: '', 
-    linhaDigitavel: '',
-    pix: '',
-    recorrente: false, 
-    qtdMeses: '12'
+  // Detectar se o lançamento atual pertence a um grupo de parcelas (seja por grupoParcelaId ou por padrão no nome "Nome (01/12)")
+  const parsedParcelaInfo = React.useMemo(() => {
+    if (!data) return null
+    if (data.grupoParcelaId) {
+      return {
+        grupoParcelaId: data.grupoParcelaId,
+        numero: Number(data.numeroParcela || 1),
+        total: Number(data.totalParcelas || 1),
+        porNome: false
+      }
+    }
+    const match = (data.descricao || '').match(/\((\d+)\/(\d+)\)$/)
+    if (match) {
+      return {
+        numero: parseInt(match[1], 10),
+        total: parseInt(match[2], 10),
+        baseDesc: (data.descricao || '').replace(/\s*\(\d+\/\d+\)$/, '').trim(),
+        porNome: true
+      }
+    }
+    return null
+  }, [data])
+
+  const [form, setForm] = useState(() => {
+    if (data) {
+      return {
+        ...data,
+        atualizarGrupo: parsedParcelaInfo ? true : false,
+        escopoParcelas: 'futuras' // 'futuras' (esta e as da frente) | 'todas' (todas pendentes)
+      }
+    }
+    return {
+      descricao: '', 
+      tipo: 'Despesa', 
+      categoria: '', 
+      valor: '', 
+      data: new Date().toISOString().split('T')[0], 
+      status: 'Pendente', 
+      condominio: defaultCondo, 
+      arquivoUrl: '', 
+      linhaDigitavel: '',
+      pix: '',
+      recorrente: false, 
+      qtdMeses: '12'
+    }
   })
   const [isExtracting, setIsExtracting] = useState(false)
   const [uploadingStorage, setUploadingStorage] = useState(false)
@@ -328,22 +359,53 @@ function ModalLancamento({ data, user, condominiosDisponiveis, filtroAtual, onCl
             </div>
 
             {/* Edição de Parcela de Grupo Existente */}
-            {data && data.grupoParcelaId && (
-              <div className="sm:col-span-2 bg-blue-50 border border-blue-200 p-3.5 rounded-xl flex flex-col gap-2">
-                <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                  📦 Este lançamento é a Parcela {data.numeroParcela || '1'} de {data.totalParcelas || '—'}
+            {data && (data.grupoParcelaId || parsedParcelaInfo) && (
+              <div className="sm:col-span-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-300 p-4 rounded-xl flex flex-col gap-2.5 shadow-xs">
+                <span className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
+                  📦 Este lançamento é a <b>Parcela {data.numeroParcela || parsedParcelaInfo?.numero || '1'} de {data.totalParcelas || parsedParcelaInfo?.total || '—'}</b>
                 </span>
-                <label className="flex items-center gap-2 text-xs font-semibold text-blue-800 cursor-pointer">
+                
+                <label className="flex items-center gap-2 text-xs font-bold text-blue-900 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={Boolean(form.atualizarGrupo)}
                     onChange={e => set('atualizarGrupo', e.target.checked)}
-                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                    className="w-4 h-4 text-blue-600 rounded border-blue-400 focus:ring-blue-500 cursor-pointer"
                   />
-                  Aplicar novo valor/categoria a todas as parcelas pendentes deste parcelamento
+                  <span>Replicar alterações para as demais parcelas deste lançamento</span>
                 </label>
-                <p className="text-[10px] text-blue-600">
-                  Desmarcado: altera somente esta parcela individual sem duplicar nem alterar as demais.
+
+                {form.atualizarGrupo && (
+                  <div className="pl-6 flex flex-col gap-1.5 text-xs text-blue-950 font-medium animate-fade-in">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="escopoParcelas"
+                        value="futuras"
+                        checked={form.escopoParcelas === 'futuras'}
+                        onChange={e => set('escopoParcelas', e.target.value)}
+                        className="text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <span><b>Atualizar esta e todas as parcelas lançadas para frente</b> (recomendado)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="escopoParcelas"
+                        value="todas"
+                        checked={form.escopoParcelas === 'todas'}
+                        onChange={e => set('escopoParcelas', e.target.value)}
+                        className="text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <span>Atualizar todas as parcelas pendentes deste parcelamento</span>
+                    </label>
+                  </div>
+                )}
+
+                <p className="text-[11px] text-blue-700">
+                  {form.atualizarGrupo
+                    ? '✓ As parcelas selecionadas receberão o novo valor, categoria, condomínio, fornecedor e descrição automaticamente.'
+                    : 'Desmarcado: altera somente esta parcela individual, sem modificar as outras.'}
                 </p>
               </div>
             )}
@@ -500,24 +562,66 @@ export default function Financeiro() {
   const handleSaveLancamento = async (form) => {
     try {
       if (modalLanc && modalLanc.id) {
-        if (form.atualizarGrupo && form.grupoParcelaId) {
-          const parcelasDoGrupo = allLancamentos.filter(l => l.grupoParcelaId === form.grupoParcelaId)
+        if (form.atualizarGrupo) {
+          // Identificar grupo de parcelas: seja por grupoParcelaId ou por correspondência de nome no formato "(XX/YY)"
+          const grupoId = form.grupoParcelaId || modalLanc.grupoParcelaId
+          const matchOrig = (modalLanc.descricao || '').match(/\((\d+)\/(\d+)\)$/)
+          const numOrig = modalLanc.numeroParcela || (matchOrig ? parseInt(matchOrig[1], 10) : 1)
+          const descBaseOrig = (modalLanc.descricao || '').replace(/\s*\(\d+\/\d+\)$/, '').trim().toLowerCase()
+          const escopo = form.escopoParcelas || 'futuras' // 'futuras' (esta e as da frente) | 'todas'
+
+          const parcelasDoGrupo = allLancamentos.filter(l => {
+            if (grupoId && l.grupoParcelaId === grupoId) return true
+            if (descBaseOrig) {
+              const matchL = (l.descricao || '').match(/\((\d+)\/(\d+)\)$/)
+              if (matchL) {
+                const descBaseL = (l.descricao || '').replace(/\s*\(\d+\/\d+\)$/, '').trim().toLowerCase()
+                return descBaseL === descBaseOrig && (l.condominio === modalLanc.condominio || l.tipo === modalLanc.tipo)
+              }
+            }
+            return false
+          })
+
+          const novaDescBase = (form.descricao || '').replace(/\s*\(\d+\/\d+\)$/, '').trim()
+
           for (const p of parcelasDoGrupo) {
             if (p.id === modalLanc.id) {
               await updateLancamento(modalLanc.id, form)
-            } else if (p.status !== 'Pago') {
-              await updateLancamento(p.id, {
-                valor: form.valor,
-                categoria: form.categoria || p.categoria,
-                fornecedor: form.fornecedor || p.fornecedor,
-                condominio: form.condominio || p.condominio,
-                tipo: form.tipo || p.tipo,
-                conta: form.conta || p.conta,
-                observacao: form.observacao || p.observacao
-              })
+            } else {
+              const matchP = (p.descricao || '').match(/\((\d+)\/(\d+)\)$/)
+              const numP = p.numeroParcela || (matchP ? parseInt(matchP[1], 10) : null)
+              
+              // Se escopo for 'futuras', apenas atualizar parcelas da frente (número maior ou data posterior)
+              let deveAtualizar = false
+              if (escopo === 'futuras') {
+                if (numP !== null && numOrig !== null) {
+                  deveAtualizar = numP > numOrig
+                } else if (p.data && modalLanc.data) {
+                  deveAtualizar = new Date(p.data) >= new Date(modalLanc.data)
+                } else {
+                  deveAtualizar = true
+                }
+              } else {
+                deveAtualizar = true
+              }
+
+              // Não sobrescrever parcelas que já estejam pagas
+              if (deveAtualizar && p.status !== 'Pago') {
+                const labelParcela = matchP ? ` (${matchP[1]}/${matchP[2]})` : (p.numeroParcela ? ` (${String(p.numeroParcela).padStart(2, '0')}/${String(p.totalParcelas || '').padStart(2, '0')})` : '')
+                await updateLancamento(p.id, {
+                  descricao: novaDescBase ? `${novaDescBase}${labelParcela}` : p.descricao,
+                  valor: form.valor,
+                  categoria: form.categoria || p.categoria,
+                  fornecedor: form.fornecedor || p.fornecedor,
+                  condominio: form.condominio || p.condominio,
+                  tipo: form.tipo || p.tipo,
+                  conta: form.conta || p.conta,
+                  observacao: form.observacao || p.observacao
+                })
+              }
             }
           }
-          await registrarLogAuditoria(user, 'Edição de Parcelas em Grupo', `Atualizou o grupo de parcelas do lançamento ${form.descricao}`)
+          await registrarLogAuditoria(user, 'Edição de Parcelas em Grupo', `Atualizou o parcelamento de ${form.descricao} (escopo: ${escopo})`)
         } else {
           await updateLancamento(modalLanc.id, form)
           await registrarLogAuditoria(user, 'Edição de Lançamento', `Editou o lançamento ${form.descricao}`)
@@ -716,6 +820,7 @@ export default function Financeiro() {
       {modalLanc && (
         <ModalLancamento
           data={modalLanc.id ? modalLanc : null}
+          allLancamentos={allLancamentos}
           user={user}
           condominiosDisponiveis={condominiosDisponiveis}
           filtroAtual={condoFilter}

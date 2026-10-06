@@ -162,8 +162,8 @@ export default function Historico({ lancamentos, setModalLanc, deleteLancamento,
                                 <CheckCircle2 size={14} />
                               </button>
                             )}
-                            <button onClick={() => setModalLanc(t)} title="Editar" className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={14} /></button>
-                            <button onClick={() => deleteLancamento(t.id)} title="Excluir" className="p-1.5 rounded-lg bg-cream-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all"><Trash2 size={14} /></button>
+                            <button onClick={() => setModalLanc(t)} title="Editar" className="p-1.5 rounded-lg bg-slate-100 hover:bg-brand-100 text-slate-700 hover:text-brand-900 border border-slate-300 hover:border-brand-300 transition-all shadow-xs"><Edit2 size={14} className="stroke-[2.2]" /></button>
+                            <button onClick={() => deleteLancamento(t.id)} title="Excluir" className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-700 hover:text-red-700 border border-slate-300 hover:border-red-300 transition-all shadow-xs"><Trash2 size={14} className="stroke-[2.2]" /></button>
                           </>
                         )}
                       </div>

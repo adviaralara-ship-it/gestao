@@ -340,15 +340,15 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                 <th className="p-3.5 w-10 text-center">
                   <button 
                     onClick={toggleSelectAll} 
-                    className="p-1 hover:text-brand-600 transition-colors inline-flex items-center justify-center cursor-pointer"
+                    className="p-1 hover:text-brand-700 transition-colors inline-flex items-center justify-center cursor-pointer"
                     title={allVisibleSelected ? "Desmarcar todos" : "Selecionar todos visíveis"}
                   >
                     {allVisibleSelected ? (
-                      <CheckSquare size={17} className="text-brand-600" />
+                      <CheckSquare size={18} className="text-brand-700 stroke-[2.5]" />
                     ) : selectedIds.length > 0 ? (
-                      <div className="w-4 h-4 rounded border-2 border-brand-600 bg-brand-100 flex items-center justify-center text-[10px] font-black text-brand-700 leading-none">-</div>
+                      <div className="w-4 h-4 rounded border-2 border-brand-700 bg-brand-100 flex items-center justify-center text-[10px] font-black text-brand-800 leading-none">-</div>
                     ) : (
-                      <Square size={17} className="text-gray-400" />
+                      <Square size={18} className="text-slate-600 hover:text-slate-900 stroke-[2]" />
                     )}
                   </button>
                 </th>
@@ -402,13 +402,13 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                         <button
                           type="button"
                           onClick={() => toggleSelectConta(t.id)}
-                          className="p-1 hover:text-brand-600 transition-colors inline-flex items-center justify-center cursor-pointer"
+                          className="p-1 hover:text-brand-700 transition-colors inline-flex items-center justify-center cursor-pointer"
                           title={isSelected ? "Desmarcar conta" : "Selecionar conta"}
                         >
                           {isSelected ? (
-                            <CheckSquare size={17} className="text-brand-600" />
+                            <CheckSquare size={18} className="text-brand-700 stroke-[2.5]" />
                           ) : (
-                            <Square size={17} className="text-gray-300 hover:text-gray-500" />
+                            <Square size={18} className="text-slate-600 hover:text-slate-900 stroke-[2]" />
                           )}
                         </button>
                       </td>
@@ -503,20 +503,20 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                           <button 
                             onClick={() => marcarComoPago(t)} 
                             title={t.status === 'Pago' ? 'Marcar como Pendente' : 'Confirmar Pagamento'} 
-                            className={`p-1.5 rounded-xl transition-all cursor-pointer ${
+                            className={`p-1.5 rounded-xl transition-all cursor-pointer border ${
                               t.status === 'Pago' 
-                                ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold' 
-                                : 'bg-slate-100 hover:bg-emerald-100 text-gray-500 hover:text-emerald-700'
+                                ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border-emerald-300 font-bold' 
+                                : 'bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-800 border-slate-300'
                             }`}
                           >
-                            <CheckCircle size={15} />
+                            <CheckCircle size={15} className="stroke-[2.2]" />
                           </button>
                           <button 
                             onClick={() => setModalLanc(t)} 
-                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-brand-50 text-gray-500 hover:text-brand-700 transition-all cursor-pointer" 
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-brand-100 text-slate-700 hover:text-brand-900 border border-slate-300 hover:border-brand-300 transition-all cursor-pointer shadow-xs" 
                             title="Editar Lançamento"
                           >
-                            <Edit2 size={14} />
+                            <Edit2 size={14} className="stroke-[2.2]" />
                           </button>
                           <button 
                             onClick={() => {
@@ -524,10 +524,10 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                                 deleteLancamento(t.id)
                               }
                             }} 
-                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-gray-400 hover:text-rose-600 transition-all cursor-pointer" 
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 transition-all cursor-pointer shadow-xs" 
                             title="Excluir"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={14} className="stroke-[2.2]" />
                           </button>
                         </div>
                       </td>

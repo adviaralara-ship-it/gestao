@@ -172,16 +172,16 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
                           <button 
                             onClick={() => marcarComoRecebido(t)} 
                             title={t.status === 'Recebido' ? 'Marcar como Pendente' : 'Confirmar Recebimento'} 
-                            className={`p-1.5 rounded-xl transition-all cursor-pointer ${
+                            className={`p-1.5 rounded-xl transition-all cursor-pointer border ${
                               t.status === 'Recebido' 
-                                ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold' 
-                                : 'bg-slate-100 hover:bg-emerald-100 text-gray-500 hover:text-emerald-700'
+                                ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border-emerald-300 font-bold' 
+                                : 'bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-800 border-slate-300'
                             }`}
                           >
-                            <CheckCircle size={15} />
+                            <CheckCircle size={15} className="stroke-[2.2]" />
                           </button>
-                          <button onClick={() => setModalLanc(t)} className="p-1.5 rounded-xl bg-slate-100 hover:bg-brand-50 text-gray-500 hover:text-brand-700 transition-all cursor-pointer" title="Editar"><Edit2 size={14} /></button>
-                          <button onClick={() => { if (window.confirm(`Excluir "${t.descricao}"?`)) deleteLancamento(t.id) }} className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-gray-400 hover:text-rose-600 transition-all cursor-pointer" title="Excluir"><Trash2 size={14} /></button>
+                          <button onClick={() => setModalLanc(t)} className="p-1.5 rounded-xl bg-slate-100 hover:bg-brand-100 text-slate-700 hover:text-brand-900 border border-slate-300 hover:border-brand-300 transition-all cursor-pointer shadow-xs" title="Editar"><Edit2 size={14} className="stroke-[2.2]" /></button>
+                          <button onClick={() => { if (window.confirm(`Excluir "${t.descricao}"?`)) deleteLancamento(t.id) }} className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 transition-all cursor-pointer shadow-xs" title="Excluir"><Trash2 size={14} className="stroke-[2.2]" /></button>
                         </div>
                       </td>
                     </tr>
