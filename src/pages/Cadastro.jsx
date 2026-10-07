@@ -192,12 +192,19 @@ export default function Cadastro() {
             const a = String(data.apt || data.unidade || '').trim().toLowerCase()
             const tel = (data.tel || data.telefone || data.whatsapp || '').replace(/\D/g, '')
             const formTel = form.telefone.replace(/\D/g, '')
+            const formCpf = form.cpf.replace(/\D/g, '')
+            const dataCpf = String(data.cpf || '').replace(/\D/g, '')
             
-            const matchUnidade = condoBate && a === mApt
-            const matchTel = tel && formTel && tel === formTel
+            const matchCpf = formCpf && dataCpf && formCpf === dataCpf
             const matchEmail = data.email && data.email.toLowerCase().trim() === emailClean
+            const matchTel = tel && formTel && tel === formTel && condoBate
             
-            return (matchUnidade && (matchTel || matchEmail || !data.email)) || (matchTel && condoBate)
+            // Só mescla por unidade se a unidade ainda não tiver morador com nome preenchido ou se o nome for idêntico
+            const mesmoNome = normalizeStr(data.nome) === normalizeStr(form.nome)
+            const semNomeDefinido = !data.nome || data.nome.trim().toLowerCase() === 'morador' || !data.cadastroCompleto
+            const matchUnidade = condoBate && a === mApt && (mesmoNome || semNomeDefinido || matchTel || matchEmail)
+            
+            return matchCpf || matchEmail || matchTel || matchUnidade
           })
 
           if (moradorExistenteDoc) {

@@ -760,20 +760,27 @@ export default function Moradores() {
   // Sincroniza e mescla automaticamente moradores com contas criadas em usuários (perfil Morador/Síndico/etc.)
   const moradores = React.useMemo(() => {
     const lista = [...moradoresRaw]
+    const idsDocExistentes = new Set(lista.map(m => m.idOriginalUsuario || m.id).filter(Boolean))
     const emailsExistentes = new Set(lista.map(m => (m.email || '').toLowerCase().trim()).filter(Boolean))
-    const telefonesExistentes = new Set(lista.map(m => String(m.tel || '').replace(/\D/g, '')).filter(Boolean))
+    const cpfsExistentes = new Set(lista.map(m => String(m.cpf || '').replace(/\D/g, '')).filter(Boolean))
 
     usuarios.forEach(u => {
+      const uId = u.id
       const uEmail = (u.email || '').toLowerCase().trim()
       const uTel = String(u.telefone || u.tel || '').replace(/\D/g, '')
+      const uCpf = String(u.cpf || '').replace(/\D/g, '')
       const uRole = u.role || 'Morador'
 
       // Considera usuários com perfil de morador ou que possuam condomínio e unidade preenchidos
       const isPerfilMorador = ['Morador', 'Proprietário', 'Inquilino', 'Dependente', 'Síndico', 'Subsíndico', 'Conselheiro'].includes(uRole)
-      const temLocalizacao = u.condominio && (u.unidade || u.apt)
+      const temLocalizacao = Boolean(u.condominio && (u.unidade || u.apt))
 
       if (isPerfilMorador || temLocalizacao) {
-        const jaCadastrado = (uEmail && emailsExistentes.has(uEmail)) || (uTel && telefonesExistentes.has(uTel))
+        // Verifica se esta pessoa específica já está em moradoresRaw (por id, email ou cpf)
+        const jaCadastrado = (uId && idsDocExistentes.has(uId)) ||
+                             (uEmail && emailsExistentes.has(uEmail)) ||
+                             (uCpf && cpfsExistentes.has(uCpf))
+
         if (!jaCadastrado) {
           // Extrai o apartamento limpando prefixos como "Apt", "APTO."
           const aptLimpo = String(u.unidade || u.apt || '')
