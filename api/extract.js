@@ -79,15 +79,19 @@ Retorne:
 
 Se encontrar números com vírgula (ex: 451,18), converta para formato numérico com ponto (451.18).
 Retorne APENAS o JSON puro.`;
-    } else if (type === 'notafiscal') {
-      prompt = `Extraia as seguintes informações desta nota fiscal ou recibo. Se houver mais de uma nota no arquivo, retorne um ARRAY de objetos JSON. Se houver apenas uma, retorne um ARRAY com um objeto. Use APENAS o seguinte formato, sem markdown:
+    } else if (type === 'notafiscal' || type === 'comprovante') {
+      prompt = `Extraia as informações deste documento fiscal ou financeiro (Nota Fiscal, Cupom Fiscal / NFC-e / SAT, Recibo ou Comprovante de Pagamento / Transferência / PIX). 
+Se houver mais de um no arquivo, retorne um ARRAY de objetos JSON. Se houver apenas um, retorne um ARRAY com um objeto.
+Identifique o campo "tipo" com uma das opções exatas: "Nota Fiscal", "Cupom Fiscal", "Recibo", "Comprovante de Pagamento".
+Use APENAS o seguinte formato JSON puro, sem markdown:
       [{
-        "numero": "número da nota ou recibo (se houver, senao vazio)",
-        "prestador": "nome do fornecedor ou prestador de serviço",
-        "cnpj": "CNPJ do prestador (formatado xx.xxx.xxx/xxxx-xx, ou vazio se não tiver)",
-        "servico": "descrição curta do serviço ou produto",
+        "tipo": "Nota Fiscal ou Cupom Fiscal ou Recibo ou Comprovante de Pagamento",
+        "numero": "número da nota, do cupom (COO/CCF), recibo ou id da transação/autenticação PIX",
+        "prestador": "nome do estabelecimento, prestador de serviço, fornecedor ou favorecido",
+        "cnpj": "CNPJ ou CPF do emissor/favorecido (formatado ou vazio se não houver)",
+        "servico": "descrição do serviço, produto adquirido ou motivo do pagamento",
         "valor": "valor total formatado (ex: R$ 1.500,00)",
-        "data": "data de emissão no formato YYYY-MM-DD"
+        "data": "data de emissão ou pagamento no formato YYYY-MM-DD"
       }]`;
     } else {
       prompt = `Extraia as seguintes informações deste documento (boleto, apólice, conta, carnê). Se o arquivo for um carnê ou apólice com MÚLTIPLAS parcelas/boletos, extraia os dados de CADA UM separadamente e retorne um ARRAY de objetos JSON. Se houver apenas um pagamento, retorne um ARRAY com um único objeto. Use APENAS o formato abaixo, sem markdown:

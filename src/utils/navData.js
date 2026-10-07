@@ -141,6 +141,7 @@ export function getFilteredNavGroups(user) {
           { to: '/dashboard',   label: 'Meu Painel',                icon: LayoutDashboard },
           { to: '/alpha-ai',    label: 'Alpha IA (Concierge)',       icon: Bot },
           { to: '/boletos',     label: 'Minha Situação Financeira', icon: CreditCard },
+          { to: '/notas-fiscais', label: 'Cupons, Recibos & Comprovantes', icon: Receipt },
           { to: '/documentos',  label: 'Documentos do Condomínio',  icon: FolderOpen },
           { to: '/mural',       label: 'Comunicados & Mural',       icon: Megaphone },
           { to: '/ocorrencias', label: 'Minhas Solicitações',       icon: AlertTriangle },

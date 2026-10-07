@@ -58,7 +58,7 @@ const getDefaultPerms = (r) => {
     return ['dashboard', 'condominios', 'moradores', 'prestadores', 'usuarios', 'financeiro', 'boletos', 'notas-fiscais', 'assembleias', 'reservas', 'eventos', 'portaria', 'veiculos', 'cameras', 'seguro', 'regime', 'documentos', 'comunicacao', 'tarefas', 'calculadora', 'propostas', 'seguranca']
   }
   if (r === 'Morador') {
-    return ['dashboard', 'boletos', 'assembleias', 'reservas', 'veiculos', 'cameras', 'regime', 'documentos', 'comunicacao']
+    return ['dashboard', 'boletos', 'notas-fiscais', 'assembleias', 'reservas', 'veiculos', 'cameras', 'regime', 'documentos', 'comunicacao']
   }
   if (r === 'Porteiro') {
     return ['dashboard', 'moradores', 'portaria', 'veiculos', 'comunicacao', 'reservas', 'eventos', 'cameras']
