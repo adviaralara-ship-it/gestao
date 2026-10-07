@@ -272,7 +272,7 @@ export default function Condominios() {
                     onClick={() => {
                       const origin = typeof window !== 'undefined' && window.location.origin
                         ? window.location.origin
-                        : 'https://alpha-solucoes-condominiais.vercel.app'
+                        : 'https://app.alphaadmsc.com.br'
                       const link = `${origin}/cadastro?condominio=${encodeURIComponent(c.nome)}`
                       navigator.clipboard.writeText(link)
                       alert(`🔗 Link oficial de cadastro do condomínio "${c.nome}" copiado com sucesso!\n\nLink: ${link}\n\nEnvie este link para os novos moradores. Eles já cairão vinculados a este condomínio automaticamente.`)

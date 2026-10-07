@@ -400,25 +400,29 @@ export default function Usuarios() {
 
   const users = React.useMemo(() => {
     const lista = [...usersRaw]
+    const idsExistentes = new Set(lista.map(u => u.id).filter(Boolean))
     const emailsExistentes = new Set(lista.map(u => (u.email || '').toLowerCase().trim()).filter(Boolean))
     const phonesExistentes = new Set(lista.map(u => String(u.telefone || u.tel || '').replace(/\D/g, '')).filter(Boolean))
-    const chavesExistentes = new Set(lista.map(u => `${String(u.condominio || '').trim().toLowerCase()}__${String(u.unidade || u.apt || '').trim().toLowerCase()}`))
+    const cpfsExistentes = new Set(lista.map(u => String(u.cpf || '').replace(/\D/g, '')).filter(Boolean))
 
     moradoresRaw.forEach(m => {
+      const mId = m.id
       const mEmail = (m.email || '').toLowerCase().trim()
       const mTel = String(m.tel || m.telefone || '').replace(/\D/g, '')
-      const mCondo = String(m.condominio || '').trim().toLowerCase()
-      const mApt = String(m.apt || m.unidade || '').trim().toLowerCase()
-      const chave = `${mCondo}__${mApt}`
+      const mCpf = String(m.cpf || '').replace(/\D/g, '')
 
-      const jaExiste = (mEmail && emailsExistentes.has(mEmail)) || (mTel && phonesExistentes.has(mTel)) || chavesExistentes.has(chave)
+      const jaExiste = (m.idOriginalUsuario && idsExistentes.has(m.idOriginalUsuario)) ||
+                       (mId && idsExistentes.has(mId)) ||
+                       (mEmail && emailsExistentes.has(mEmail)) ||
+                       (mCpf && cpfsExistentes.has(mCpf)) ||
+                       (mTel && phonesExistentes.has(mTel) && mEmail && emailsExistentes.has(mEmail))
 
       if (!jaExiste) {
         lista.push({
           id: m.idOriginalUsuario || `morador_${m.id}`,
           moradorDocId: m.id,
           nome: m.nome || 'Morador',
-          email: m.email || (m.cpf ? `${m.cpf.replace(/\D/g, '')}@alpha.local` : `morador_${m.apt || '1'}@alpha.local`),
+          email: m.email || (m.cpf ? `${m.cpf.replace(/\D/g, '')}@alpha.local` : `morador_${m.id || m.apt || '1'}@alpha.local`),
           telefone: m.tel || m.telefone || '',
           tel: m.tel || m.telefone || '',
           condominio: m.condominio || '',
@@ -428,7 +432,7 @@ export default function Usuarios() {
           role: 'Morador',
           status: 'Ativo',
           ativo: true,
-          statusMorador: m.status || 'Proprietário',
+          statusMorador: m.statusMorador || m.status || 'Proprietário',
           permissoes: m.permissoes || defaultMoradorPerms,
           origem: 'morador-vinculado',
           _createdAt: m._createdAt || m.createdAt || new Date().toISOString()

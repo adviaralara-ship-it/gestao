@@ -992,7 +992,7 @@ export default function Moradores() {
   const gerarLinkCadastro = ({ condominio = '', apt = '', bloco = '', nome = '', tel = '' }) => {
     const origin = typeof window !== 'undefined' && window.location.origin
       ? window.location.origin
-      : 'https://alpha-solucoes-condominiais.vercel.app'
+      : 'https://app.alphaadmsc.com.br'
     
     const params = new URLSearchParams()
     if (condominio) params.set('condominio', condominio)
