@@ -1,5 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Building2, Plus, Search, Edit2, Trash2, Home, DollarSign, TrendingUp, Share2 } from 'lucide-react'
+import { collection, query, where, getDocs, writeBatch, doc } from 'firebase/firestore'
+import { db } from '../firebase'
 import { useFirestore } from '../hooks/useFirestore'
 import { CurrencyInput } from '../utils/currency'
 
@@ -7,23 +9,45 @@ const parseBR = v => typeof v === 'number' ? v : (parseFloat((v||'').toString().
 const fmtBR   = v => Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})
 
 function CondoModal({ data, onClose, onSave }) {
-  const [form, setForm] = useState(data || {
+  const [form, setForm] = useState(() => (data ? { ...data } : {
     nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
     honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: ''
-  })
+  }))
   const [fundoStr, setFundoStr] = useState(data?.fundoReserva || '')
   const [metaStr,  setMetaStr]  = useState(data?.fundoMeta || '')
   const [honorariosStr, setHonorariosStr] = useState(data?.honorariosAdm || '')
   const [taxaStr, setTaxaStr] = useState(data?.taxaEmissao !== undefined ? data.taxaEmissao : 3.50)
   const [cotaStr, setCotaStr] = useState(data?.cotaPadrao !== undefined ? data.cotaPadrao : '')
+
+  useEffect(() => {
+    if (data) {
+      setForm({ ...data })
+      setFundoStr(data.fundoReserva || '')
+      setMetaStr(data.fundoMeta || '')
+      setHonorariosStr(data.honorariosAdm || '')
+      setTaxaStr(data.taxaEmissao !== undefined ? data.taxaEmissao : 3.50)
+      setCotaStr(data.cotaPadrao !== undefined ? data.cotaPadrao : '')
+    } else {
+      setForm({
+        nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
+        honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: ''
+      })
+      setFundoStr('')
+      setMetaStr('')
+      setHonorariosStr('')
+      setTaxaStr(3.50)
+      setCotaStr('')
+    }
+  }, [data])
+
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-xl" onClick={e=>e.stopPropagation()}>
-        <div className="p-4 sm:p-6 border-b border-cream-300 flex items-center justify-between gap-3">
-          <h3 className="font-bold text-gray-800 text-base sm:text-lg min-w-0 flex-1 truncate">{data?'Editar Condomínio':'Novo Condomínio'}</h3>
-          <button onClick={onClose} className="modal-close-btn" title="Fechar">✕</button>
+    <div className="modal-overlay z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="modal-content max-w-xl w-full bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden" onClick={e=>e.stopPropagation()}>
+        <div className="p-4 sm:p-6 border-b border-cream-300 flex items-center justify-between gap-3 bg-gradient-to-r from-cream-100 to-white">
+          <h3 className="font-bold text-gray-900 text-base sm:text-lg min-w-0 flex-1 truncate">{data?'Editar Condomínio':'Novo Condomínio'}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-700" title="Fechar">✕</button>
         </div>
         <div className="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto">
           {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['mandatoFim','Fim do Mandato (Síndico)'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX do Condomínio (Para onde vão as cotas)'],['grupoWhatsapp','ID do Grupo de WhatsApp do Condomínio (ex: 120363012345678901@g.us)']].map(([k,l])=>(
@@ -116,17 +140,18 @@ function CondoModal({ data, onClose, onSave }) {
             </div>
           </div>
         </div>
-        <div className="p-4 sm:p-6 border-t border-cream-300 flex gap-3 justify-end">
+        <div className="p-4 sm:p-6 border-t border-cream-300 flex gap-3 justify-end bg-gray-50">
           <button onClick={onClose} className="btn-secondary">Cancelar</button>
           <button onClick={()=>onSave({
             ...form,
+            nome: (form.nome || '').trim(),
             unidades:Number(form.unidades)||0,
             cotaPadrao: parseBR(cotaStr),
             honorariosAdm: parseBR(honorariosStr),
             taxaEmissao: form.discriminarTaxa ? parseBR(taxaStr) : 0,
             fundoReserva:parseBR(fundoStr),
             fundoMeta:parseBR(metaStr)
-          })} className="btn-primary">Salvar</button>
+          })} className="btn-primary font-black">Salvar Alterações</button>
         </div>
       </div>
     </div>
@@ -137,13 +162,47 @@ export default function Condominios() {
   const { items: condos, addItem, updateItem, deleteItem } = useFirestore('condominios')
   const [search, setSearch] = useState('')
   const [modal,  setModal]  = useState(null)
+  const [salvando, setSalvando] = useState(false)
 
   const filtered = condos.filter(c=>c.nome?.toLowerCase().includes(search.toLowerCase())||c.endereco?.toLowerCase().includes(search.toLowerCase()))
 
   const handleSave = async form => {
-    if (modal==='new') await addItem(form)
-    else await updateItem(modal.id,form)
-    setModal(null)
+    try {
+      setSalvando(true)
+      if (modal === 'new') {
+        await addItem(form)
+      } else {
+        const nomeAntigo = modal?.nome
+        const nomeNovo = form.nome
+        await updateItem(modal.id, form)
+
+        // Se o nome do condomínio mudou (ex: de Florense para Florence), atualiza registros relacionados em cascata
+        if (nomeAntigo && nomeNovo && nomeAntigo !== nomeNovo) {
+          try {
+            const colecoesParaAtualizar = ['moradores', 'usuarios', 'boletos', 'comunicacao', 'financeiro_lancamentos']
+            for (const col of colecoesParaAtualizar) {
+              const snap = await getDocs(query(collection(db, col), where('condominio', '==', nomeAntigo)))
+              if (!snap.empty) {
+                const batch = writeBatch(db)
+                snap.docs.forEach(d => {
+                  batch.update(doc(db, col, d.id), { condominio: nomeNovo })
+                })
+                await batch.commit()
+              }
+            }
+          } catch(errCascade) {
+            console.warn('Erro ao atualizar dados em cascata:', errCascade)
+          }
+        }
+      }
+      setModal(null)
+      alert(`✅ Condomínio "${form.nome}" salvo com sucesso!`)
+    } catch(err) {
+      console.error(err)
+      alert('Erro ao salvar o condomínio: ' + err.message)
+    } finally {
+      setSalvando(false)
+    }
   }
 
   return (
@@ -153,7 +212,7 @@ export default function Condominios() {
           <h2 className="section-title text-xl">Condomínios &amp; Unidades</h2>
           <p className="section-sub">{condos.length} condomínios cadastrados</p>
         </div>
-        <button onClick={()=>setModal('new')} className="btn-primary"><Plus size={16}/>Novo Condomínio</button>
+        <button onClick={()=>setModal('new')} className="btn-primary font-bold shadow-md"><Plus size={16}/>Novo Condomínio</button>
       </div>
 
       <div className="relative">
@@ -169,17 +228,17 @@ export default function Condominios() {
           const meta  = Number(c.fundoMeta||0)
           const pct   = meta>0 ? Math.min((saldo/meta)*100,100) : 0
           return (
-            <div key={c.id} className="card hover:border-brand-700/50 transition-all group flex flex-col gap-3">
+            <div key={c.id} className="card hover:border-brand-700/50 transition-all group flex flex-col gap-3 shadow-sm bg-white">
               <div className="flex items-start justify-between">
                 <div className="w-10 h-10 bg-brand-700/30 rounded-xl flex items-center justify-center"><Building2 size={18} className="text-brand-400"/></div>
                 <span className={c.status==='Ativo'?'badge-green':c.status==='Manutenção'?'badge-yellow':'badge-red'}>{c.status}</span>
               </div>
               <div>
-                <h3 className="font-bold text-gray-800 mb-0.5">{c.nome}</h3>
-                <p className="text-xs text-gray-500">{c.endereco}</p>
+                <h3 className="font-bold text-gray-900 text-base mb-0.5">{c.nome}</h3>
+                <p className="text-xs text-gray-500">{c.endereco || 'Endereço não informado'}</p>
               </div>
-              <div className="flex items-center gap-4 text-xs text-gray-400">
-                <span className="flex items-center gap-1"><Home size={12}/>{c.unidades} unidades</span>
+              <div className="flex items-center gap-4 text-xs text-gray-500 font-medium">
+                <span className="flex items-center gap-1"><Home size={12}/>{c.unidades || 0} unidades</span>
                 {c.cotaPadrao > 0 && <span className="flex items-center gap-1 text-emerald-700 font-bold"><DollarSign size={12}/>Cota: R$ {fmtBR(c.cotaPadrao)}</span>}
               </div>
 
@@ -194,16 +253,17 @@ export default function Condominios() {
                     <div className="w-full bg-emerald-100 rounded-full h-1.5 overflow-hidden">
                       <div className="h-1.5 bg-emerald-500 rounded-full transition-all" style={{width:`${pct}%`}}/>
                     </div>
-                    <p className="text-[10px] text-emerald-600 mt-1 text-right">{pct.toFixed(1)}% · Meta: R$ {fmtBR(meta)}</p>
+                    <p className="text-[10px] text-emerald-600 mt-1 text-right font-medium">{pct.toFixed(1)}% · Meta: R$ {fmtBR(meta)}</p>
                   </>
                 ):(
-                  <p className="text-[10px] text-emerald-600">Meta não definida</p>
+                  <p className="text-[10px] text-emerald-600 font-medium">Meta não definida</p>
                 )}
               </div>
 
-              <div className="pt-2 border-t border-cream-300 flex items-center justify-between">
-                <div><p className="text-xs text-gray-500">Síndico</p><p className="text-xs font-semibold text-gray-600">{c.sindico}</p></div>
-                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="pt-2 border-t border-cream-300 flex items-center justify-between mt-auto">
+                <div><p className="text-[11px] text-gray-400">Síndico</p><p className="text-xs font-bold text-gray-700">{c.sindico || 'Não informado'}</p></div>
+                {/* Botões sempre bem visíveis com alto contraste e cores claras */}
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => {
                       const origin = typeof window !== 'undefined' && window.location.origin
@@ -213,13 +273,30 @@ export default function Condominios() {
                       navigator.clipboard.writeText(link)
                       alert(`🔗 Link oficial de cadastro do condomínio "${c.nome}" copiado com sucesso!\n\nLink: ${link}\n\nEnvie este link para os novos moradores. Eles já cairão vinculados a este condomínio automaticamente.`)
                     }}
-                    className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-all"
+                    className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-all shadow-sm"
                     title="Copiar Link de Auto-Cadastro deste Condomínio"
                   >
-                    <Share2 size={13} />
+                    <Share2 size={14} />
                   </button>
-                  <button onClick={()=>setModal(c)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-brand-100 text-gray-400 hover:text-brand-700 transition-all" title="Editar"><Edit2 size={13}/></button>
-                  <button onClick={()=>deleteItem(c.id)} className="p-1.5 rounded-lg bg-cream-200 hover:bg-red-100 text-gray-400 hover:text-red-500 transition-all" title="Excluir"><Trash2 size={13}/></button>
+                  <button 
+                    onClick={()=>setModal(c)} 
+                    className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition-all shadow-sm flex items-center gap-1 font-bold text-xs" 
+                    title="Editar Condomínio"
+                  >
+                    <Edit2 size={14} className="text-amber-700"/>
+                    <span className="hidden sm:inline">Editar</span>
+                  </button>
+                  <button 
+                    onClick={()=>{
+                      if (window.confirm(`Tem certeza que deseja excluir o condomínio "${c.nome}"?`)) {
+                        deleteItem(c.id)
+                      }
+                    }} 
+                    className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all shadow-sm" 
+                    title="Excluir Condomínio"
+                  >
+                    <Trash2 size={14}/>
+                  </button>
                 </div>
               </div>
             </div>
