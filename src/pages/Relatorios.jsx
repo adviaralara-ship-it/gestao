@@ -96,6 +96,11 @@ export default function Relatorios() {
         return dStr.startsWith(`${anoStr}-${mesStr}`)
       })
 
+      // Buscar Condomínios para verificar regras de taxa
+      const snapCondos = await getDocs(collection(db, 'condominios'))
+      const condoDocs = snapCondos.docs.map(d => ({ id: d.id, ...d.data() }))
+      const condoAtual = filtroCondominio ? condoDocs.find(c => c.nome?.toLowerCase() === filtroCondominio.toLowerCase()) : null
+
       // Separar Receitas e Despesas
       const despesas = lancamentos.filter(l => l.tipo === 'Despesa')
       const receitasLancadas = lancamentos.filter(l => l.tipo === 'Receita')
@@ -103,6 +108,21 @@ export default function Relatorios() {
       // Total de Boletos Pagos vs Pendentes
       const boletosPagos = boletos.filter(b => b.status === 'Pago')
       const boletosPendentes = boletos.filter(b => b.status === 'Pendente' || b.status === 'Vencido')
+
+      // Discriminação da Taxa de Cobrança Digital
+      let totalTaxaCobrancaDigital = 0
+      let totalCotaLiquidaCondominio = 0
+
+      boletosPagos.forEach(b => {
+        const valTotal = parseFloat(b.valor) || 0
+        const bCondo = condoDocs.find(c => c.nome?.toLowerCase() === (b.condominio || '').toLowerCase()) || condoAtual
+        const discriminar = b.discriminarTaxa !== undefined ? b.discriminarTaxa : (bCondo?.discriminarTaxa || false)
+        const taxaUnit = discriminar ? (parseFloat(b.taxaEmissao !== undefined ? b.taxaEmissao : bCondo?.taxaEmissao) || 3.50) : 0
+        const cotaLiq = Math.max(0, valTotal - taxaUnit)
+
+        totalTaxaCobrancaDigital += taxaUnit
+        totalCotaLiquidaCondominio += cotaLiq
+      })
 
       const totalBoletosPagos = boletosPagos.reduce((acc, b) => acc + (parseFloat(b.valor) || 0), 0)
       const totalBoletosPendentes = boletosPendentes.reduce((acc, b) => acc + (parseFloat(b.valor) || 0), 0)
@@ -132,18 +152,32 @@ export default function Relatorios() {
       doc.setTextColor(26, 43, 78)
       doc.text('1. Demonstrativo Sintético do Mês', 14, startY)
 
+      const resumoHead = totalTaxaCobrancaDigital > 0 
+        ? [['Receita Bruta Total', 'Cotas Condominiais (Líq.)', 'Serv. Cobrança Digital', 'Despesas Pagas', 'Saldo Operacional']]
+        : [['Total Receitas Arrecadadas', 'Total de Despesas Pagas', 'Saldo Operacional do Mês', 'Inadimplência em Aberto']]
+
+      const resumoBody = totalTaxaCobrancaDigital > 0
+        ? [[
+            `R$ ${totalReceitas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+            `R$ ${(totalCotaLiquidaCondominio + totalReceitasExtras).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+            `R$ ${totalTaxaCobrancaDigital.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+            `R$ ${totalDespesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+            `R$ ${saldoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+          ]]
+        : [[
+            `R$ ${totalReceitas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+            `R$ ${totalDespesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+            `R$ ${saldoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+            `R$ ${totalBoletosPendentes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+          ]]
+
       autoTable(doc, {
         startY: startY + 4,
-        head: [['Total Receitas Arrecadadas', 'Total de Despesas Pagas', 'Saldo Operacional do Mês', 'Inadimplência em Aberto']],
-        body: [[
-          `R$ ${totalReceitas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-          `R$ ${totalDespesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-          `R$ ${saldoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-          `R$ ${totalBoletosPendentes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-        ]],
+        head: resumoHead,
+        body: resumoBody,
         theme: 'grid',
-        headStyles: { fillColor: [26, 43, 78], halign: 'center', fontSize: 9 },
-        bodyStyles: { halign: 'center', fontStyle: 'bold', fontSize: 10, textColor: [30, 41, 59] }
+        headStyles: { fillColor: [26, 43, 78], halign: 'center', fontSize: 8 },
+        bodyStyles: { halign: 'center', fontStyle: 'bold', fontSize: 9, textColor: [30, 41, 59] }
       })
 
       startY = doc.lastAutoTable.finalY + 12
@@ -181,26 +215,56 @@ export default function Relatorios() {
       if (startY > 230) { doc.addPage(); startY = 20; }
       doc.setFontSize(13)
       doc.setTextColor(26, 43, 78)
-      doc.text('3. Discriminação de Receitas & Taxas Condominiais', 14, startY)
+      doc.text('3. Discriminação de Receitas & Cobranças', 14, startY)
 
-      const receitasBody = [
-        ...boletosPagos.slice(0, 100).map(b => [
-          b.vencimento ? format(parseISO(b.vencimento), 'dd/MM/yyyy') : '-',
-          'Taxa Condominial',
-          `Unidade ${b.unidade || b.apt || '-'} - ${b.moradorNome || 'Morador'}`,
-          'Recebido',
-          `R$ ${(parseFloat(b.valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-        ]),
-        ...receitasLancadas.map(r => [
+      const receitasLinhas = []
+
+      boletosPagos.slice(0, 100).forEach(b => {
+        const dataBoleto = b.vencimento ? format(parseISO(b.vencimento), 'dd/MM/yyyy') : '-'
+        const valTotal = parseFloat(b.valor) || 0
+        const bCondo = condoDocs.find(c => c.nome?.toLowerCase() === (b.condominio || '').toLowerCase()) || condoAtual
+        const discriminar = b.discriminarTaxa !== undefined ? b.discriminarTaxa : (bCondo?.discriminarTaxa || false)
+        const taxaUnit = discriminar ? (parseFloat(b.taxaEmissao !== undefined ? b.taxaEmissao : bCondo?.taxaEmissao) || 3.50) : 0
+        const nomeTaxa = b.nomeTaxa || bCondo?.nomeTaxa || 'Serviço de Cobrança Digital'
+
+        if (taxaUnit > 0) {
+          const cotaLiq = Math.max(0, valTotal - taxaUnit)
+          receitasLinhas.push([
+            dataBoleto,
+            'Cota Condominial',
+            `Unidade ${b.unidade || b.apt || '-'} - ${b.moradorNome || 'Morador'}`,
+            'Recebido',
+            `R$ ${cotaLiq.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+          ])
+          receitasLinhas.push([
+            dataBoleto,
+            nomeTaxa,
+            `Processamento Boleto/PIX Unidade ${b.unidade || b.apt || '-'}`,
+            'Recebido',
+            `R$ ${taxaUnit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+          ])
+        } else {
+          receitasLinhas.push([
+            dataBoleto,
+            'Taxa Condominial',
+            `Unidade ${b.unidade || b.apt || '-'} - ${b.moradorNome || 'Morador'}`,
+            'Recebido',
+            `R$ ${valTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+          ])
+        }
+      })
+
+      receitasLancadas.forEach(r => {
+        receitasLinhas.push([
           r.data ? format(parseISO(r.data), 'dd/MM/yyyy') : '-',
           r.categoria || 'Outras Receitas',
           r.descricao || '-',
           r.status || 'Recebido',
           `R$ ${(parseFloat(r.valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
         ])
-      ]
+      })
 
-      if (receitasBody.length === 0) {
+      if (receitasLinhas.length === 0) {
         doc.setFontSize(10)
         doc.setTextColor(120)
         doc.text('Nenhuma receita registrada para este período.', 14, startY + 8)
@@ -208,7 +272,7 @@ export default function Relatorios() {
         autoTable(doc, {
           startY: startY + 4,
           head: [['Data', 'Categoria', 'Descrição / Origem', 'Status', 'Valor (R$)']],
-          body: receitasBody,
+          body: receitasLinhas,
           theme: 'striped',
           headStyles: { fillColor: [16, 110, 80] },
           styles: { fontSize: 8 },
@@ -350,24 +414,26 @@ export default function Relatorios() {
       doc.text('Resumo Operacional', 14, startY)
       autoTable(doc, {
         startY: startY + 4,
-        head: [['Total Ocorrências', 'Solucionadas', 'Em Andamento', 'Reservas de Áreas', 'Tarefas & Manutenções']],
+        head: [['Total Ocorrências', 'Solucionadas', 'Em Andamento', 'Reservas de Áreas', 'Visitantes Autorizados', 'Tarefas & Manutenções']],
         body: [[
           totalOcorrencias.toString(),
           solucionadas.toString(),
           abertas.toString(),
           reservas.length.toString(),
+          visitantes.length.toString(),
           tarefas.length.toString()
         ]],
         theme: 'grid',
-        headStyles: { fillColor: [26, 43, 78], halign: 'center' },
-        bodyStyles: { halign: 'center', fontStyle: 'bold' }
+        headStyles: { fillColor: [26, 43, 78], halign: 'center', fontSize: 8 },
+        bodyStyles: { halign: 'center', fontStyle: 'bold', fontSize: 9 }
       })
       startY = doc.lastAutoTable.finalY + 12
 
+      // 1. Ocorrências
       if (ocorrencias.length > 0) {
         doc.setFontSize(13)
         doc.setTextColor(26, 43, 78)
-        doc.text('Ocorrências do Período', 14, startY)
+        doc.text('1. Ocorrências e Chamados do Período', 14, startY)
         autoTable(doc, {
           startY: startY + 4,
           head: [['Data', 'Unidade', 'Categoria', 'Título', 'Status', 'Prioridade']],
@@ -386,11 +452,44 @@ export default function Relatorios() {
         startY = doc.lastAutoTable.finalY + 12
       }
 
-      if (reservas.length > 0) {
-        if (startY > 240) { doc.addPage(); startY = 20; }
+      // 2. Visitantes & Convidados Autorizados
+      if (visitantes.length > 0) {
+        if (startY > 230) { doc.addPage(); startY = 20; }
         doc.setFontSize(13)
         doc.setTextColor(26, 43, 78)
-        doc.text('Reservas de Áreas Comuns', 14, startY)
+        doc.text('2. Visitantes & Convidados Autorizados no Período', 14, startY)
+        autoTable(doc, {
+          startY: startY + 4,
+          head: [['Data Prevista', 'Nome do Visitante', 'Documento / Placa', 'Morador Anfitrião', 'Unidade', 'Status']],
+          body: visitantes.map(v => {
+            let dataFmt = '-'
+            if (v.dataVisita) {
+              dataFmt = v.dataVisita.includes('-') ? v.dataVisita.split('-').reverse().join('/') : v.dataVisita
+            } else if (v._createdAt?.seconds) {
+              dataFmt = format(new Date(v._createdAt.seconds * 1000), 'dd/MM/yyyy')
+            }
+            return [
+              dataFmt,
+              v.nome || '-',
+              v.documento || v.placa || '-',
+              v.moradorNome || 'Morador',
+              v.apt ? `Apt ${v.apt}` : '-',
+              v.status || 'Autorizado'
+            ]
+          }),
+          theme: 'striped',
+          headStyles: { fillColor: [14, 116, 144] },
+          styles: { fontSize: 8 }
+        })
+        startY = doc.lastAutoTable.finalY + 12
+      }
+
+      // 3. Reservas de Áreas Comuns
+      if (reservas.length > 0) {
+        if (startY > 230) { doc.addPage(); startY = 20; }
+        doc.setFontSize(13)
+        doc.setTextColor(26, 43, 78)
+        doc.text('3. Reservas de Áreas Comuns', 14, startY)
         autoTable(doc, {
           startY: startY + 4,
           head: [['Data', 'Espaço', 'Morador Responsável', 'Unidade', 'Status']],

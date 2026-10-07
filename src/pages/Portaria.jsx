@@ -456,7 +456,8 @@ export default function Portaria() {
       {/* Navegação por Abas da Portaria */}
       <div className="flex gap-2 border-b border-gray-200 pb-2 overflow-x-auto">
         {[
-          { id: 'visitantes', label: '👥 Visitantes & Entradas' },
+          { id: 'visitantes', label: '🚪 Portaria & Entradas' },
+          { id: 'preautorizados', label: `👥 Visitantes Pré-Autorizados (${visCadFiltrados.filter(v => v.status === 'Autorizado').length})` },
           { id: 'prestadores', label: '🔧 Prestadores de Serviço' },
           { id: 'encomendas', label: '📦 Encomendas' },
           { id: 'livro', label: '📖 Livro da Portaria' }
@@ -698,6 +699,138 @@ export default function Portaria() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ABA ESPECÍFICA: VISITANTES PRÉ-AUTORIZADOS (ANTECIPAÇÃO & SEGURANÇA)     */}
+      {/* ========================================================================= */}
+      {tab === 'preautorizados' && (
+        <div className="bg-white p-6 rounded-3xl border border-pale-300 shadow-sm flex flex-col gap-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <h3 className="font-black text-gray-900 text-base">👥 Visitantes & Convidados Pré-Autorizados</h3>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Consulte autorizações feitas com antecedência pelos moradores para identificar veículos, documentos e antecipar chegadas com segurança
+              </p>
+            </div>
+            <div className="relative w-full sm:max-w-xs">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                className="input pl-9 w-full text-xs"
+                placeholder="Filtrar por nome, apt, documento..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 border-b border-gray-200">
+                <tr>
+                  {['Visitante', 'Data Prevista', 'Morador / Unidade', 'Doc / Placa', 'Condomínio', 'Status', 'Ações da Portaria'].map(h => (
+                    <th key={h} className="table-head text-[11px] font-black text-gray-600">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {visCadFiltrados
+                  .filter(v => 
+                    !search || 
+                    v.nome?.toLowerCase().includes(search.toLowerCase()) ||
+                    v.moradorNome?.toLowerCase().includes(search.toLowerCase()) ||
+                    v.apt?.toString().includes(search) ||
+                    v.documento?.toLowerCase().includes(search.toLowerCase()) ||
+                    v.placa?.toLowerCase().includes(search.toLowerCase())
+                  )
+                  .sort((a,b) => new Date(b.dataVisita || b._createdAt || 0) - new Date(a.dataVisita || a._createdAt || 0))
+                  .length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-12 text-gray-400 text-xs">
+                        Nenhum visitante pré-autorizado encontrado para os critérios selecionados.
+                      </td>
+                    </tr>
+                  ) : (
+                    visCadFiltrados
+                      .filter(v => 
+                        !search || 
+                        v.nome?.toLowerCase().includes(search.toLowerCase()) ||
+                        v.moradorNome?.toLowerCase().includes(search.toLowerCase()) ||
+                        v.apt?.toString().includes(search) ||
+                        v.documento?.toLowerCase().includes(search.toLowerCase()) ||
+                        v.placa?.toLowerCase().includes(search.toLowerCase())
+                      )
+                      .sort((a,b) => new Date(b.dataVisita || b._createdAt || 0) - new Date(a.dataVisita || a._createdAt || 0))
+                      .map(v => (
+                        <tr key={v.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="table-cell">
+                            <div className="flex items-center gap-3">
+                              {v.foto ? (
+                                <img
+                                  onClick={() => setFotoModal(v.foto)}
+                                  src={v.foto}
+                                  alt={v.nome}
+                                  className="w-10 h-10 rounded-full object-cover border-2 border-emerald-400 cursor-pointer shadow-sm hover:scale-105 transition-transform"
+                                  title="Ver Foto do Visitante"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-slate-100 border border-gray-200 flex items-center justify-center text-gray-400">
+                                  <User size={16} />
+                                </div>
+                              )}
+                              <div>
+                                <p className="font-black text-gray-900 text-xs">{v.nome}</p>
+                                {v.tipo && <span className="text-[10px] text-gray-400 font-medium">{v.tipo}</span>}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="table-cell text-xs font-bold text-gray-700">
+                            {v.dataVisita ? (v.dataVisita.includes('-') ? v.dataVisita.split('-').reverse().join('/') : v.dataVisita) : 'Qualquer data'}
+                          </td>
+                          <td className="table-cell">
+                            <p className="font-bold text-gray-800 text-xs">{v.moradorNome || 'Morador'}</p>
+                            <p className="text-[11px] text-brand-600 font-black">Apto {v.apt || '—'}</p>
+                          </td>
+                          <td className="table-cell text-xs font-mono text-gray-600">
+                            <div>{v.documento || '—'}</div>
+                            {v.placa && <div className="text-[10px] text-slate-500 font-sans font-bold">Placa: {v.placa}</div>}
+                          </td>
+                          <td className="table-cell text-xs text-gray-600">
+                            {v.condominio || condoFiltro || 'Geral'}
+                          </td>
+                          <td className="table-cell">
+                            <span className={`text-[10px] font-black px-2.5 py-1 rounded-md uppercase ${
+                              v.status === 'Autorizado' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                              v.status === 'Acessou' ? 'bg-blue-100 text-blue-800' :
+                              v.status === 'Cancelado' ? 'bg-rose-100 text-rose-800' :
+                              'bg-amber-100 text-amber-800'
+                            }`}>
+                              {v.status || 'Autorizado'}
+                            </span>
+                          </td>
+                          <td className="table-cell">
+                            {v.status === 'Autorizado' && (
+                              <button
+                                onClick={() => liberarVisitantePreAutorizado(v)}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all"
+                              >
+                                <Check size={13} /> Liberar Entrada
+                              </button>
+                            )}
+                            {v.status === 'Acessou' && (
+                              <span className="text-[11px] text-gray-400 font-bold">Entrada liberada</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                  )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
