@@ -1426,6 +1426,335 @@ function ModalGerarLote({ condominios, moradores, allBoletos = [], initialCondo 
   )
 }
 
+function ModalImportarPlanilha({ condominios, moradores, initialCondo = '', onClose, onSave }) {
+  const [condominio, setCondominio] = useState(() => {
+    if (initialCondo && initialCondo !== 'Todos') return initialCondo
+    return condominios[0]?.nome || ''
+  })
+  const [competencia, setCompetencia] = useState(() => {
+    return new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '/')
+  })
+  const [parsedBoletos, setParsedBoletos] = useState([])
+  const [nomeArquivo, setNomeArquivo] = useState('')
+  const [processando, setProcessando] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+
+  // Moradores filtrados pelo condomínio selecionado
+  const moradoresDoCondo = React.useMemo(() => {
+    if (!condominio) return []
+    const cNorm = String(condominio).trim().toLowerCase()
+    return (moradores || []).filter(m => {
+      const mc = String(m.condominio || '').trim().toLowerCase()
+      return mc === cNorm || mc.includes(cNorm) || cNorm.includes(mc)
+    })
+  }, [moradores, condominio])
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setNomeArquivo(file.name)
+    setProcessando(true)
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const text = event.target.result
+        const lines = text.split(/\r?\n/).filter(l => l.trim() !== '')
+        if (lines.length < 2) {
+          alert('A planilha parece estar vazia ou sem cabeçalho.')
+          setProcessando(false)
+          return
+        }
+
+        const headers = lines[0].toLowerCase().split(/[;,]/).map(h => h.trim())
+        const getIdx = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)))
+
+        const idxMorador = getIdx(['nome', 'morador', 'pagador', 'sacado', 'cliente'])
+        const idxApt = getIdx(['apt', 'unidade', 'lote', 'apto', 'casa', 'sala'])
+        const idxBloco = getIdx(['bloco', 'torre', 'bl'])
+        const idxCpf = getIdx(['cpf', 'cnpj', 'documento', 'doc'])
+        const idxVencimento = getIdx(['venc', 'data', 'vencimento'])
+        const idxValor = getIdx(['valor', 'total', 'cota', 'taxa'])
+        const idxLink = getIdx(['link', 'url', 'pdf', 'arquivo'])
+        const idxPix = getIdx(['pix', 'emv', 'copia'])
+        const idxLinha = getIdx(['linha', 'digitavel', 'codigo', 'barras', 'barcode'])
+
+        if (idxValor === -1) {
+          alert("Não conseguimos identificar a coluna de 'Valor' na planilha.")
+          setProcessando(false)
+          return
+        }
+
+        const normStr = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+
+        const lista = []
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(/[;,]/).map(c => c.trim().replace(/^"|"$/g, ''))
+          let valorBruto = idxValor !== -1 ? cols[idxValor] || '0' : '0'
+          let valor = parseFloat(valorBruto.replace(/\./g, '').replace(',', '.')) || 0
+          if (isNaN(valor)) valor = parseFloat(valorBruto.replace(',', '.')) || 0
+          if (valor <= 0) continue
+
+          const rawNome = idxMorador !== -1 ? (cols[idxMorador] || '') : ''
+          const rawApt = idxApt !== -1 ? (cols[idxApt] || '') : ''
+          const rawBloco = idxBloco !== -1 ? (cols[idxBloco] || '') : ''
+          const rawCpf = idxCpf !== -1 ? (cols[idxCpf] || '') : ''
+          const aptDigits = String(rawApt).replace(/\D/g, '')
+
+          // 1º Cruzamento: Unidade/Apt no condomínio selecionado
+          let moradorEncontrado = null
+          if (aptDigits) {
+            moradorEncontrado = moradoresDoCondo.find(m => {
+              const mAptDigits = String(m.apt || m.unidade || '').replace(/\D/g, '')
+              const matchBloco = rawBloco ? normStr(m.bloco) === normStr(rawBloco) : true
+              return mAptDigits === aptDigits && matchBloco
+            })
+          }
+
+          // 2º Cruzamento: CPF
+          if (!moradorEncontrado && rawCpf) {
+            const cleanCpf = rawCpf.replace(/\D/g, '')
+            if (cleanCpf) {
+              moradorEncontrado = moradoresDoCondo.find(m => String(m.cpf || '').replace(/\D/g, '') === cleanCpf)
+            }
+          }
+
+          // 3º Cruzamento: Nome aproximado
+          if (!moradorEncontrado && rawNome) {
+            const nNorm = normStr(rawNome)
+            moradorEncontrado = moradoresDoCondo.find(m => {
+              const mnNorm = normStr(m.nome)
+              return mnNorm === nNorm || mnNorm.includes(nNorm) || nNorm.includes(mnNorm)
+            })
+          }
+
+          let venc = idxVencimento !== -1 ? (cols[idxVencimento] || '') : ''
+          if (venc && venc.includes('/')) {
+            const parts = venc.split('/')
+            if (parts.length === 3) venc = `${parts[2]}-${parts[1]}-${parts[0]}`
+          }
+
+          const finalNome = moradorEncontrado?.nome || rawNome || `Morador Apt ${rawApt || i}`
+          const finalApt = moradorEncontrado?.apt || rawApt || '1'
+          const finalBloco = moradorEncontrado?.bloco || rawBloco || ''
+          const finalCpf = moradorEncontrado?.cpf || rawCpf || ''
+          const finalTel = moradorEncontrado?.tel || moradorEncontrado?.telefone || ''
+
+          lista.push({
+            idTemp: `imp_${i}`,
+            morador: finalNome,
+            apt: finalApt,
+            bloco: finalBloco,
+            cpf: finalCpf,
+            tel: finalTel,
+            valor,
+            vencimento: venc,
+            competencia,
+            condominio,
+            url: idxLink !== -1 ? (cols[idxLink] || '') : '',
+            pix_emv: idxPix !== -1 ? (cols[idxPix] || '') : '',
+            linha: idxLinha !== -1 ? (cols[idxLinha] || '') : '',
+            encontradoNoSistema: !!moradorEncontrado,
+            moradorId: moradorEncontrado?.id || null
+          })
+        }
+
+        setParsedBoletos(lista)
+      } catch (err) {
+        console.error(err)
+        alert('Erro ao ler a planilha: ' + err.message)
+      } finally {
+        setProcessando(false)
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const handleConfirmar = async () => {
+    if (!condominio) {
+      alert('Selecione o condomínio.')
+      return
+    }
+    if (parsedBoletos.length === 0) {
+      alert('Nenhum boleto válido carregado da planilha.')
+      return
+    }
+
+    setSalvando(true)
+    try {
+      await onSave(parsedBoletos.map(b => ({
+        ...b,
+        condominio,
+        competencia,
+        status: 'Pendente',
+        emitido: true,
+        tipoCobranca: 'Taxa Condominial',
+        _origem: 'importacao_planilha'
+      })))
+      onClose()
+    } catch(err) {
+      console.error(err)
+      alert('Erro ao salvar os boletos: ' + err.message)
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  const identificados = parsedBoletos.filter(b => b.encontradoNoSistema).length
+
+  return (
+    <div className="modal-overlay z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="modal-content max-w-2xl w-full bg-white rounded-3xl shadow-2xl border border-gray-200 flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        
+        {/* Cabeçalho */}
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-cream-100 to-white">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-brand-600 text-white flex items-center justify-center font-bold shadow-md">
+              <Upload size={20} />
+            </div>
+            <div>
+              <h3 className="font-black text-gray-900 text-base">Importar Boletos Externos (Planilha)</h3>
+              <p className="text-xs text-gray-500">Cadastre os boletos do seu banco para conciliação automática</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-700">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Configurações da Importação */}
+        <div className="p-5 border-b border-gray-100 bg-slate-50/50 flex flex-col gap-4 shrink-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label text-xs font-bold text-gray-700">🏢 Condomínio de Destino (Obrigatório):</label>
+              <select 
+                className="input text-xs font-bold bg-white"
+                value={condominio} 
+                onChange={e => setCondominio(e.target.value)}
+              >
+                {condominios.map(c => (
+                  <option key={c.id || c.nome} value={c.nome}>
+                    {c.nome}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-gray-500 mt-1">Os boletos pertencerão exclusivamente a este residencial.</p>
+            </div>
+
+            <div>
+              <label className="label text-xs font-bold text-gray-700">📅 Mês / Competência:</label>
+              <input 
+                type="text" 
+                className="input text-xs font-bold bg-white" 
+                value={competencia} 
+                onChange={e => setCompetencia(e.target.value)} 
+                placeholder="out/2026"
+              />
+              <p className="text-[10px] text-gray-500 mt-1">Referência contábil da cobrança.</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="label text-xs font-bold text-gray-700">📁 Selecione a Planilha (.CSV):</label>
+            <div className="flex items-center gap-3">
+              <label className="btn-secondary text-xs cursor-pointer flex items-center gap-2 bg-white border border-gray-300 hover:border-brand-500 py-2.5 px-4 shadow-sm">
+                <Upload size={14} className="text-brand-600" />
+                <span>{nomeArquivo || 'Escolher Arquivo CSV'}</span>
+                <input type="file" accept=".csv,.txt" className="hidden" onChange={handleFileChange} />
+              </label>
+              {processando && <span className="text-xs text-brand-600 font-bold animate-pulse">Cruzando dados com o condomínio...</span>}
+            </div>
+          </div>
+        </div>
+
+        {/* Pré-visualização com Identificação dos Moradores */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {parsedBoletos.length === 0 ? (
+            <div className="py-12 flex flex-col items-center justify-center text-center text-gray-400">
+              <FileText size={40} className="stroke-1 text-gray-300 mb-2" />
+              <p className="text-xs font-bold text-gray-600">Nenhum arquivo carregado ainda</p>
+              <p className="text-[11px] text-gray-400 max-w-sm mt-1">
+                Suba o CSV do banco. O sistema cruzará automaticamente a Unidade/Apartamento e CPF com os moradores cadastrados no condomínio selecionado.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-xs">
+                <div className="flex items-center gap-2 text-emerald-900 font-bold">
+                  <CheckCircle2 size={16} className="text-emerald-600" />
+                  <span>{parsedBoletos.length} boletos identificados na planilha</span>
+                </div>
+                <span className="text-emerald-800 font-bold bg-emerald-100 px-2.5 py-0.5 rounded-full text-[11px]">
+                  {identificados} de {parsedBoletos.length} vinculados ao cadastro
+                </span>
+              </div>
+
+              <div className="border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
+                    <tr>
+                      <th className="p-2.5">Unidade / Apt</th>
+                      <th className="p-2.5">Morador Identificado</th>
+                      <th className="p-2.5">Valor (R$)</th>
+                      <th className="p-2.5">Vencimento</th>
+                      <th className="p-2.5 text-right">Status do Vínculo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {parsedBoletos.map(b => (
+                      <tr key={b.idTemp} className="hover:bg-gray-50/60">
+                        <td className="p-2.5 font-black text-gray-800">
+                          Apt {b.apt} {b.bloco ? `(${b.bloco})` : ''}
+                        </td>
+                        <td className="p-2.5 font-bold text-gray-700">
+                          {b.morador}
+                        </td>
+                        <td className="p-2.5 font-mono font-bold text-emerald-700">
+                          R$ {Number(b.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="p-2.5 text-gray-500">
+                          {b.vencimento ? b.vencimento.split('-').reverse().join('/') : '—'}
+                        </td>
+                        <td className="p-2.5 text-right">
+                          {b.encontradoNoSistema ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                              <Check size={11} /> Vinculado ao Sistema
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md" title="Será cadastrado com os dados da planilha">
+                              Novo Registro
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Rodapé */}
+        <div className="p-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+          <button onClick={onClose} disabled={salvando} className="btn-secondary text-xs">
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirmar}
+            disabled={salvando || parsedBoletos.length === 0}
+            className={`btn-primary text-xs font-black bg-emerald-600 hover:bg-emerald-500 shadow-md py-2.5 px-5 flex items-center gap-2 ${salvando || parsedBoletos.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <CheckCircle2 size={16} />
+            {salvando ? 'Importando Boletos...' : `Confirmar Importação de ${parsedBoletos.length} Boletos`}
+          </button>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 export default function Boletos() {
   const location = useLocation()
   const { user } = useAuth()
@@ -1499,6 +1828,7 @@ export default function Boletos() {
   const [viewing, setViewing] = useState(null)
   const [modal, setModal] = useState(null)
   const [modalLote, setModalLote] = useState(false)
+  const [modalImportarPlanilha, setModalImportarPlanilha] = useState(false)
   const [condoFundoEdit, setCondoFundoEdit] = useState(null)
   const [selectedIds, setSelectedIds] = useState([])
   const [downloadingLote, setDownloadingLote] = useState(false)
@@ -2129,83 +2459,45 @@ export default function Boletos() {
     setCondoFundoEdit(null)
   }
 
-  const handleCSVImport = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const handleSaveImportarPlanilha = async (lista) => {
+    if (!lista || lista.length === 0) return
+    let adicionados = 0
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const text = event.target.result;
-        const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-        if (lines.length < 2) {
-          alert('A planilha parece estar vazia ou sem cabeçalho.');
-          return;
+    try {
+      for (const item of lista) {
+        const val = Number(item.valor) || 0
+        const condoDoc = allCondominios.find(c => c.nome === item.condominio)
+        const chavePix = condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
+
+        const boletoSalvar = {
+          morador: item.morador,
+          apt: item.apt,
+          bloco: item.bloco || '',
+          condominio: item.condominio,
+          cpf: item.cpf || '',
+          tel: item.tel || '',
+          vencimento: item.vencimento,
+          valor: val,
+          status: 'Pendente',
+          competencia: item.competencia || new Date().toLocaleDateString('pt-BR', {month:'short', year:'numeric'}).replace('.','/'),
+          emitido: true,
+          url: item.url || '',
+          pix_emv: item.pix_emv || generateStaticPix(chavePix, val, item.condominio, "BR"),
+          linha: item.linha || gerarLinhaDigitavel(item.apt || '1', val, item.vencimento),
+          tipoCobranca: 'Taxa Condominial',
+          _origem: 'importacao_planilha'
         }
 
-        const headers = lines[0].toLowerCase().split(/[;,]/).map(h => h.trim());
-        const getIdx = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)));
-
-        const idxMorador = getIdx(['nome', 'morador', 'pagador', 'sacado', 'cliente']);
-        const idxApt = getIdx(['apt', 'unidade', 'lote']);
-        const idxVencimento = getIdx(['venc', 'data']);
-        const idxValor = getIdx(['valor', 'total']);
-        const idxLink = getIdx(['link', 'url', 'pdf']);
-        const idxPix = getIdx(['pix']);
-        
-        if (idxMorador === -1 || idxValor === -1) {
-          alert("Não conseguimos identificar as colunas 'Nome' e 'Valor' na sua planilha. Verifique se estão presentes.");
-          return;
-        }
-
-        let added = 0;
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(/[;,]/).map(c => c.trim().replace(/^"|"$/g, ''));
-          const nome = cols[idxMorador];
-          if (!nome) continue;
-
-          let valorBruto = cols[idxValor] || '0';
-          let valor = parseFloat(valorBruto.replace(/\./g, '').replace(',', '.')) || 0;
-          if (isNaN(valor)) valor = parseFloat(valorBruto.replace(',', '.')) || 0;
-
-          const moradorDb = (moradores || []).find(m => m && m.nome && m.nome.toLowerCase().trim() === String(nome).toLowerCase().trim());
-          const apt = (idxApt !== -1 ? cols[idxApt] : '') || moradorDb?.apt || '';
-          
-          let venc = idxVencimento !== -1 ? cols[idxVencimento] : '';
-          if (venc && venc.includes('/')) {
-             const parts = venc.split('/');
-             if (parts.length === 3) venc = `${parts[2]}-${parts[1]}-${parts[0]}`;
-          }
-
-          const link = idxLink !== -1 ? cols[idxLink] : '';
-          const pix = idxPix !== -1 ? cols[idxPix] : '';
-
-          const boleto = {
-            morador: nome,
-            apt: apt,
-            condominio: moradorDb?.condominio || '',
-            vencimento: venc,
-            valor: valor,
-            status: 'Pendente',
-            competencia: new Date().toLocaleDateString('pt-BR', {month:'short', year:'numeric'}).replace('.','/'),
-            emitido: true,
-            url: link,
-            pix_emv: pix,
-            linha: ''
-          };
-          
-          await addItem(boleto);
-          added++;
-        }
-        alert(`Sucesso! ${added} boletos importados com sucesso.`);
-      } catch (err) {
-        console.error(err);
-        alert('Erro ao processar a planilha. Verifique o formato CSV (separado por vírgula ou ponto e vírgula).');
+        await addItem(boletoSalvar)
+        adicionados++
       }
-    };
-    reader.readAsText(file);
-    e.target.value = null;
-  };
+
+      alert(`🎉 Sucesso! ${adicionados} boletos foram importados para o condomínio "${lista[0]?.condominio}" e já estão disponíveis no sistema prontos para conciliação!`)
+    } catch(err) {
+      console.error(err)
+      alert('Erro ao salvar os boletos da planilha: ' + (err.message || 'Tente novamente.'))
+    }
+  }
 
   const handleReconciliationExtrato = async (e) => {
     const file = e.target.files[0];
@@ -2365,11 +2657,13 @@ export default function Boletos() {
                   <span>Conciliar Extrato (OFX / CSV)</span>
                   <input type="file" accept=".ofx,.csv,.txt" className="hidden" onChange={handleReconciliationExtrato}/>
                 </label>
-                <label className="btn-secondary text-sm cursor-pointer flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-50">
-                  <Upload size={14}/>
+                <button 
+                  onClick={()=>setModalImportarPlanilha(true)} 
+                  className="btn-secondary text-sm flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold"
+                >
+                  <Upload size={14} className="text-brand-600" />
                   <span>Importar Planilha (CSV)</span>
-                  <input type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVImport}/>
-                </label>
+                </button>
                 <button onClick={()=>setModal('new')} className="btn-primary text-sm flex items-center gap-1"><Plus size={14}/> Novo Individual</button>
               </>
             )}
@@ -2823,6 +3117,7 @@ export default function Boletos() {
       {viewing && <BoletoPrintModal boleto={viewing} condominio={allCondominios.find(c=>c.nome===(viewing.condominio || moradores.find(m=>m.nome===viewing.morador)?.condominio))} moradores={moradores} onClose={()=>setViewing(null)}/>}
       {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores} condominios={allCondominios} initialCondo={condoFilter !== 'Todos' ? condoFilter : ''}/>}
       {modalLote&&<ModalGerarLote condominios={allCondominios} moradores={moradores} allBoletos={allBoletos} initialCondo={condoFilter !== 'Todos' ? condoFilter : ''} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
+      {modalImportarPlanilha&&<ModalImportarPlanilha condominios={allCondominios} moradores={moradores} initialCondo={condoFilter !== 'Todos' ? condoFilter : ''} onClose={()=>setModalImportarPlanilha(false)} onSave={handleSaveImportarPlanilha}/>}
       {condoFundoEdit&&<ModalFundo condo={condoFundoEdit} onClose={()=>setCondoFundoEdit(null)} onSave={handleSaveFundo}/>}
       <RepassesAlphaModal
         isOpen={showRepasses}
