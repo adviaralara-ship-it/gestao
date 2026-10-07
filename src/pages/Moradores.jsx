@@ -6,17 +6,47 @@ import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, setDoc, a
 import { db } from '../firebase'
 
 function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialApt, initialBloco, initialCondo, condominiosList = [] }) {
-  const [form, setForm] = useState(data || {
+  const [form, setForm] = useState(() => (data ? { ...data } : {
     nome: '',
     cpf: '',
-    apt: initialApt || (isMorador ? (currentUser.unidade || currentUser.apt) : ''),
-    bloco: initialBloco || (isMorador ? currentUser.bloco : ''),
+    apt: initialApt || (isMorador ? (currentUser?.unidade || currentUser?.apt) : ''),
+    bloco: initialBloco || (isMorador ? currentUser?.bloco : ''),
     tel: '',
     email: '',
     status: isMorador ? 'Dependente' : 'Proprietário',
-    condominio: initialCondo || (isMorador ? currentUser.condominio : (condominiosList[0]?.nome || '')),
+    condominio: initialCondo || (isMorador ? currentUser?.condominio : (condominiosList[0]?.nome || '')),
     fotoRosto: ''
-  })
+  }))
+
+  React.useEffect(() => {
+    if (data) {
+      setForm({
+        ...data,
+        nome: data.nome || '',
+        cpf: data.cpf || '',
+        apt: data.apt || data.unidade || '',
+        bloco: data.bloco || '',
+        tel: data.tel || data.telefone || '',
+        email: data.email || '',
+        status: data.status || data.statusMorador || (isMorador ? 'Dependente' : 'Proprietário'),
+        condominio: data.condominio || initialCondo || '',
+        fotoRosto: data.fotoRosto || data.foto || ''
+      })
+    } else {
+      setForm({
+        nome: '',
+        cpf: '',
+        apt: initialApt || (isMorador ? (currentUser?.unidade || currentUser?.apt) : ''),
+        bloco: initialBloco || (isMorador ? currentUser?.bloco : ''),
+        tel: '',
+        email: '',
+        status: isMorador ? 'Dependente' : 'Proprietário',
+        condominio: initialCondo || (isMorador ? currentUser?.condominio : (condominiosList[0]?.nome || '')),
+        fotoRosto: ''
+      })
+    }
+  }, [data, initialApt, initialBloco, initialCondo])
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleImage = (e) => {
@@ -42,13 +72,13 @@ function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialAp
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-lg" onClick={e => e.stopPropagation()}>
-        <div className="p-4 sm:p-6 border-b border-cream-300 flex items-center justify-between gap-3">
-          <h3 className="font-bold text-gray-800 text-base sm:text-lg min-w-0 flex-1 truncate">{data ? 'Editar Membro da Família' : 'Novo Morador / Familiar'}</h3>
-          <button onClick={onClose} className="modal-close-btn" title="Fechar"><X size={20} strokeWidth={2.5} /></button>
+    <div className="modal-overlay z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white max-w-lg w-full rounded-3xl shadow-2xl border border-gray-200 flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="p-4 sm:p-5 border-b border-cream-300 flex items-center justify-between gap-3 bg-gradient-to-r from-cream-100 to-white shrink-0">
+          <h3 className="font-bold text-gray-900 text-base sm:text-lg min-w-0 flex-1 truncate">{data ? 'Editar Membro da Família' : 'Novo Morador / Familiar'}</h3>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors cursor-pointer" title="Fechar"><X size={20} strokeWidth={2.5} /></button>
         </div>
-        <div className="p-6 grid grid-cols-2 gap-4">
+        <div className="p-5 sm:p-6 grid grid-cols-2 gap-4 overflow-y-auto flex-1">
           <div className="col-span-2">
             <label className="label">Nome Completo *</label>
             <input className="input uppercase" value={form.nome} onChange={e => set('nome', e.target.value.toUpperCase())} placeholder="EX: JOÃO DA SILVA" />
@@ -121,9 +151,13 @@ function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialAp
             )}
           </div>
         </div>
-        <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
-          <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={() => onSave(form)} className="btn-primary">Salvar Morador</button>
+
+        {/* Rodapé fixo - Sempre visível */}
+        <div className="p-4 sm:p-5 border-t border-gray-200 flex gap-3 justify-end bg-gray-50 shrink-0">
+          <button onClick={onClose} className="btn-secondary px-5 py-2 text-xs font-bold">Cancelar</button>
+          <button onClick={() => onSave(form)} className="btn-primary bg-brand-600 hover:bg-brand-500 text-white font-black text-xs py-2.5 px-6 rounded-xl shadow-md cursor-pointer">
+            💾 Salvar Morador
+          </button>
         </div>
       </div>
     </div>

@@ -78,9 +78,30 @@ const getDefaultPerms = (r) => {
 function Modal({ data, onClose, onSave, condominios = [] }) {
   const needsLocation = ['Morador', 'Síndico', 'Subsíndico', 'Conselheiro']
 
-  const [form, setForm] = useState(
-    data || { nome: '', email: '', senha: '', telefone: '', condominio: '', bloco: '', unidade: '', role: 'Morador', status: 'Ativo', permissoes: getDefaultPerms('Morador') }
-  )
+  const [form, setForm] = useState(() => (
+    data ? { ...data } : { nome: '', email: '', senha: '', telefone: '', condominio: '', bloco: '', unidade: '', role: 'Morador', status: 'Ativo', permissoes: getDefaultPerms('Morador') }
+  ))
+
+  React.useEffect(() => {
+    if (data) {
+      setForm({
+        ...data,
+        nome: data.nome || '',
+        email: data.email || '',
+        telefone: data.telefone || data.tel || '',
+        condominio: data.condominio || '',
+        bloco: data.bloco || '',
+        unidade: data.unidade || data.apt || '',
+        role: data.role || 'Morador',
+        status: data.status || 'Ativo',
+        permissoes: data.permissoes || getDefaultPerms(data.role || 'Morador')
+      })
+    } else {
+      setForm({
+        nome: '', email: '', senha: '', telefone: '', condominio: '', bloco: '', unidade: '', role: 'Morador', status: 'Ativo', permissoes: getDefaultPerms('Morador')
+      })
+    }
+  }, [data])
 
   const requiresLocation = needsLocation.includes(form.role)
   const [showSenha, setShowSenha] = useState(false)
@@ -109,17 +130,17 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-3xl" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-cream-300 flex items-center justify-between">
+    <div className="modal-overlay z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white max-w-3xl w-full rounded-3xl shadow-2xl border border-gray-200 flex flex-col max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="p-5 sm:p-6 border-b border-cream-300 flex items-center justify-between bg-gradient-to-r from-cream-100 to-white shrink-0">
           <div>
-            <h3 className="font-bold text-gray-800 text-lg">{isEdit ? 'Editar Usuário' : 'Novo Usuário'}</h3>
-            <p className="text-xs text-gray-400">Preencha os dados de acesso e configure as permissões</p>
+            <h3 className="font-black text-gray-900 text-lg">{isEdit ? 'Editar Usuário' : 'Novo Usuário'}</h3>
+            <p className="text-xs text-gray-500">Preencha os dados de acesso e configure as permissões</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl font-bold">✕</button>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors cursor-pointer text-xl font-bold">✕</button>
         </div>
 
-        <form onSubmit={e => e.preventDefault()} autoComplete="off" className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[72vh] overflow-y-auto">
+        <form onSubmit={e => e.preventDefault()} autoComplete="off" className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto flex-1">
           <div className="flex flex-col gap-4">
             <h4 className="font-bold text-sm text-brand-700 mb-1 border-b border-cream-300 pb-2 flex items-center gap-1.5">
               <Users size={16} /> Dados Cadastrais
@@ -313,8 +334,9 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
           </div>
         </form>
 
-        <div className="p-6 border-t border-cream-300 flex gap-3 justify-end bg-cream-50/50">
-          <button onClick={onClose} className="btn-secondary">Cancelar</button>
+        {/* Rodapé fixo - Sempre visível */}
+        <div className="p-4 sm:p-5 border-t border-gray-200 flex gap-3 justify-end bg-gray-50 shrink-0">
+          <button onClick={onClose} className="btn-secondary px-5 py-2 text-xs font-bold">Cancelar</button>
           <button
             onClick={() => {
               if (!form.nome || !form.email) {
@@ -327,9 +349,9 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
               }
               onSave(form)
             }}
-            className="btn-primary"
+            className="btn-primary bg-brand-600 hover:bg-brand-500 text-white font-black text-xs py-2.5 px-6 rounded-xl shadow-md cursor-pointer"
           >
-            Salvar Usuário
+            💾 Salvar Usuário
           </button>
         </div>
       </div>
