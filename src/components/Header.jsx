@@ -122,7 +122,17 @@ export default function Header({ onMenuClick }) {
   const filteredNavGroups = getFilteredNavGroups(user)
 
   const notifications = allNotifications.filter(n => {
+    // Administrador e Financeiro recebem todas as notificações
     if (user?.role === 'Administrador' || user?.role === 'Financeiro') return true;
+
+    // Se a notificação for marcada como exclusiva da gestão ou destinada apenas a admins/síndicos
+    if (n.somenteGestao || n.tipo === 'morador' || n.tipo === 'aprovacao_usuario') {
+      if (user?.role === 'Morador') return false;
+    }
+    if (n.destinatarios && Array.isArray(n.destinatarios) && !n.destinatarios.includes(user?.role)) {
+      return false;
+    }
+
     if (['Síndico', 'Subsíndico', 'Conselheiro', 'Morador'].includes(user?.role)) {
       if (n.condominio && n.condominio !== 'Todos' && n.condominio !== user?.condominio) return false;
       if (n.moradorId && n.moradorId !== user?.id) return false;

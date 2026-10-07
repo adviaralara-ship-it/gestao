@@ -262,6 +262,8 @@ export default function Cadastro() {
           : `Novo ${form.role} cadastrado no sistema – ${form.nome.trim()}${aptLabel}`,
         time: new Date().toISOString(),
         tipo: isGestao ? 'aprovacao_usuario' : 'morador',
+        destinatarios: ['Administrador', 'Síndico', 'Subsíndico'],
+        somenteGestao: true,
         lida: false,
         condominio: form.role === 'Administrador' ? 'ALPHA' : (localInfo.condominio || 'Alpha ADM'),
         _createdAt: serverTimestamp()
