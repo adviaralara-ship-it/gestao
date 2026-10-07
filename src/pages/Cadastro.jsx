@@ -49,6 +49,7 @@ export default function Cadastro() {
   const paramNome = searchParams.get('nome') || ''
   const paramTel = searchParams.get('tel') || searchParams.get('telefone') || searchParams.get('whatsapp') || ''
   const paramEmail = searchParams.get('email') || ''
+  const paramVinculo = searchParams.get('vinculo') || searchParams.get('status') || searchParams.get('tipo') || ''
 
   const [form, setForm] = useState({
     nome: paramNome,
@@ -60,12 +61,13 @@ export default function Cadastro() {
     condominio: paramCondo,
     bloco: paramBloco,
     unidade: paramApt,
-    role: 'Morador'
+    role: 'Morador',
+    statusMorador: paramVinculo || 'Proprietário'
   })
 
   // Se parâmetros forem carregados via link
   useEffect(() => {
-    if (paramCondo || paramApt || paramNome || paramTel || paramEmail) {
+    if (paramCondo || paramApt || paramNome || paramTel || paramEmail || paramVinculo) {
       setForm(prev => ({
         ...prev,
         condominio: paramCondo || prev.condominio,
@@ -73,10 +75,11 @@ export default function Cadastro() {
         bloco: paramBloco || prev.bloco,
         nome: paramNome || prev.nome,
         telefone: paramTel || prev.telefone,
-        email: paramEmail || prev.email
+        email: paramEmail || prev.email,
+        statusMorador: paramVinculo || prev.statusMorador
       }))
     }
-  }, [paramCondo, paramApt, paramBloco, paramNome, paramTel, paramEmail])
+  }, [paramCondo, paramApt, paramBloco, paramNome, paramTel, paramEmail, paramVinculo])
 
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -164,6 +167,7 @@ export default function Cadastro() {
         ...localInfo,
         condominio: form.role === 'Administrador' ? 'ALPHA' : localInfo.condominio,
         role: form.role,
+        statusMorador: form.role === 'Morador' ? (form.statusMorador || 'Proprietário') : form.role,
         permissoes: rolePerms,
         ativo: !isGestao,
         status: isGestao ? 'Pendente' : 'Ativo',
@@ -195,6 +199,8 @@ export default function Cadastro() {
             return (matchUnidade && (matchTel || matchEmail || !data.email)) || (matchTel && condoBate)
           })
 
+          const finalStatus = form.role === 'Morador' ? (form.statusMorador || 'Proprietário') : form.role
+
           if (moradorExistenteDoc) {
             // Atualiza o morador pré-cadastrado com os dados completos fornecidos
             await updateDoc(doc(db, 'moradores', moradorExistenteDoc.id), {
@@ -205,7 +211,7 @@ export default function Cadastro() {
               bloco: localInfo.bloco || moradorExistenteDoc.data().bloco || '',
               apt: localInfo.unidade,
               cpf: form.cpf.replace(/\D/g, ''),
-              status: moradorExistenteDoc.data().status || (form.role === 'Morador' ? 'Proprietário' : form.role),
+              status: finalStatus,
               cadastroCompleto: true,
               origem: 'auto-cadastro',
               _updatedAt: serverTimestamp()
@@ -219,7 +225,7 @@ export default function Cadastro() {
               bloco: localInfo.bloco,
               apt: localInfo.unidade,
               cpf: form.cpf.replace(/\D/g, ''),
-              status: form.role === 'Morador' ? 'Proprietário' : form.role,
+              status: finalStatus,
               cadastroCompleto: true,
               origem: 'auto-cadastro',
               _createdAt: serverTimestamp()
@@ -338,10 +344,44 @@ export default function Cadastro() {
           {/* Perfil */}
           <div>
             <label className="label">Perfil de acesso *</label>
-            <select className="input" value={form.role} onChange={e=>set('role',e.target.value)}>
+            <select className="input font-semibold" value={form.role} onChange={e=>set('role',e.target.value)}>
               {rolesOptions.map(r=><option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </div>
+
+          {/* Tipo de Vínculo com a Unidade (quando perfil for Morador) */}
+          {form.role === 'Morador' && (
+            <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl flex flex-col gap-1.5">
+              <label className="label text-amber-900 font-black text-xs m-0">Tipo de Morador na Unidade *</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'Proprietário', label: 'Proprietário' },
+                  { id: 'Inquilino',    label: 'Inquilino' },
+                  { id: 'Dependente',   label: 'Dependente / Familiar' }
+                ].map(op => (
+                  <button
+                    key={op.id}
+                    type="button"
+                    onClick={() => set('statusMorador', op.id)}
+                    className={`py-2 px-2 rounded-xl text-xs font-bold transition-all border text-center ${
+                      form.statusMorador === op.id
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                        : 'bg-white text-gray-700 border-amber-200 hover:bg-amber-100/60'
+                    }`}
+                  >
+                    {op.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-amber-800 mt-0.5">
+                {form.statusMorador === 'Inquilino' 
+                  ? '📌 Você será cadastrado oficialmente como Inquilino da unidade.' 
+                  : form.statusMorador === 'Dependente'
+                  ? '📌 Você será vinculado como Dependente / Familiar residente.'
+                  : '📌 Você será cadastrado como Proprietário da unidade.'}
+              </p>
+            </div>
+          )}
 
           {/* Nome */}
           <div>
