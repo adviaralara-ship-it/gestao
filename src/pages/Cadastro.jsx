@@ -179,8 +179,9 @@ export default function Cadastro() {
       // 3. Registra ou atualiza na coleção de moradores caso se aplique
       if (addToMoradores.includes(form.role)) {
         try {
-          const mCondo = localInfo.condominio.trim().toLowerCase()
-          const mApt = localInfo.unidade.trim().toLowerCase()
+          const mCondo = (localInfo.condominio || '').trim().toLowerCase()
+          const mApt = (localInfo.unidade || '').trim().toLowerCase()
+          const finalStatus = form.role === 'Morador' ? (form.statusMorador || 'Proprietário') : form.role
           const mSnap = await getDocs(collection(db, 'moradores'))
           
           const moradorExistenteDoc = mSnap.docs.find(d => {
@@ -199,8 +200,6 @@ export default function Cadastro() {
             return (matchUnidade && (matchTel || matchEmail || !data.email)) || (matchTel && condoBate)
           })
 
-          const finalStatus = form.role === 'Morador' ? (form.statusMorador || 'Proprietário') : form.role
-
           if (moradorExistenteDoc) {
             // Atualiza o morador pré-cadastrado com os dados completos fornecidos
             await updateDoc(doc(db, 'moradores', moradorExistenteDoc.id), {
@@ -212,6 +211,7 @@ export default function Cadastro() {
               apt: localInfo.unidade,
               cpf: form.cpf.replace(/\D/g, ''),
               status: finalStatus,
+              statusMorador: finalStatus,
               cadastroCompleto: true,
               origem: 'auto-cadastro',
               _updatedAt: serverTimestamp()
@@ -226,6 +226,7 @@ export default function Cadastro() {
               apt: localInfo.unidade,
               cpf: form.cpf.replace(/\D/g, ''),
               status: finalStatus,
+              statusMorador: finalStatus,
               cadastroCompleto: true,
               origem: 'auto-cadastro',
               _createdAt: serverTimestamp()

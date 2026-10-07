@@ -79,7 +79,7 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
   const needsLocation = ['Morador', 'Síndico', 'Subsíndico', 'Conselheiro']
 
   const [form, setForm] = useState(() => (
-    data ? { ...data } : { nome: '', email: '', senha: '', telefone: '', condominio: '', bloco: '', unidade: '', role: 'Morador', status: 'Ativo', permissoes: getDefaultPerms('Morador') }
+    data ? { ...data, statusMorador: data.statusMorador || 'Proprietário' } : { nome: '', email: '', senha: '', telefone: '', condominio: '', bloco: '', unidade: '', role: 'Morador', statusMorador: 'Proprietário', status: 'Ativo', permissoes: getDefaultPerms('Morador') }
   ))
 
   React.useEffect(() => {
@@ -93,12 +93,13 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
         bloco: data.bloco || '',
         unidade: data.unidade || data.apt || '',
         role: data.role || 'Morador',
+        statusMorador: data.statusMorador || data.status || 'Proprietário',
         status: data.status || 'Ativo',
         permissoes: data.permissoes || getDefaultPerms(data.role || 'Morador')
       })
     } else {
       setForm({
-        nome: '', email: '', senha: '', telefone: '', condominio: '', bloco: '', unidade: '', role: 'Morador', status: 'Ativo', permissoes: getDefaultPerms('Morador')
+        nome: '', email: '', senha: '', telefone: '', condominio: '', bloco: '', unidade: '', role: 'Morador', statusMorador: 'Proprietário', status: 'Ativo', permissoes: getDefaultPerms('Morador')
       })
     }
   }, [data])
@@ -218,13 +219,27 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className={`grid ${form.role === 'Morador' ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
               <div>
                 <label className="label">Perfil Base *</label>
                 <select className="input font-semibold text-brand-900" value={form.role} onChange={handleRoleChange}>
                   {roles.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
+              {form.role === 'Morador' && (
+                <div>
+                  <label className="label">Tipo de Vínculo</label>
+                  <select 
+                    className="input font-semibold text-brand-900" 
+                    value={form.statusMorador || 'Proprietário'} 
+                    onChange={e => set('statusMorador', e.target.value)}
+                  >
+                    <option value="Proprietário">Proprietário</option>
+                    <option value="Inquilino">Inquilino</option>
+                    <option value="Dependente">Dependente</option>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="label">Status</label>
                 <select className="input font-semibold" value={form.status} onChange={e => set('status', e.target.value)}>
@@ -563,11 +578,37 @@ export default function Usuarios() {
           bloco: blocoNorm,
           apt: unidadeNorm,
           email: emailClean,
-          tel: form.telefone || ''
+          tel: form.telefone || '',
+          status: form.statusMorador || 'Proprietário',
+          statusMorador: form.statusMorador || 'Proprietário'
         }).catch(() => {})
         await addItem(updated)
       } else {
         await updateItem(modal.id, updated)
+        // Se for morador, sincroniza também na coleção de moradores
+        if (form.role === 'Morador' && (emailClean || (condoNorm && unidadeNorm))) {
+          try {
+            const mSnap = await getDocs(collection(db, 'moradores'))
+            const mDoc = mSnap.docs.find(d => {
+              const dt = d.data()
+              const matchEmail = emailClean && dt.email && dt.email.toLowerCase().trim() === emailClean
+              const matchApt = condoNorm && unidadeNorm && (dt.condominio || '').trim().toUpperCase() === condoNorm && String(dt.apt || dt.unidade || '').trim() === unidadeNorm
+              return matchEmail || matchApt
+            })
+            if (mDoc) {
+              await updateDoc(mDoc.ref, {
+                nome: nomeNorm,
+                condominio: condoNorm,
+                bloco: blocoNorm,
+                apt: unidadeNorm,
+                status: form.statusMorador || 'Proprietário',
+                statusMorador: form.statusMorador || 'Proprietário'
+              })
+            }
+          } catch (e) {
+            console.warn('Erro ao sincronizar com moradores:', e)
+          }
+        }
       }
 
       // ALARME: Usuário comum virou Administrador
@@ -716,7 +757,7 @@ export default function Usuarios() {
           <div className="flex items-center gap-1.5">
             <Building size={14} className="text-brand-600 shrink-0" />
             <select
-              className="input text-xs font-bold text-gray-700 min-w-[180px]"
+              className={`input text-xs font-bold min-w-[180px] ${condoFilter !== 'Todos' ? 'border-brand-500 bg-brand-50/40 text-brand-900 ring-1 ring-brand-300' : 'text-gray-700'}`}
               value={condoFilter}
               onChange={e => setCondoFilter(e.target.value)}
             >
@@ -731,7 +772,7 @@ export default function Usuarios() {
           <div className="flex items-center gap-1.5">
             <Shield size={14} className="text-purple-600 shrink-0" />
             <select
-              className={`input text-xs font-bold min-w-[160px] ${roleFilter === 'Pendentes' ? 'bg-amber-100 border-amber-400 text-amber-900 font-black' : 'text-gray-700'}`}
+              className={`input text-xs font-bold min-w-[160px] ${roleFilter === 'Pendentes' ? 'bg-amber-100 border-amber-400 text-amber-900 font-black' : roleFilter !== 'Todos' ? 'border-brand-500 bg-brand-50/40 text-brand-900 ring-1 ring-brand-300' : 'text-gray-700'}`}
               value={roleFilter}
               onChange={e => setRoleFilter(e.target.value)}
             >
@@ -744,6 +785,20 @@ export default function Usuarios() {
               ))}
             </select>
           </div>
+
+          {(condoFilter !== 'Todos' || roleFilter !== 'Todos' || search) && (
+            <button
+              onClick={() => {
+                setCondoFilter('Todos')
+                setRoleFilter('Todos')
+                setSearch('')
+              }}
+              className="text-xs font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shadow-2xs"
+              title="Mostrar todos os usuários de todos os condomínios"
+            >
+              Limpar Filtros ✕
+            </button>
+          )}
         </div>
       </div>
 
@@ -787,9 +842,22 @@ export default function Usuarios() {
                     </td>
                     <td className="table-cell text-gray-500 text-xs font-mono">{u.email}</td>
                     <td className="table-cell">
-                      <span className={roleColors[u.role] || 'badge-blue'}>
-                        <Shield size={10} className="mr-1" />{u.role}
-                      </span>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className={roleColors[u.role] || 'badge-blue'}>
+                          <Shield size={10} className="mr-1" />{u.role}
+                        </span>
+                        {u.role === 'Morador' && (
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border shadow-2xs ${
+                            (u.statusMorador || u.status) === 'Inquilino' 
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
+                              : (u.statusMorador || u.status) === 'Dependente' 
+                                ? 'bg-purple-50 text-purple-800 border-purple-300' 
+                                : 'bg-blue-50 text-blue-800 border-blue-300'
+                          }`}>
+                            {u.statusMorador || (u.status === 'Inquilino' ? 'Inquilino' : 'Proprietário')}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="table-cell text-gray-700 text-xs font-semibold">
                       {u.role === 'Administrador' ? (

@@ -1368,16 +1368,37 @@ export default function Moradores() {
             </div>
             <div className="relative sm:w-64">
               <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <select className="input pl-9 text-xs font-bold" value={filtroCondominio} onChange={e => { setFiltroCondominio(e.target.value); setFiltroApt('Todos') }}>
-                {condominiosUnicos.map(c => <option key={c} value={c}>{c}</option>)}
+              <select 
+                className={`input pl-9 text-xs font-bold ${filtroCondominio !== 'Todos' ? 'border-brand-500 bg-brand-50/40 text-brand-900 ring-1 ring-brand-300' : ''}`} 
+                value={filtroCondominio} 
+                onChange={e => { setFiltroCondominio(e.target.value); setFiltroApt('Todos') }}
+              >
+                {condominiosUnicos.map(c => <option key={c} value={c}>{c === 'Todos' ? '🏢 Todos os Condomínios' : c}</option>)}
               </select>
             </div>
             <div className="relative sm:w-48">
               <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <select className="input pl-9 text-xs font-bold" value={filtroApt} onChange={e => setFiltroApt(e.target.value)}>
-                {aptsUnicos.map(a => <option key={a} value={a}>{a === 'Todos' ? 'Todos os Aptos' : `Apt ${a}`}</option>)}
+              <select 
+                className={`input pl-9 text-xs font-bold ${filtroApt !== 'Todos' ? 'border-brand-500 bg-brand-50/40 text-brand-900 ring-1 ring-brand-300' : ''}`} 
+                value={filtroApt} 
+                onChange={e => setFiltroApt(e.target.value)}
+              >
+                {aptsUnicos.map(a => <option key={a} value={a}>{a === 'Todos' ? '🚪 Todos os Aptos' : `Apt ${a}`}</option>)}
               </select>
             </div>
+            {(filtroCondominio !== 'Todos' || filtroApt !== 'Todos' || search) && (
+              <button
+                onClick={() => {
+                  setFiltroCondominio('Todos')
+                  setFiltroApt('Todos')
+                  setSearch('')
+                }}
+                className="text-xs font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shadow-2xs shrink-0 self-center"
+                title="Mostrar todos os moradores de todos os condomínios"
+              >
+                Limpar Filtros ✕
+              </button>
+            )}
           </div>
 
           {/* Atalhos rápidos de condomínio */}
