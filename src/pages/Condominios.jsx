@@ -43,15 +43,15 @@ function CondoModal({ data, onClose, onSave }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
 
   return (
-    <div className="modal-overlay z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="modal-content max-w-xl w-full bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden" onClick={e=>e.stopPropagation()}>
-        <div className="p-4 sm:p-6 border-b border-cream-300 flex items-center justify-between gap-3 bg-gradient-to-r from-cream-100 to-white">
-          <h3 className="font-bold text-gray-900 text-base sm:text-lg min-w-0 flex-1 truncate">{data?'Editar Condomínio':'Novo Condomínio'}</h3>
-          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-700" title="Fechar">✕</button>
+    <div className="modal-overlay z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white max-w-xl w-full rounded-3xl shadow-2xl border border-gray-200 flex flex-col max-h-[90vh] overflow-hidden" onClick={e=>e.stopPropagation()}>
+        <div className="p-4 sm:p-5 border-b border-cream-300 flex items-center justify-between gap-3 bg-gradient-to-r from-cream-100 to-white shrink-0">
+          <h3 className="font-black text-gray-900 text-base sm:text-lg min-w-0 flex-1 truncate">{data?'Editar Condomínio':'Novo Condomínio'}</h3>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors cursor-pointer" title="Fechar">✕</button>
         </div>
-        <div className="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto">
+        <div className="p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto flex-1">
           {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['mandatoFim','Fim do Mandato (Síndico)'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX do Condomínio (Para onde vão as cotas)'],['grupoWhatsapp','ID do Grupo de WhatsApp do Condomínio (ex: 120363012345678901@g.us)']].map(([k,l])=>(
-            <div key={k}><label className="label">{l}</label><input type={k==='mandatoFim'?'date':'text'} className={`input ${k==='nome'?'uppercase':''}`} value={form[k]||''} onChange={e=>set(k, k==='nome'?e.target.value.toUpperCase():e.target.value)} placeholder={l}/></div>
+            <div key={k}><label className="label">{l}</label><input type={k==='mandatoFim'?'date':'text'} className={`input ${k==='nome'?'uppercase font-bold':''}`} value={form[k]||''} onChange={e=>set(k, k==='nome'?e.target.value.toUpperCase():e.target.value)} placeholder={l}/></div>
           ))}
           <div><label className="label">Status</label>
             <select className="input" value={form.status} onChange={e=>set('status',e.target.value)}>
@@ -140,8 +140,10 @@ function CondoModal({ data, onClose, onSave }) {
             </div>
           </div>
         </div>
-        <div className="p-4 sm:p-6 border-t border-cream-300 flex gap-3 justify-end bg-gray-50">
-          <button onClick={onClose} className="btn-secondary">Cancelar</button>
+
+        {/* Rodapé fixo - Sempre visível */}
+        <div className="p-4 sm:p-5 border-t border-gray-200 flex gap-3 justify-end bg-gray-50 shrink-0">
+          <button onClick={onClose} className="btn-secondary px-5 py-2 text-xs font-bold">Cancelar</button>
           <button onClick={()=>onSave({
             ...form,
             nome: (form.nome || '').trim(),
@@ -151,7 +153,9 @@ function CondoModal({ data, onClose, onSave }) {
             taxaEmissao: form.discriminarTaxa ? parseBR(taxaStr) : 0,
             fundoReserva:parseBR(fundoStr),
             fundoMeta:parseBR(metaStr)
-          })} className="btn-primary font-black">Salvar Alterações</button>
+          })} className="btn-primary bg-brand-600 hover:bg-brand-500 text-white font-black text-xs py-2.5 px-6 rounded-xl shadow-md cursor-pointer">
+            💾 Salvar Alterações
+          </button>
         </div>
       </div>
     </div>
