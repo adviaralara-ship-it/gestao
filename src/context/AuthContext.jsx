@@ -105,9 +105,9 @@ async function fetchUserProfile(firebaseUser) {
       } else {
         const ensure = (p) => { if (!userPerms.includes(p)) userPerms.push(p) }
         ensure('dashboard') // Todos precisam do dashboard (tela mobile)
-        if (data.role === 'Administrador' || data.role === 'Síndico') ensure('email')
-        if (data.role === 'Síndico') {
-          ensure('relatorios'); ensure('visitantes'); ensure('encomendas'); ensure('portaria'); ensure('eventos');
+        if (data.role === 'Administrador' || data.role === 'Síndico' || data.role === 'Subsíndico') ensure('email')
+        if (data.role === 'Síndico' || data.role === 'Subsíndico') {
+          ensure('relatorios'); ensure('visitantes'); ensure('encomendas'); ensure('portaria'); ensure('eventos'); ensure('manutencoes'); ensure('cotacoes');
         } else if (data.role === 'Morador') {
           ensure('portaria'); ensure('visitantes'); ensure('encomendas'); ensure('eventos');
         } else if (data.role === 'Porteiro') {

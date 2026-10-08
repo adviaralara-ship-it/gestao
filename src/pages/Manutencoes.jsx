@@ -337,7 +337,7 @@ function ModalEnviarAprovacao({ selecionadas, condominios, onClose, onConfirm })
 export default function Manutencoes() {
   const { user } = useAuth()
   const isMorador = user?.role === 'Morador'
-  const isAdminOrSindico = ['Administrador', 'Síndico'].includes(user?.role)
+  const isAdminOrSindico = ['Administrador', 'Síndico', 'Subsíndico'].includes(user?.role)
   
   const [tab, setTab] = useState('cronograma') // cronograma, cotacoes
   
