@@ -521,6 +521,7 @@ export default function OrcamentosComparativo({ condominios = [], condoFiltro = 
       {modalVisualizar && (
         <ModalDetalhesOrcamento
           item={modalVisualizar}
+          condominios={condominios}
           onClose={() => setModalVisualizar(null)}
           onUpdate={async (dadosAtualizados) => {
             await updateItem(modalVisualizar.id, dadosAtualizados)
@@ -738,11 +739,24 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
             <div>
               <label className="label text-xs font-black">Condomínio *</label>
-              <input
-                className="input text-xs font-bold bg-slate-100 cursor-not-allowed"
-                value={form.condominio}
-                readOnly
-              />
+              {isAdm ? (
+                <select
+                  className="input text-xs font-bold bg-white border-brand-300 text-gray-900"
+                  value={form.condominio}
+                  onChange={e => set('condominio', e.target.value)}
+                >
+                  <option value="">Selecione o Condomínio...</option>
+                  {condominios?.map(c => (
+                    <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="input text-xs font-bold bg-slate-100 cursor-not-allowed"
+                  value={form.condominio}
+                  readOnly
+                />
+              )}
             </div>
 
             <div>
@@ -861,18 +875,33 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
 // =========================================================================
 // MODAL DE DETALHES / VISUALIZAÇÃO DO ORÇAMENTO
 // =========================================================================
-function ModalDetalhesOrcamento({ item, onClose, onUpdate }) {
+function ModalDetalhesOrcamento({ item, condominios = [], onClose, onUpdate }) {
+  const { user } = useAuth()
+  const isAdm = user?.role === 'Administrador'
+  const [salvando, setSalvando] = useState(false)
   const [editando, setEditando] = useState(false)
   const [form, setForm] = useState({ ...item })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleSalvarEdicao = async () => {
+    setSalvando(true)
+    try {
+      await onUpdate(form)
+      setEditando(false)
+    } catch (e) {
+      alert('Erro ao atualizar orçamento: ' + e.message)
+    } finally {
+      setSalvando(false)
+    }
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content max-w-xl w-full p-0 overflow-hidden rounded-3xl" onClick={e => e.stopPropagation()}>
         <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
           <div>
-            <h3 className="font-black text-base">{item.empresa}</h3>
-            <p className="text-xs text-slate-400">Área: {item.grupo || 'Geral'}</p>
+            <h3 className="font-black text-base">{form.empresa}</h3>
+            <p className="text-xs text-slate-400">Área: {form.grupo || 'Geral'}</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white p-1">
             <X size={20} />
@@ -880,6 +909,26 @@ function ModalDetalhesOrcamento({ item, onClose, onUpdate }) {
         </div>
 
         <div className="p-6 flex flex-col gap-3.5 text-xs max-h-[75vh] overflow-y-auto">
+          <div>
+            <label className="font-bold text-gray-500 block text-[10px] uppercase mb-1">Condomínio Vinculado</label>
+            {isAdm ? (
+              <select
+                className="input text-xs font-bold bg-white border-brand-300 text-gray-900"
+                value={form.condominio || ''}
+                onChange={e => {
+                  set('condominio', e.target.value)
+                  setEditando(true)
+                }}
+              >
+                <option value="">Selecione o Condomínio...</option>
+                {condominios?.map(c => (
+                  <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="font-bold text-gray-800 bg-slate-100 p-2 rounded-lg">{form.condominio || 'Geral'}</p>
+            )}
+          </div>
           <div>
             <span className="font-bold text-gray-500 block text-[10px] uppercase">Tipo de Serviço</span>
             <p className="font-semibold text-gray-900 text-sm mt-0.5">{item.tipoServico || '—'}</p>
@@ -935,10 +984,20 @@ function ModalDetalhesOrcamento({ item, onClose, onUpdate }) {
           )}
         </div>
 
-        <div className="p-4 bg-slate-50 border-t border-gray-200 flex justify-end">
+        <div className="p-4 bg-slate-50 border-t border-gray-200 flex justify-end gap-2">
           <button onClick={onClose} className="btn-secondary text-xs">
             Fechar
           </button>
+          {editando && (
+            <button
+              onClick={handleSalvarEdicao}
+              disabled={salvando}
+              className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-xs flex items-center gap-1.5"
+            >
+              {salvando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+              Salvar Alterações
+            </button>
+          )}
         </div>
       </div>
     </div>
