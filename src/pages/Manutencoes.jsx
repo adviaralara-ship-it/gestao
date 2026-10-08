@@ -10,6 +10,7 @@ import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { CurrencyInput } from '../utils/currency'
 import { verificarEDispararLembretesManutencao } from '../hooks/useMaintenanceAutoReminder'
+import OrcamentosComparativo from './OrcamentosComparativo'
 
 function ModalManutencao({ data, condominios, onClose, onSave }) {
   const [form, setForm] = useState(data || {
@@ -659,6 +660,12 @@ export default function Manutencoes() {
         >
           <ShoppingBag size={16}/> Central de Cotações / Licitações
         </button>
+        <button 
+          onClick={() => setTab('orcamentos')} 
+          className={`px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${tab==='orcamentos'?'bg-emerald-600 text-white shadow-md':'bg-white text-gray-600 hover:text-emerald-700 border border-cream-400'}`}
+        >
+          <FileText size={16}/> 📑 Orçamentos & Comparativo (IA)
+        </button>
       </div>
 
       {/* Relatório de Impressão (Visível apenas na impressão) */}
@@ -1064,6 +1071,12 @@ export default function Manutencoes() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {tab === 'orcamentos' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-cream-300 p-4 sm:p-6">
+          <OrcamentosComparativo condominios={condominios} condoFiltro={condoFiltro} />
         </div>
       )}
 
