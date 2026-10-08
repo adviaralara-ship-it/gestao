@@ -4,13 +4,14 @@ import { db } from '../firebase'
 import { 
   Wrench, Plus, CheckCircle, Clock, Trash2, Calendar, AlertCircle, 
   ShoppingBag, ExternalLink, Briefcase, FileText, Printer, Bell, RefreshCw, Check,
-  Send, CheckSquare, Square, Share2, ThumbsUp, X
+  Send, CheckSquare, Square, Share2, ThumbsUp, X, Calculator
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { CurrencyInput } from '../utils/currency'
 import { verificarEDispararLembretesManutencao } from '../hooks/useMaintenanceAutoReminder'
 import OrcamentosComparativo from './OrcamentosComparativo'
+import SimulacaoRateio from './SimulacaoRateio'
 
 function ModalManutencao({ data, condominios, onClose, onSave }) {
   const [form, setForm] = useState(data || {
@@ -666,6 +667,12 @@ export default function Manutencoes() {
         >
           <FileText size={16}/> 📑 Orçamentos & Comparativo (IA)
         </button>
+        <button 
+          onClick={() => setTab('rateio')} 
+          className={`px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${tab==='rateio'?'bg-indigo-600 text-white shadow-md':'bg-white text-gray-600 hover:text-indigo-700 border border-cream-400'}`}
+        >
+          <Calculator size={16}/> 💰 Simulação de Rateio
+        </button>
       </div>
 
       {/* Relatório de Impressão (Visível apenas na impressão) */}
@@ -1077,6 +1084,12 @@ export default function Manutencoes() {
       {tab === 'orcamentos' && (
         <div className="bg-white rounded-2xl shadow-sm border border-cream-300 p-4 sm:p-6">
           <OrcamentosComparativo condominios={condominios} condoFiltro={condoFiltro} />
+        </div>
+      )}
+
+      {tab === 'rateio' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-cream-300 p-4 sm:p-6">
+          <SimulacaoRateio condominios={condominios} condoFiltro={condoFiltro} />
         </div>
       )}
 
