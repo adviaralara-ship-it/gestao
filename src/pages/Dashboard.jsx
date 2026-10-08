@@ -715,7 +715,15 @@ export default function Dashboard() {
   // =========================================================================
   // 3. GESTÃO / SÍNDICO / ADMINISTRADOR / CONSELHO (100% DADOS REAIS DO FIRESTORE)
   // =========================================================================
-  const [condoFiltro, setCondoFiltro] = useState(user?.role === 'Síndico' || user?.role === 'Conselheiro' ? (user.condominio || 'Todos') : 'Todos')
+  const isAdm = user?.role === 'Administrador'
+  const meuCondominio = user?.condominio || ''
+  const [condoFiltro, setCondoFiltro] = useState(() => (!isAdm && meuCondominio ? meuCondominio : 'Todos'))
+
+  React.useEffect(() => {
+    if (!isAdm && meuCondominio && condoFiltro !== meuCondominio) {
+      setCondoFiltro(meuCondominio)
+    }
+  }, [isAdm, meuCondominio])
   
   const hoje = new Date()
   const mesAtualStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
@@ -741,12 +749,44 @@ export default function Dashboard() {
     return `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
+  const normalizarNomeCondo = (nome) => {
+    return String(nome || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/^(residencial|condominio|edificio|ed\.)\s+/i, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .trim()
+      .toLowerCase()
+  }
+
+  const condoMatch = (c1, c2) => {
+    if (!c1 || !c2) return false
+    const n1 = normalizarNomeCondo(c1)
+    const n2 = normalizarNomeCondo(c2)
+    return n1 === n2 || n1.includes(n2) || n2.includes(n1)
+  }
+
   const filterByCondo = (items) => {
+    if (!items || !Array.isArray(items)) return []
+
+    // Para usuários não-administradores (Síndico, Subsíndico, Conselho):
+    // Jamais exibe dados de Alpha Interno nem lançamentos sem condomínio definido
+    if (!isAdm) {
+      if (!meuCondominio) return []
+      return items.filter(it => {
+        if (!it.condominio) return false
+        if (isAlphaInterno(it.condominio)) return false
+        return condoMatch(it.condominio, meuCondominio)
+      })
+    }
+
+    // Para Administradores:
     if (!condoFiltro || condoFiltro === 'Todos') return items
     if (condoFiltro === 'Alpha (Interno)') {
       return items.filter(it => isAlphaInterno(it.condominio))
     }
-    return items.filter(it => !it.condominio || it.condominio === condoFiltro)
+    // Quando selecionado um condomínio específico, aceita estritamente lançamentos dele
+    return items.filter(it => Boolean(it.condominio) && condoMatch(it.condominio, condoFiltro))
   }
 
   const finFiltrado = useMemo(() => filterByCondo(financeiro), [financeiro, condoFiltro])
@@ -1311,30 +1351,39 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-gray-500">Condomínio:</span>
-            <select
-              className="input py-2 text-xs font-bold text-gray-800 bg-slate-50 border-gray-300 rounded-xl"
-              value={condoFiltro}
-              onChange={e => setCondoFiltro(e.target.value)}
-            >
-              <option value="Todos">🌐 Todos os Condomínios + Alpha</option>
-              <option value="Alpha (Interno)">👑 Alpha Soluções (Financeiro Interno / Matriz)</option>
-              <optgroup label="Condomínios">
-                {condominios.map(c => (
-                  <option key={c.id || c.nome} value={c.nome}>🏢 {c.nome}</option>
-                ))}
-              </optgroup>
-            </select>
-          </div>
+          {isAdm ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-500">Condomínio:</span>
+              <select
+                className="input py-2 text-xs font-bold text-gray-800 bg-slate-50 border-gray-300 rounded-xl"
+                value={condoFiltro}
+                onChange={e => setCondoFiltro(e.target.value)}
+              >
+                <option value="Todos">🌐 Todos os Condomínios + Alpha</option>
+                <option value="Alpha (Interno)">👑 Alpha Soluções (Financeiro Interno / Matriz)</option>
+                <optgroup label="Condomínios">
+                  {condominios.map(c => (
+                    <option key={c.id || c.nome} value={c.nome}>🏢 {c.nome}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2 bg-brand-50 border border-brand-200 rounded-xl text-xs font-bold text-brand-900 shadow-2xs">
+              <Building2 size={16} className="text-brand-600 shrink-0" />
+              <span>{meuCondominio || 'Condomínio'}</span>
+            </div>
+          )}
 
-          <button
-            onClick={() => navigate('/seguranca')}
-            className="btn-secondary py-2 px-3 text-xs font-bold flex items-center gap-1.5 bg-red-50 text-red-700 border-red-200 hover:bg-red-100 shadow-xs cursor-pointer"
-            title="Acessar painel de alarmes, segurança e restauração de backups"
-          >
-            <ShieldAlert size={15} className="text-red-600" /> Segurança &amp; Backups
-          </button>
+          {isAdm && (
+            <button
+              onClick={() => navigate('/seguranca')}
+              className="btn-secondary py-2 px-3 text-xs font-bold flex items-center gap-1.5 bg-red-50 text-red-700 border-red-200 hover:bg-red-100 shadow-xs cursor-pointer"
+              title="Acessar painel de alarmes, segurança e restauração de backups"
+            >
+              <ShieldAlert size={15} className="text-red-600" /> Segurança &amp; Backups
+            </button>
+          )}
 
           <button
             onClick={() => navigate('/cotacoes')}
