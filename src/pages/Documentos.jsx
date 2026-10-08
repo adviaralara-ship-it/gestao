@@ -462,19 +462,28 @@ export default function Documentos() {
   const [search, setSearch] = useState('')
 
   const isMorador = user?.role === 'Morador'
+  const isAdm = user?.role === 'Administrador'
+  const meuCondo = (user?.condominio || '').trim().toLowerCase()
 
   const filtered = docs
     .filter(d => {
-      if (isMorador) {
-        if (d.visibilidade === 'Privado') return false
-        if (d.condominio && d.condominio !== 'Todos' && user?.condominio && d.condominio !== user.condominio) return false
-      } else if (user?.role === 'Síndico' || user?.role === 'Subsíndico') {
-        if (d.condominio && d.condominio !== 'Todos' && user?.condominio && d.condominio !== user.condominio) return false
+      if (!isAdm) {
+        if (!meuCondo) return false
+        const dCondo = (d.condominio || '').trim().toLowerCase()
+        if (dCondo !== 'todos' && dCondo !== meuCondo && !dCondo.includes(meuCondo) && !meuCondo.includes(dCondo)) {
+          return false
+        }
+        if (isMorador && d.visibilidade === 'Privado') {
+          return false
+        }
       }
       return true
     })
     .filter(d => catFilter === 'Todos' || d.categoria === catFilter)
-    .filter(d => filtroCondo === 'Todos' || !d.condominio || d.condominio === 'Todos' || d.condominio === filtroCondo)
+    .filter(d => {
+      if (!isAdm) return true
+      return filtroCondo === 'Todos' || !d.condominio || d.condominio === 'Todos' || d.condominio === filtroCondo
+    })
     .filter(d => {
       const s = search.toLowerCase()
       return (d.nome || '').toLowerCase().includes(s) || 
@@ -547,19 +556,21 @@ export default function Documentos() {
           />
         </div>
 
-        <div className="relative sm:w-64">
-          <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-600" />
-          <select
-            className="input pl-9 text-xs font-bold bg-amber-50/60 border-amber-200 text-gray-800"
-            value={filtroCondo}
-            onChange={e => setFiltroCondo(e.target.value)}
-          >
-            <option value="Todos">🏢 Todos os Condomínios</option>
-            {condominios.map(c => (
-              <option key={c.id || c.nome} value={c.nome}>🏢 {c.nome}</option>
-            ))}
-          </select>
-        </div>
+        {isAdm && (
+          <div className="relative sm:w-64">
+            <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-600" />
+            <select
+              className="input pl-9 text-xs font-bold bg-amber-50/60 border-amber-200 text-gray-800"
+              value={filtroCondo}
+              onChange={e => setFiltroCondo(e.target.value)}
+            >
+              <option value="Todos">🏢 Todos os Condomínios</option>
+              {condominios.map(c => (
+                <option key={c.id || c.nome} value={c.nome}>🏢 {c.nome}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Categorias Pills */}

@@ -151,20 +151,46 @@ export default function Reservas() {
 
   const { items: condominios } = useFirestore('condominios')
   const isMorador = user?.role === 'Morador'
-  const [condoFiltro, setCondoFiltro] = useState(isMorador ? user?.condominio : 'Todos')
+  const isAdm = user?.role === 'Administrador'
+  const meuCondo = (user?.condominio || '').trim().toLowerCase()
+
+  const [condoFiltro, setCondoFiltro] = useState(() => {
+    if (!isAdm && user?.condominio) return user.condominio
+    return 'Todos'
+  })
+
+  useEffect(() => {
+    if (!isAdm && user?.condominio) {
+      setCondoFiltro(user.condominio)
+    }
+  }, [isAdm, user])
 
   const getReservationsForDay = dayStr =>
     items.filter(i=>{
-      if (isMorador && user?.condominio && i.condominio !== user.condominio) return false
-      if (!isMorador && condoFiltro !== 'Todos' && i.condominio !== condoFiltro) return false
+      if (!isAdm) {
+        if (!meuCondo) return false
+        const iCondo = (i.condominio || '').trim().toLowerCase()
+        if (!iCondo || (iCondo !== meuCondo && !iCondo.includes(meuCondo) && !meuCondo.includes(iCondo))) return false
+      } else if (condoFiltro !== 'Todos') {
+        const iCondo = (i.condominio || '').trim().toLowerCase()
+        const fCondo = String(condoFiltro).trim().toLowerCase()
+        if (iCondo !== fCondo && !iCondo.includes(fCondo) && !fCondo.includes(iCondo)) return false
+      }
       if (selectedEspaco!=='Todos'&&i.espaco!==selectedEspaco) return false
       return i.data===dayStr
     })
 
   // Lista filtrada para a seção abaixo do calendário
   const listaFiltrada = items.filter(i=>{
-    if (isMorador && user?.condominio && i.condominio !== user.condominio) return false
-    if (!isMorador && condoFiltro !== 'Todos' && i.condominio !== condoFiltro) return false
+    if (!isAdm) {
+      if (!meuCondo) return false
+      const iCondo = (i.condominio || '').trim().toLowerCase()
+      if (!iCondo || (iCondo !== meuCondo && !iCondo.includes(meuCondo) && !meuCondo.includes(iCondo))) return false
+    } else if (condoFiltro !== 'Todos') {
+      const iCondo = (i.condominio || '').trim().toLowerCase()
+      const fCondo = String(condoFiltro).trim().toLowerCase()
+      if (iCondo !== fCondo && !iCondo.includes(fCondo) && !fCondo.includes(iCondo)) return false
+    }
     const okEspaco = selectedEspaco==='Todos'||i.espaco===selectedEspaco
     const okSearch = !search || i.morador?.toLowerCase().includes(search.toLowerCase())||i.espaco?.toLowerCase().includes(search.toLowerCase())
     return okEspaco&&okSearch
@@ -175,7 +201,7 @@ export default function Reservas() {
       <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div><h2 className="section-title text-xl">Calendário de Reservas</h2><p className="section-sub">{listaFiltrada.filter(i=>i.status==='Pendente').length} aguardando aprovação</p></div>
         <div className="flex items-center gap-3">
-          {!isMorador && (
+          {isAdm && (
             <select
               className="input py-2 text-xs font-bold text-gray-800 bg-white border-gray-300 rounded-xl"
               value={condoFiltro}

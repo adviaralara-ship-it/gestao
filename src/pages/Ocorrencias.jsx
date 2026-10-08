@@ -31,12 +31,14 @@ const STATUS_FLUXO = [
 ]
 
 function Modal({ data, user, condominios = [], onClose, onSave }) {
+  const isAdm = user?.role === 'Administrador'
+  const condoDefault = (!isAdm && user?.condominio) ? user.condominio : (user?.condominio || condominios[0]?.nome || '')
   const [form, setForm] = useState(data || {
     titulo: '',
     descricao: '',
     local: '',
     apt: user?.apt || user?.unidade || '',
-    condominio: user?.condominio || condominios[0]?.nome || '',
+    condominio: condoDefault,
     categoria: 'Manutenção',
     prioridade: 'Média',
     status: 'Aberta',
@@ -252,19 +254,30 @@ export default function Ocorrencias() {
   const [filtroCondo, setFiltroCondo] = useState('Todos')
 
   const isMorador = user?.role === 'Morador'
+  const isAdm = user?.role === 'Administrador'
+  const meuCondo = (user?.condominio || '').trim().toLowerCase()
 
   const ocorrencias = allOcorrencias.filter(o => {
+    // Se não for administrador, filtra estritamente pelo condomínio
+    if (!isAdm) {
+      if (!meuCondo) return false
+      const oCondo = (o.condominio || '').trim().toLowerCase()
+      if (!oCondo || (oCondo !== meuCondo && !oCondo.includes(meuCondo) && !meuCondo.includes(oCondo))) {
+        return false
+      }
+    }
+
     // Se for morador, vê as ocorrências da unidade/apt dele ou que ele abriu
     if (isMorador) {
       const matchApt = o.apt === user?.apt || o.apt === user?.unidade
       const matchAutor = o.autor === user?.nome || o.nome_morador === user?.nome || o.uid === user?.uid
       return matchApt || matchAutor
     }
-    if (user?.role === 'Síndico' || user?.role === 'Subsíndico') {
-      return !o.condominio || o.condominio === user?.condominio
-    }
+    
     if (filtroCondo && filtroCondo !== 'Todos') {
-      return o.condominio === filtroCondo
+      const oCondo = (o.condominio || '').trim().toLowerCase()
+      const fCondo = String(filtroCondo).trim().toLowerCase()
+      return oCondo === fCondo || oCondo.includes(fCondo) || fCondo.includes(oCondo)
     }
     return true
   }).filter(o => {
@@ -274,8 +287,7 @@ export default function Ocorrencias() {
                        (o.apt || '').toLowerCase().includes(search.toLowerCase())
     const matchStatus = filtroStatus === 'Todos' || o.status === filtroStatus
     const matchCat = filtroCategoria === 'Todos' || o.categoria === filtroCategoria
-    const matchCondo = filtroCondo === 'Todos' || !o.condominio || o.condominio === filtroCondo
-    return matchBusca && matchStatus && matchCat && matchCondo
+    return matchBusca && matchStatus && matchCat
   }).sort((a, b) => new Date(b.data || b._createdAt || 0) - new Date(a.data || a._createdAt || 0))
 
   return (
@@ -309,7 +321,7 @@ export default function Ocorrencias() {
           />
         </div>
 
-        {!isMorador && allCondominios.length > 0 && (
+        {isAdm && allCondominios.length > 0 && (
           <select
             className="input text-xs py-2 w-full md:w-auto font-bold bg-white text-gray-800 border-gray-300"
             value={filtroCondo}

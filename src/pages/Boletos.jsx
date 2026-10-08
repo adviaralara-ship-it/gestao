@@ -1807,6 +1807,7 @@ export default function Boletos() {
 
   const [tab, setTab] = useState('boletos')
   const [condoFilter, setCondoFilter] = useState(() => {
+    if (user?.role !== 'Administrador' && user?.condominio) return user.condominio
     return location.state?.condominio || 'Todos'
   })
   const [competenciaFilter, setCompetenciaFilter] = useState(() => {
@@ -1817,13 +1818,15 @@ export default function Boletos() {
 
   // Sincronizar se navegar novamente para esta página com novo estado
   useEffect(() => {
-    if (location.state?.condominio) {
+    if (user?.role !== 'Administrador' && user?.condominio) {
+      setCondoFilter(user.condominio)
+    } else if (location.state?.condominio) {
       setCondoFilter(location.state.condominio)
     }
     if (location.state?.competencia) {
       setCompetenciaFilter(location.state.competencia)
     }
-  }, [location.state])
+  }, [location.state, user])
   const [statusFilter, setStatusFilter] = useState('Todos')
   const [viewing, setViewing] = useState(null)
   const [modal, setModal] = useState(null)
@@ -2172,14 +2175,18 @@ export default function Boletos() {
       const matchNome = uNome && bMorador && (uNome === bMorador || uNome.includes(bMorador) || bMorador.includes(uNome))
 
       if (!(matchEmail || matchApt || matchNome)) return false
-    } else if (['Síndico', 'Subsíndico', 'Conselheiro'].includes(user?.role)) {
+    } else if (user?.role !== 'Administrador') {
+       // Não administradores (Síndico, Subsíndico, Conselheiro, Porteiro etc.) só veem estritamente seu condomínio
        const moradorDoc = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase());
-       const bCondo = b.condominio || moradorDoc?.condominio;
-       if (bCondo && bCondo !== user?.condominio) return false;
+       const bCondo = (b.condominio || moradorDoc?.condominio || '').trim().toLowerCase();
+       const uCondo = (user?.condominio || '').trim().toLowerCase();
+       if (!uCondo || !bCondo) return false;
+       if (bCondo !== uCondo && !bCondo.includes(uCondo) && !uCondo.includes(bCondo)) return false;
     } else if (condoFilter && condoFilter !== 'Todos') {
        const moradorDoc = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase());
-       const bCondo = b.condominio || moradorDoc?.condominio;
-       if (bCondo !== condoFilter) return false;
+       const bCondo = (b.condominio || moradorDoc?.condominio || '').trim().toLowerCase();
+       const filtroNorm = String(condoFilter).trim().toLowerCase();
+       if (bCondo !== filtroNorm && !bCondo.includes(filtroNorm) && !filtroNorm.includes(bCondo)) return false;
     }
 
     // Filtro por mês/competência: se um mês específico estiver selecionado, apenas os boletos daquele mês aparecem
@@ -2209,15 +2216,10 @@ export default function Boletos() {
   })
 
   const condominios = allCondominios.filter(c => {
-    if (user?.role === 'Morador') {
+    if (user?.role !== 'Administrador') {
       const uCondo = (user?.condominio || '').toLowerCase().trim()
       const cNome = (c.nome || '').toLowerCase().trim()
-      return !uCondo || cNome === uCondo || cNome.includes(uCondo) || uCondo.includes(cNome)
-    }
-    if (['Síndico', 'Subsíndico', 'Conselheiro'].includes(user?.role)) {
-      const uCondo = (user?.condominio || '').toLowerCase().trim()
-      const cNome = (c.nome || '').toLowerCase().trim()
-      return !uCondo || cNome === uCondo || cNome.includes(uCondo) || uCondo.includes(cNome)
+      return uCondo && (cNome === uCondo || cNome.includes(uCondo) || uCondo.includes(cNome))
     }
     if (condoFilter && condoFilter !== 'Todos') return c.nome === condoFilter;
     return true;
@@ -2686,7 +2688,7 @@ export default function Boletos() {
 
         {/* Filtro ADM e Botão Repasses */}
         <div className="w-full sm:w-auto flex flex-wrap items-center gap-2">
-          {user?.role !== 'Morador' && (
+          {(user?.role === 'Administrador' || user?.role === 'Financeiro') && (
             <button
               onClick={() => setShowRepasses(true)}
               className="px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 rounded-lg text-xs font-black flex items-center gap-1.5 shadow-sm transition-all"
@@ -2695,15 +2697,22 @@ export default function Boletos() {
               <span>💼 Fechamento & Repasses Alpha</span>
             </button>
           )}
-          {(user?.role === 'Administrador' || user?.role === 'Financeiro') && uniqueCondos.length > 0 && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-0 block">Condomínio:</label>
-              <select className="input text-sm py-1.5 h-auto w-44" value={condoFilter} onChange={e=>setCondoFilter(e.target.value)}>
-                <option value="Todos">Todos os Condomínios</option>
-                {uniqueCondos.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+          {(user?.role === 'Administrador' || user?.role === 'Financeiro') ? (
+            uniqueCondos.length > 0 && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-0 block">Condomínio:</label>
+                <select className="input text-sm py-1.5 h-auto w-44" value={condoFilter} onChange={e=>setCondoFilter(e.target.value)}>
+                  <option value="Todos">Todos os Condomínios</option>
+                  {uniqueCondos.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            )
+          ) : user?.condominio ? (
+            <div className="flex items-center gap-1.5 bg-brand-50 border border-brand-200 px-3 py-1.5 rounded-lg text-xs font-bold text-brand-900">
+              <Building size={14} className="text-brand-600" />
+              <span>Condomínio: {user.condominio}</span>
             </div>
-          )}
+          ) : null}
           {tab === 'boletos' && (
             <div className="flex items-center gap-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-0 block">Mês / Competência:</label>
@@ -3115,9 +3124,9 @@ export default function Boletos() {
       )}
 
       {viewing && <BoletoPrintModal boleto={viewing} condominio={allCondominios.find(c=>c.nome===(viewing.condominio || moradores.find(m=>m.nome===viewing.morador)?.condominio))} moradores={moradores} onClose={()=>setViewing(null)}/>}
-      {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores} condominios={allCondominios} initialCondo={condoFilter !== 'Todos' ? condoFilter : ''}/>}
-      {modalLote&&<ModalGerarLote condominios={allCondominios} moradores={moradores} allBoletos={allBoletos} initialCondo={condoFilter !== 'Todos' ? condoFilter : ''} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
-      {modalImportarPlanilha&&<ModalImportarPlanilha condominios={allCondominios} moradores={moradores} initialCondo={condoFilter !== 'Todos' ? condoFilter : ''} onClose={()=>setModalImportarPlanilha(false)} onSave={handleSaveImportarPlanilha}/>}
+      {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores} condominios={condominios} initialCondo={user?.role !== 'Administrador' ? user?.condominio : (condoFilter !== 'Todos' ? condoFilter : '')}/>}
+      {modalLote&&<ModalGerarLote condominios={condominios} moradores={moradores} allBoletos={allBoletos} initialCondo={user?.role !== 'Administrador' ? user?.condominio : (condoFilter !== 'Todos' ? condoFilter : '')} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
+      {modalImportarPlanilha&&<ModalImportarPlanilha condominios={condominios} moradores={moradores} initialCondo={user?.role !== 'Administrador' ? user?.condominio : (condoFilter !== 'Todos' ? condoFilter : '')} onClose={()=>setModalImportarPlanilha(false)} onSave={handleSaveImportarPlanilha}/>}
       {condoFundoEdit&&<ModalFundo condo={condoFundoEdit} onClose={()=>setCondoFundoEdit(null)} onSave={handleSaveFundo}/>}
       <RepassesAlphaModal
         isOpen={showRepasses}

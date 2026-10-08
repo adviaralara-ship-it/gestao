@@ -355,14 +355,31 @@ export default function Manutencoes() {
   // Estado para seleção múltipla de propostas para aprovação
   const [selectedPropostasIds, setSelectedPropostasIds] = useState([])
   
-  const [condoFiltro, setCondoFiltro] = useState(isMorador ? user?.condominio : 'Todos')
+  const [condoFiltro, setCondoFiltro] = useState(() => {
+    if (user?.role !== 'Administrador' && user?.condominio) return user.condominio
+    return 'Todos'
+  })
+
+  useEffect(() => {
+    if (user?.role !== 'Administrador' && user?.condominio) {
+      setCondoFiltro(user.condominio)
+    }
+  }, [user])
 
   // Cronograma Visuals
   const hojeStr = new Date().toISOString().split('T')[0]
+  const isAdm = user?.role === 'Administrador'
+  const meuCondo = (user?.condominio || '').trim().toLowerCase()
+
   const viewManutencoes = manutencoes
     .filter(m => {
-      if (isMorador && user?.condominio && m.condominio !== user.condominio) return false
-      if (!isMorador && condoFiltro !== 'Todos' && m.condominio !== condoFiltro) return false
+      if (!isAdm) {
+        if (!meuCondo) return false
+        const mCondo = (m.condominio || '').trim().toLowerCase()
+        if (!mCondo || (mCondo !== meuCondo && !mCondo.includes(meuCondo) && !meuCondo.includes(mCondo))) return false
+        return true
+      }
+      if (condoFiltro !== 'Todos' && m.condominio && m.condominio !== condoFiltro) return false
       return true
     })
     .map(m => {
@@ -608,7 +625,7 @@ export default function Manutencoes() {
           <p className="section-sub">Controle o cronograma de ativos, envie lembretes automáticos e receba propostas de fornecedores.</p>
         </div>
         <div className="flex items-center gap-3">
-          {!isMorador && (
+          {isAdm && (
             <select
               className="input py-2 text-xs font-bold text-gray-800 bg-white border-gray-300 rounded-xl"
               value={condoFiltro}

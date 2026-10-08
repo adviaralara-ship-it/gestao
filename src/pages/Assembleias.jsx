@@ -256,8 +256,26 @@ export default function Assembleias() {
   const [salaVirtual, setSalaVirtual] = useState(null)
   const [search, setSearch] = useState('')
 
-  const filtAssembleias = assembleias.filter(a=>a.titulo?.toLowerCase().includes(search.toLowerCase())||a.local?.toLowerCase().includes(search.toLowerCase()))
-  const filtAtas        = atas.filter(a=>a.titulo?.toLowerCase().includes(search.toLowerCase()))
+  const isAdm = user?.role === 'Administrador'
+  const meuCondo = (user?.condominio || '').trim().toLowerCase()
+
+  const filtAssembleias = assembleias.filter(a => {
+    if (!isAdm) {
+      if (!meuCondo) return false
+      const aCondo = (a.condominio || '').trim().toLowerCase()
+      if (!aCondo || (aCondo !== meuCondo && !aCondo.includes(meuCondo) && !meuCondo.includes(aCondo))) return false
+    }
+    return a.titulo?.toLowerCase().includes(search.toLowerCase()) || a.local?.toLowerCase().includes(search.toLowerCase())
+  })
+
+  const filtAtas = atas.filter(a => {
+    if (!isAdm) {
+      if (!meuCondo) return false
+      const aCondo = (a.condominio || '').trim().toLowerCase()
+      if (!aCondo || (aCondo !== meuCondo && !aCondo.includes(meuCondo) && !meuCondo.includes(aCondo))) return false
+    }
+    return a.titulo?.toLowerCase().includes(search.toLowerCase())
+  })
 
   const handleNovaAssembleia = async a => {
     await addAssembleia({...a, condominio: user?.condominio || ''})

@@ -444,12 +444,23 @@ export default function Cadastro() {
               <p className="text-xs font-bold text-brand-700 flex items-center gap-1"><Building size={12}/> Dados do Condomínio</p>
               <div><label className="label">Nome do Condomínio *</label>
                 <div className="relative"><Building size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-                  <input list="condominios-sugestoes" className="input pl-9 uppercase" value={form.condominio} onChange={e=>set('condominio',e.target.value.toUpperCase())} placeholder="SELECIONE OU DIGITE O CONDOMÍNIO..."/>
-                  <datalist id="condominios-sugestoes">
-                    {condominiosList.map(c => (
-                      <option key={c.id || c.nome} value={c.nome} />
-                    ))}
-                  </datalist>
+                  {paramCondo ? (
+                    <input 
+                      className="input pl-9 uppercase bg-slate-100 font-black text-gray-900 border-gray-300 cursor-not-allowed" 
+                      value={form.condominio} 
+                      readOnly 
+                      title="Condomínio fixado pelo link de convite oficial"
+                    />
+                  ) : (
+                    <>
+                      <input list="condominios-sugestoes" className="input pl-9 uppercase" value={form.condominio} onChange={e=>set('condominio',e.target.value.toUpperCase())} placeholder="SELECIONE OU DIGITE O CONDOMÍNIO..."/>
+                      <datalist id="condominios-sugestoes">
+                        {condominiosList.map(c => (
+                          <option key={c.id || c.nome} value={c.nome} />
+                        ))}
+                      </datalist>
+                    </>
+                  )}
                 </div>
               </div>
               {form.role !== 'Porteiro' && (

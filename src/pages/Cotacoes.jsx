@@ -50,8 +50,21 @@ export default function Cotacoes() {
   const { add: addTarefa } = useFirestore('tarefas')
 
   // Filtros da listagem
+  const isAdm = user?.role === 'Administrador'
+  const meuCondo = (user?.condominio || '').trim().toLowerCase()
+
   const [busca, setBusca] = useState('')
-  const [filtroCondominio, setFiltroCondominio] = useState(user?.role === 'Síndico' ? user.condominio : 'Todos')
+  const [filtroCondominio, setFiltroCondominio] = useState(() => {
+    if (!isAdm && user?.condominio) return user.condominio
+    return 'Todos'
+  })
+
+  useEffect(() => {
+    if (!isAdm && user?.condominio) {
+      setFiltroCondominio(user.condominio)
+    }
+  }, [isAdm, user])
+
   const [filtroStatus, setFiltroStatus] = useState('Todos')
   const [filtroCategoria, setFiltroCategoria] = useState('Todos')
   const [selecionados, setSelecionados] = useState([])
@@ -190,19 +203,30 @@ export default function Cotacoes() {
     }
   }
 
-  // Métricas do Painel
+  // Métricas do Painel (calculadas com base nas cotações visíveis pelo perfil do usuário)
+  const cotacoesPermitidas = useMemo(() => {
+    return cotacoes.filter(c => {
+      if (!isAdm) {
+        if (!meuCondo) return false
+        const cCondo = (c.condominio || '').trim().toLowerCase()
+        if (!cCondo || (cCondo !== meuCondo && !cCondo.includes(meuCondo) && !meuCondo.includes(cCondo))) return false
+      }
+      return true
+    })
+  }, [cotacoes, isAdm, meuCondo])
+
   const metricas = useMemo(() => {
-    const total = cotacoes.length
-    const emAndamento = cotacoes.filter(c => ['Solicitada', 'Aguardando propostas', 'Em análise'].includes(c.status)).length
-    const aguardandoAprovacao = cotacoes.filter(c => c.status === 'Aguardando aprovação').length
-    const aprovadas = cotacoes.filter(c => ['Aprovada', 'Contratada', 'Concluída'].includes(c.status)).length
+    const total = cotacoesPermitidas.length
+    const emAndamento = cotacoesPermitidas.filter(c => ['Solicitada', 'Aguardando propostas', 'Em análise'].includes(c.status)).length
+    const aguardandoAprovacao = cotacoesPermitidas.filter(c => c.status === 'Aguardando aprovação').length
+    const aprovadas = cotacoesPermitidas.filter(c => ['Aprovada', 'Contratada', 'Concluída'].includes(c.status)).length
 
     // Economia gerada (diferença entre 2º menor e o menor escolhido nas aprovadas)
     let economiaTotal = 0
     let valorCotadoTotal = 0
     let totalFornecedoresCount = 0
 
-    cotacoes.forEach(c => {
+    cotacoesPermitidas.forEach(c => {
       if (c.fornecedores && c.fornecedores.length > 0) {
         totalFornecedoresCount += c.fornecedores.length
         const valores = c.fornecedores.map(f => parseFloat(f.valorTotal) || 0).filter(v => v > 0).sort((a, b) => a - b)
@@ -217,11 +241,11 @@ export default function Cotacoes() {
     })
 
     return { total, emAndamento, aguardandoAprovacao, aprovadas, economiaTotal, valorCotadoTotal, totalFornecedoresCount }
-  }, [cotacoes])
+  }, [cotacoesPermitidas])
 
   // Filtragem da tabela
   const cotacoesFiltradas = useMemo(() => {
-    return cotacoes.filter(c => {
+    return cotacoesPermitidas.filter(c => {
       const matchBusca = (c.numero || '').toLowerCase().includes(busca.toLowerCase()) ||
                           (c.titulo || '').toLowerCase().includes(busca.toLowerCase()) ||
                           (c.descricao || '').toLowerCase().includes(busca.toLowerCase()) ||
@@ -231,7 +255,7 @@ export default function Cotacoes() {
       const matchCategoria = filtroCategoria === 'Todos' || c.categoria === filtroCategoria
       return matchBusca && matchCondo && matchStatus && matchCategoria
     })
-  }, [cotacoes, busca, filtroCondominio, filtroStatus, filtroCategoria])
+  }, [cotacoesPermitidas, busca, filtroCondominio, filtroStatus, filtroCategoria])
 
   // Helpers de cálculo para o comparativo
   const calcularComparativo = (cot) => {
@@ -656,16 +680,18 @@ export default function Cotacoes() {
         </div>
 
         <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
-          <select
-            className="input text-xs py-1.5 w-full md:w-auto"
-            value={filtroCondominio}
-            onChange={e => setFiltroCondominio(e.target.value)}
-          >
-            <option value="Todos">Todos os Condomínios</option>
-            {condominios.map(c => (
-              <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
-            ))}
-          </select>
+          {isAdm && (
+            <select
+              className="input text-xs py-1.5 w-full md:w-auto"
+              value={filtroCondominio}
+              onChange={e => setFiltroCondominio(e.target.value)}
+            >
+              <option value="Todos">Todos os Condomínios</option>
+              {condominios.map(c => (
+                <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+              ))}
+            </select>
+          )}
 
           <select
             className="input text-xs py-1.5 w-full md:w-auto"

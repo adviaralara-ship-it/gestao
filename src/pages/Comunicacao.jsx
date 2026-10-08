@@ -87,10 +87,14 @@ O tom deve ser respeitoso, claro, objetivo e amigável. Retorne apenas o texto f
             </div>
             {!destinoIndividual && (
               <div className="col-span-2"><label className="label">Condomínio</label>
-                <select className="input" value={form.condominio} onChange={e=>set('condominio',e.target.value)}>
-                  <option value="Todos">Todos os Condomínios</option>
-                  {condominios.map(c=>(<option key={c.id} value={c.nome}>{c.nome}</option>))}
-                </select>
+                {condominios.length > 1 ? (
+                  <select className="input" value={form.condominio} onChange={e=>set('condominio',e.target.value)}>
+                    <option value="Todos">Todos os Condomínios</option>
+                    {condominios.map(c=>(<option key={c.id} value={c.nome}>{c.nome}</option>))}
+                  </select>
+                ) : (
+                  <input className="input bg-slate-100 font-bold" value={form.condominio} readOnly />
+                )}
               </div>
             )}
           </div>
@@ -183,9 +187,29 @@ export default function Comunicacao() {
   const { user } = useAuth()
   const { items: avisos,   addItem: addAviso,   deleteItem: delAviso }   = useFirestore('avisos')
   const { items: mensagens,addItem: addMensagem,updateItem: updMsg,deleteItem: delMensagem } = useFirestore('mensagens')
-  const { items: moradores } = useFirestore('moradores')
+  const { items: allMoradores } = useFirestore('moradores')
   const { items: allCondominios } = useFirestore('condominios')
-  const condominios = allCondominios.filter(c => c.status !== 'Inativo')
+
+  const isAdm = user?.role === 'Administrador'
+  const condoUser = user?.condominio ? user.condominio.trim().toLowerCase() : ''
+
+  const condominios = allCondominios.filter(c => {
+    if (c.status === 'Inativo') return false
+    if (!isAdm) {
+      const cNome = (c.nome || '').trim().toLowerCase()
+      return condoUser && (cNome === condoUser || cNome.includes(condoUser) || condoUser.includes(cNome))
+    }
+    return true
+  })
+
+  const moradores = allMoradores.filter(m => {
+    if (!isAdm) {
+      const mCondo = (m.condominio || m.condominioNome || '').trim().toLowerCase()
+      return condoUser && (mCondo === condoUser || mCondo.includes(condoUser) || condoUser.includes(mCondo))
+    }
+    return true
+  })
+
   const [tab,    setTab]    = useState('comunicados')
   const [modal,  setModal]  = useState(null)
   const [search, setSearch] = useState('')
@@ -195,7 +219,6 @@ export default function Comunicacao() {
   const [statusWpp, setStatusWpp] = useState('')
 
   const isMorador = user?.role === 'Morador'
-  const condoUser = user?.condominio ? user.condominio.trim().toLowerCase() : ''
 
   const toggleWpp    = id  => setSelecionadosWpp(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])
   const toggleTodos  = ()  => setSelecionadosWpp(selecionadosWpp.length===moradores.length?[]:moradores.map(m=>m.id))
@@ -209,20 +232,23 @@ export default function Comunicacao() {
     setTimeout(()=>setStatusWpp(''),5000)
   }
 
-  // Filtragem de comunicados: administradores e síndicos veem tudo ou seus condomínios; morador vê estritamente o seu condomínio ou os direcionados a ele
+  // Filtragem de comunicados: administradores veem tudo; síndicos e demais cargos veem estritamente seu condomínio; morador vê estritamente o seu condomínio
   const avisosFiltrados = avisos.filter(a => {
-    if (isMorador && condoUser) {
+    if (user?.role !== 'Administrador') {
       const aCondo = (a.condominio || '').trim().toLowerCase()
-      // Se tiver condomínio especificado e for diferente do condomínio do morador, não exibe
-      if (aCondo && aCondo !== 'todos' && aCondo !== condoUser) {
+      if (!condoUser) return false
+      // Se o comunicado não tem condomínio ou for de outro condomínio, não exibe para não-admin
+      if (!aCondo || (aCondo !== 'todos' && aCondo !== condoUser && !aCondo.includes(condoUser) && !condoUser.includes(aCondo))) {
         return false
       }
-      if (a.destino === 'Colaboradores') return false
-      if (a.destino && a.destino !== 'Todos' && a.destino !== 'Proprietários' && a.destino !== 'Inquilinos') {
-        const uNome = (user?.nome || '').trim().toLowerCase()
-        const dStr = String(a.destino).trim().toLowerCase()
-        if (!dStr.includes(uNome) && !uNome.includes(dStr)) {
-          return false
+      if (isMorador) {
+        if (a.destino === 'Colaboradores') return false
+        if (a.destino && a.destino !== 'Todos' && a.destino !== 'Proprietários' && a.destino !== 'Inquilinos') {
+          const uNome = (user?.nome || '').trim().toLowerCase()
+          const dStr = String(a.destino).trim().toLowerCase()
+          if (!dStr.includes(uNome) && !uNome.includes(dStr)) {
+            return false
+          }
         }
       }
     }
@@ -230,8 +256,14 @@ export default function Comunicacao() {
     return matchSearch
   })
 
-  // Filtragem de mensagens: moradores só veem mensagens pertinentes à sua unidade/nome/email
+  // Filtragem de mensagens: moradores só veem mensagens pertinentes à sua unidade/nome/email; não-administradores só do seu condomínio
   const mensagensFiltradas = mensagens.filter(m => {
+    if (user?.role !== 'Administrador') {
+      const mCondo = (m.condominio || '').trim().toLowerCase()
+      if (condoUser && mCondo && mCondo !== 'todos' && mCondo !== condoUser && !mCondo.includes(condoUser) && !condoUser.includes(mCondo)) {
+        return false
+      }
+    }
     if (isMorador) {
       const uApt = String(user?.unidade || user?.apt || '').trim().toLowerCase()
       const uNome = (user?.nome || '').trim().toLowerCase()
@@ -397,14 +429,16 @@ export default function Comunicacao() {
 
       {modal==='comunicado'&&(
         <ModalComunicado moradores={moradores} condominios={condominios} onClose={()=>setModal(null)} onSave={async a=>{
-          await addAviso(a)
+          const condoFinal = !isAdm ? (user?.condominio || a.condominio) : a.condominio
+          const avisoParaSalvar = { ...a, condominio: condoFinal }
+          await addAviso(avisoParaSalvar)
 
           // 1. Notificação geral / administrativa no sistema
           await addDoc(collection(db,'notificacoes'),{
-            text:`📢 Novo comunicado: "${a.titulo}" – para ${a.destino}${a.condominio !== 'Todos' ? ` (${a.condominio})` : ''}`,
+            text:`📢 Novo comunicado: "${a.titulo}" – para ${a.destino}${condoFinal !== 'Todos' ? ` (${condoFinal})` : ''}`,
             time:new Date().toISOString(),tipo:'comunicado',lida:false,_createdAt:serverTimestamp(),
             destino: a.destino,
-            condominio: a.condominio
+            condominio: condoFinal
           })
 
           // Filtrar moradores do condomínio selecionado (ou todos caso seja 'Todos')
