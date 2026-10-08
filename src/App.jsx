@@ -98,12 +98,22 @@ function AuthorizedRoute({ module, children }) {
   }
 
   // Verifica se o usuário tem permissão para a rota específica
-  let hasPerm = user.permissoes?.includes(module) || user.role === 'Administrador' || module === 'pets' || module === 'mediacao' || module === 'alpha-ai' || module === 'cotacoes' || module === 'seguranca'
+  const isAdmin = user.role === 'Administrador'
+  let hasPerm = user.permissoes?.includes(module) || isAdmin || module === 'pets' || module === 'alpha-ai' || module === 'cotacoes'
+  if (module === 'seguranca') {
+    hasPerm = isAdmin
+  }
+  if (module === 'mediacao') {
+    hasPerm = isAdmin || (user.permissoes?.includes('mediacao') && !['Síndico', 'Subsíndico'].includes(user.role))
+  }
+  if (module === 'tarefas') {
+    hasPerm = isAdmin || (user.permissoes?.includes('tarefas') && !['Síndico', 'Subsíndico'].includes(user.role))
+  }
   if ((module === 'conferencias' || module === 'recrutamento') && user.permissoes?.includes('rh')) hasPerm = true
   
   if (!hasPerm) {
     if (user.permissoes?.length > 0) return <Navigate to={`/${user.permissoes[0]}`} replace />
-    return <Navigate to="/login" replace />
+    return <Navigate to="/dashboard" replace />
   }
 
   return children

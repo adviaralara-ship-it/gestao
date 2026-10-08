@@ -3,12 +3,13 @@ import { Building2, Plus, Search, Edit2, Trash2, Home, DollarSign, TrendingUp, S
 import { collection, query, where, getDocs, writeBatch, doc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useFirestore } from '../hooks/useFirestore'
+import { useAuth } from '../context/AuthContext'
 import { CurrencyInput } from '../utils/currency'
 
 const parseBR = v => typeof v === 'number' ? v : (parseFloat((v||'').toString().replace(/\./g,'').replace(',','.')) || 0)
 const fmtBR   = v => Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})
 
-function CondoModal({ data, onClose, onSave }) {
+function CondoModal({ data, onClose, onSave, isAdm }) {
   const [form, setForm] = useState(() => (data ? { ...data } : {
     nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
     honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: ''
@@ -75,57 +76,59 @@ function CondoModal({ data, onClose, onSave }) {
             </div>
           </div>
 
-          {/* Seção de Remuneração e Taxas da Alpha */}
-          <div className="p-4 bg-brand-50/70 border border-brand-200 rounded-2xl flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-black text-brand-900 flex items-center gap-1.5 uppercase tracking-wide">
-                <DollarSign size={14} className="text-brand-600"/> Remuneração da Administradora (Alpha)
-              </p>
-              <span className="text-[10px] font-bold text-brand-700 bg-brand-100 px-2 py-0.5 rounded-md">Contrato</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="label">Honorários de Administração (R$)</label>
-                <CurrencyInput value={honorariosStr} onChange={v => setHonorariosStr(v)} placeholder="Ex: 900,00" />
+          {/* Seção de Remuneração e Taxas da Alpha (Exclusivo Administrador) */}
+          {isAdm && (
+            <div className="p-4 bg-brand-50/70 border border-brand-200 rounded-2xl flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-black text-brand-900 flex items-center gap-1.5 uppercase tracking-wide">
+                  <DollarSign size={14} className="text-brand-600"/> Remuneração da Administradora (Alpha)
+                </p>
+                <span className="text-[10px] font-bold text-brand-700 bg-brand-100 px-2 py-0.5 rounded-md">Contrato</span>
               </div>
-              <div>
-                <label className="label">Chave PIX da Alpha (Para receber)</label>
-                <input className="input font-mono text-xs" value={form.chavePixAlpha || ''} onChange={e=>set('chavePixAlpha',e.target.value)} placeholder="CNPJ ou Chave PIX da Alpha"/>
-              </div>
-            </div>
 
-            {/* Controle de discriminação da Taxa de Emissão */}
-            <div className="mt-2 pt-3 border-t border-brand-200/60 flex flex-col gap-2.5">
-              <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={form.discriminarTaxa || false}
-                  onChange={e => set('discriminarTaxa', e.target.checked)}
-                  className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer"
-                />
-                <span className="text-xs font-black text-gray-800">
-                  Serviço de Cobrança Digital no Boleto e Relatórios
-                </span>
-              </label>
-              <p className="text-[11px] text-gray-500 ml-6.5 leading-relaxed">
-                Marque se este condomínio já possui o Serviço de Cobrança Digital no contrato. Se desmarcado, a cota sairá sem discriminar o serviço.
-              </p>
-
-              {form.discriminarTaxa && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 ml-6.5 bg-white p-3 rounded-xl border border-brand-200">
-                  <div>
-                    <label className="label">Valor do Serviço por Unidade (R$)</label>
-                    <CurrencyInput value={taxaStr} onChange={v => setTaxaStr(v)} placeholder="3,50" />
-                  </div>
-                  <div>
-                    <label className="label">Descrição no Boleto</label>
-                    <input className="input text-xs" value={form.nomeTaxa || 'Serviço de Cobrança Digital'} onChange={e=>set('nomeTaxa', e.target.value)} placeholder="Serviço de Cobrança Digital"/>
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Honorários de Administração (R$)</label>
+                  <CurrencyInput value={honorariosStr} onChange={v => setHonorariosStr(v)} placeholder="Ex: 900,00" />
                 </div>
-              )}
+                <div>
+                  <label className="label">Chave PIX da Alpha (Para receber)</label>
+                  <input className="input font-mono text-xs" value={form.chavePixAlpha || ''} onChange={e=>set('chavePixAlpha',e.target.value)} placeholder="CNPJ ou Chave PIX da Alpha"/>
+                </div>
+              </div>
+
+              {/* Controle de discriminação da Taxa de Emissão */}
+              <div className="mt-2 pt-3 border-t border-brand-200/60 flex flex-col gap-2.5">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.discriminarTaxa || false}
+                    onChange={e => set('discriminarTaxa', e.target.checked)}
+                    className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer"
+                  />
+                  <span className="text-xs font-black text-gray-800">
+                    Serviço de Cobrança Digital no Boleto e Relatórios
+                  </span>
+                </label>
+                <p className="text-[11px] text-gray-500 ml-6.5 leading-relaxed">
+                  Marque se este condomínio já possui o Serviço de Cobrança Digital no contrato. Se desmarcado, a cota sairá sem discriminar o serviço.
+                </p>
+
+                {form.discriminarTaxa && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 ml-6.5 bg-white p-3 rounded-xl border border-brand-200">
+                    <div>
+                      <label className="label">Valor do Serviço por Unidade (R$)</label>
+                      <CurrencyInput value={taxaStr} onChange={v => setTaxaStr(v)} placeholder="3,50" />
+                    </div>
+                    <div>
+                      <label className="label">Descrição no Boleto</label>
+                      <input className="input text-xs" value={form.nomeTaxa || 'Serviço de Cobrança Digital'} onChange={e=>set('nomeTaxa', e.target.value)} placeholder="Serviço de Cobrança Digital"/>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Fundo de Reserva */}
           <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col gap-3">
@@ -164,11 +167,36 @@ function CondoModal({ data, onClose, onSave }) {
 
 export default function Condominios() {
   const { items: condos, addItem, updateItem, deleteItem } = useFirestore('condominios')
+  const { user } = useAuth()
+  const isAdm = user?.role === 'Administrador'
+  const meuCondominio = user?.condominio || ''
   const [search, setSearch] = useState('')
   const [modal,  setModal]  = useState(null)
   const [salvando, setSalvando] = useState(false)
 
-  const filtered = condos.filter(c=>c.nome?.toLowerCase().includes(search.toLowerCase())||c.endereco?.toLowerCase().includes(search.toLowerCase()))
+  const normalizarNomeCondo = (nome) => {
+    return String(nome || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/^(residencial|condominio|edificio|ed\.)\s+/i, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .trim()
+      .toLowerCase()
+  }
+
+  const condoMatch = (c1, c2) => {
+    if (!c1 || !c2) return false
+    const n1 = normalizarNomeCondo(c1)
+    const n2 = normalizarNomeCondo(c2)
+    return n1 === n2 || n1.includes(n2) || n2.includes(n1)
+  }
+
+  const filtered = condos.filter(c => {
+    if (!isAdm && meuCondominio) {
+      if (!condoMatch(c.nome, meuCondominio)) return false
+    }
+    return c.nome?.toLowerCase().includes(search.toLowerCase()) || c.endereco?.toLowerCase().includes(search.toLowerCase())
+  })
 
   const handleSave = async form => {
     try {
@@ -214,9 +242,13 @@ export default function Condominios() {
       <div className="page-header">
         <div>
           <h2 className="section-title text-xl">Condomínios &amp; Unidades</h2>
-          <p className="section-sub">{condos.length} condomínios cadastrados</p>
+          <p className="section-sub">{filtered.length} de {condos.length} condomínios cadastrados</p>
         </div>
-        <button onClick={()=>setModal('new')} className="btn-primary font-bold shadow-md"><Plus size={16}/>Novo Condomínio</button>
+        {isAdm && (
+          <button onClick={()=>setModal('new')} className="btn-primary font-bold shadow-md">
+            <Plus size={16}/>Novo Condomínio
+          </button>
+        )}
       </div>
 
       <div className="relative">
@@ -290,17 +322,19 @@ export default function Condominios() {
                     <Edit2 size={14} className="text-amber-700"/>
                     <span className="hidden sm:inline">Editar</span>
                   </button>
-                  <button 
-                    onClick={()=>{
-                      if (window.confirm(`Tem certeza que deseja excluir o condomínio "${c.nome}"?`)) {
-                        deleteItem(c.id)
-                      }
-                    }} 
-                    className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all shadow-sm" 
-                    title="Excluir Condomínio"
-                  >
-                    <Trash2 size={14}/>
-                  </button>
+                  {isAdm && (
+                    <button 
+                      onClick={()=>{
+                        if (window.confirm(`Tem certeza que deseja excluir o condomínio "${c.nome}"?`)) {
+                          deleteItem(c.id)
+                        }
+                      }} 
+                      className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all shadow-sm" 
+                      title="Excluir Condomínio"
+                    >
+                      <Trash2 size={14}/>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -308,7 +342,7 @@ export default function Condominios() {
         })}
       </div>
 
-      {modal&&<CondoModal data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSave}/>}
+      {modal&&<CondoModal data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSave} isAdm={isAdm}/>}
     </div>
   )
 }

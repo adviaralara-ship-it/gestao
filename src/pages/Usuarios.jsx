@@ -55,7 +55,7 @@ const getDefaultPerms = (r) => {
     return allModules.map(m => m.id)
   }
   if (r === 'Síndico' || r === 'Subsíndico') {
-    return ['dashboard', 'condominios', 'moradores', 'prestadores', 'usuarios', 'financeiro', 'boletos', 'notas-fiscais', 'assembleias', 'reservas', 'eventos', 'portaria', 'veiculos', 'cameras', 'seguro', 'regime', 'documentos', 'comunicacao', 'tarefas', 'calculadora', 'propostas', 'seguranca']
+    return ['dashboard', 'moradores', 'pets', 'prestadores', 'usuarios', 'financeiro', 'boletos', 'notas-fiscais', 'assembleias', 'reservas', 'eventos', 'portaria', 'veiculos', 'cameras', 'seguro', 'regime', 'documentos', 'comunicacao', 'calculadora', 'cotacoes', 'relatorios']
   }
   if (r === 'Morador') {
     return ['dashboard', 'boletos', 'notas-fiscais', 'assembleias', 'reservas', 'veiculos', 'cameras', 'regime', 'documentos', 'comunicacao']
@@ -67,7 +67,7 @@ const getDefaultPerms = (r) => {
     return ['dashboard', 'condominios', 'prestadores', 'financeiro', 'boletos', 'notas-fiscais', 'documentos', 'calculadora']
   }
   if (r === 'Conselheiro') {
-    return ['dashboard', 'financeiro', 'boletos', 'notas-fiscais', 'documentos', 'regime', 'seguro', 'assembleias']
+    return ['dashboard', 'financeiro', 'boletos', 'notas-fiscais', 'documentos', 'regime', 'seguro', 'assembleias', 'cotacoes', 'relatorios']
   }
   if (r === 'Portaria Remota') {
     return ['dashboard', 'portaria', 'veiculos', 'cameras', 'reservas']
@@ -75,11 +75,33 @@ const getDefaultPerms = (r) => {
   return ['dashboard', 'boletos', 'documentos']
 }
 
-function Modal({ data, onClose, onSave, condominios = [] }) {
-  const needsLocation = ['Morador', 'Síndico', 'Subsíndico', 'Conselheiro']
+function Modal({ data, onClose, onSave, condominios = [], currentUser }) {
+  const needsLocation = ['Morador', 'Síndico', 'Subsíndico', 'Conselheiro', 'Porteiro', 'Portaria Remota']
+  const isAdm = currentUser?.role === 'Administrador'
+  const meuCondo = currentUser?.condominio || ''
+
+  // Se não for admin, os papéis disponíveis são restritos ao condomínio
+  const availableRoles = isAdm 
+    ? roles 
+    : roles.filter(r => r !== 'Administrador')
 
   const [form, setForm] = useState(() => (
-    data ? { ...data, statusMorador: data.statusMorador || 'Proprietário' } : { nome: '', email: '', senha: '', telefone: '', condominio: '', bloco: '', unidade: '', role: 'Morador', statusMorador: 'Proprietário', status: 'Ativo', permissoes: getDefaultPerms('Morador') }
+    data ? { 
+      ...data, 
+      statusMorador: data.statusMorador || 'Proprietário' 
+    } : { 
+      nome: '', 
+      email: '', 
+      senha: '', 
+      telefone: '', 
+      condominio: !isAdm ? meuCondo : '', 
+      bloco: '', 
+      unidade: '', 
+      role: 'Morador', 
+      statusMorador: 'Proprietário', 
+      status: 'Ativo', 
+      permissoes: getDefaultPerms('Morador') 
+    }
   ))
 
   React.useEffect(() => {
@@ -89,7 +111,7 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
         nome: data.nome || '',
         email: data.email || '',
         telefone: data.telefone || data.tel || '',
-        condominio: data.condominio || '',
+        condominio: !isAdm ? meuCondo : (data.condominio || ''),
         bloco: data.bloco || '',
         unidade: data.unidade || data.apt || '',
         role: data.role || 'Morador',
@@ -99,10 +121,20 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
       })
     } else {
       setForm({
-        nome: '', email: '', senha: '', telefone: '', condominio: '', bloco: '', unidade: '', role: 'Morador', statusMorador: 'Proprietário', status: 'Ativo', permissoes: getDefaultPerms('Morador')
+        nome: '', 
+        email: '', 
+        senha: '', 
+        telefone: '', 
+        condominio: !isAdm ? meuCondo : '', 
+        bloco: '', 
+        unidade: '', 
+        role: 'Morador', 
+        statusMorador: 'Proprietário', 
+        status: 'Ativo', 
+        permissoes: getDefaultPerms('Morador')
       })
     }
-  }, [data])
+  }, [data, isAdm, meuCondo])
 
   const requiresLocation = needsLocation.includes(form.role)
   const [showSenha, setShowSenha] = useState(false)
@@ -223,7 +255,7 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
               <div>
                 <label className="label">Perfil Base *</label>
                 <select className="input font-semibold text-brand-900" value={form.role} onChange={handleRoleChange}>
-                  {roles.map(r => <option key={r} value={r}>{r}</option>)}
+                  {availableRoles.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
               {form.role === 'Morador' && (
@@ -272,18 +304,29 @@ function Modal({ data, onClose, onSave, condominios = [] }) {
                   <label className="label">Nome do Condomínio *</label>
                   <div className="relative">
                     <Building size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input 
-                      list="usuarios-condos-list"
-                      className="input pl-9 uppercase" 
-                      value={form.condominio || ''} 
-                      onChange={e => set('condominio', e.target.value.toUpperCase())} 
-                      placeholder="SELECIONE OU DIGITE O CONDOMÍNIO..." 
-                    />
-                    <datalist id="usuarios-condos-list">
-                      {condominios.map(c => (
-                        <option key={c.id || c.nome} value={c.nome} />
-                      ))}
-                    </datalist>
+                    {isAdm ? (
+                      <>
+                        <input 
+                          list="usuarios-condos-list"
+                          className="input pl-9 uppercase" 
+                          value={form.condominio || ''} 
+                          onChange={e => set('condominio', e.target.value.toUpperCase())} 
+                          placeholder="SELECIONE OU DIGITE O CONDOMÍNIO..." 
+                        />
+                        <datalist id="usuarios-condos-list">
+                          {condominios.map(c => (
+                            <option key={c.id || c.nome} value={c.nome} />
+                          ))}
+                        </datalist>
+                      </>
+                    ) : (
+                      <input 
+                        className="input pl-9 uppercase bg-gray-100 font-bold text-gray-800" 
+                        value={meuCondo} 
+                        readOnly 
+                        disabled
+                      />
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -381,7 +424,22 @@ export default function Usuarios() {
   const { items: moradoresRaw = [] } = useFirestore('moradores')
   const { items: allCondominios } = useFirestore('condominios')
   const [modal, setModal] = useState(null)
-  const [condoFilter, setCondoFilter] = useState('Todos')
+
+  const isAdm = currentUser?.role === 'Administrador'
+  const meuCondominio = currentUser?.condominio || ''
+
+  // Para síndico, subsíndico, conselheiro, etc., o filtro de condomínio é restrito ao condomínio dele
+  const [condoFilter, setCondoFilter] = useState(() => {
+    if (!isAdm && meuCondominio) return meuCondominio
+    return 'Todos'
+  })
+
+  React.useEffect(() => {
+    if (!isAdm && meuCondominio && condoFilter !== meuCondominio) {
+      setCondoFilter(meuCondominio)
+    }
+  }, [isAdm, meuCondominio])
+
   const [roleFilter, setRoleFilter] = useState('Todos')
   const [search, setSearch] = useState('')
 
@@ -443,8 +501,21 @@ export default function Usuarios() {
     return lista
   }, [usersRaw, moradoresRaw])
 
+  const normalizeStr = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+
   const isPendente = u => u.ativo === false || u.status === 'Pendente' || u.status === 'Inativo' || u.pendenteAprovacao === true
-  const pendingUsers = users.filter(isPendente)
+  const pendingUsers = users.filter(u => {
+    if (!isPendente(u)) return false
+    if (!isAdm) {
+      if (u.role === 'Administrador') return false
+      if (meuCondominio) {
+        const cU = normalizeStr(u.condominio)
+        const cTarget = normalizeStr(meuCondominio)
+        if (!cU || (cU !== cTarget && !cU.includes(cTarget) && !cTarget.includes(cU))) return false
+      }
+    }
+    return true
+  })
 
   const handleAprovarUsuario = async (u) => {
     if (!window.confirm(`Deseja APROVAR e liberar o acesso do usuário "${u.nome || u.email}" com perfil de "${u.role}"?`)) return
@@ -650,9 +721,17 @@ export default function Usuarios() {
   }
 
   // Filtragem de usuários
-  const normalizeStr = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
-
   const filteredUsers = users.filter(u => {
+    // Se o usuário logado não for Administrador, só pode ver usuários do seu próprio condomínio e NUNCA Administradores
+    if (!isAdm) {
+      if (u.role === 'Administrador') return false
+      if (meuCondominio) {
+        const cU = normalizeStr(u.condominio)
+        const cTarget = normalizeStr(meuCondominio)
+        if (!cU || (cU !== cTarget && !cU.includes(cTarget) && !cTarget.includes(cU))) return false
+      }
+    }
+
     // Filtro de Pendentes ou Perfil
     if (roleFilter === 'Pendentes') {
       if (!isPendente(u)) return false
@@ -660,8 +739,8 @@ export default function Usuarios() {
       return false
     }
 
-    // Filtro de Condomínio
-    if (condoFilter !== 'Todos') {
+    // Filtro de Condomínio (apenas para Admin, que pode alternar condomínios)
+    if (isAdm && condoFilter !== 'Todos') {
       const cU = normalizeStr(u.condominio)
       const cTarget = normalizeStr(condoFilter)
       if (condoFilter === 'Sem Condomínio') {
@@ -703,13 +782,15 @@ export default function Usuarios() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button 
-            onClick={() => navigate('/seguranca')} 
-            className="btn-secondary bg-red-50 text-red-700 border-red-200 hover:bg-red-100 flex items-center gap-1.5 font-bold shadow-xs"
-            title="Acessar histórico de backups, restaurações e alarmes de segurança"
-          >
-            <ShieldAlert size={16} className="text-red-600" /> Segurança & Backups
-          </button>
+          {isAdm && (
+            <button 
+              onClick={() => navigate('/seguranca')} 
+              className="btn-secondary bg-red-50 text-red-700 border-red-200 hover:bg-red-100 flex items-center gap-1.5 font-bold shadow-xs"
+              title="Acessar histórico de backups, restaurações e alarmes de segurança"
+            >
+              <ShieldAlert size={16} className="text-red-600" /> Segurança & Backups
+            </button>
+          )}
           <button onClick={() => setModal('new')} className="btn-primary">
             <Plus size={16} /> Novo Usuário
           </button>
@@ -758,20 +839,27 @@ export default function Usuarios() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5">
-            <Building size={14} className="text-brand-600 shrink-0" />
-            <select
-              className={`input text-xs font-bold min-w-[180px] ${condoFilter !== 'Todos' ? 'border-brand-500 bg-brand-50/40 text-brand-900 ring-1 ring-brand-300' : 'text-gray-700'}`}
-              value={condoFilter}
-              onChange={e => setCondoFilter(e.target.value)}
-            >
-              <option value="Todos">🏢 Todos os Condomínios</option>
-              {uniqueCondoOptions.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-              <option value="Sem Condomínio">— Sem Condomínio Vinculado</option>
-            </select>
-          </div>
+          {isAdm ? (
+            <div className="flex items-center gap-1.5">
+              <Building size={14} className="text-brand-600 shrink-0" />
+              <select
+                className={`input text-xs font-bold min-w-[180px] ${condoFilter !== 'Todos' ? 'border-brand-500 bg-brand-50/40 text-brand-900 ring-1 ring-brand-300' : 'text-gray-700'}`}
+                value={condoFilter}
+                onChange={e => setCondoFilter(e.target.value)}
+              >
+                <option value="Todos">🏢 Todos os Condomínios</option>
+                {uniqueCondoOptions.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+                <option value="Sem Condomínio">— Sem Condomínio Vinculado</option>
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 border border-brand-200 rounded-xl text-xs font-bold text-brand-800">
+              <Building size={14} className="text-brand-600 shrink-0" />
+              <span>Condomínio: {meuCondominio || 'Não definido'}</span>
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5">
             <Shield size={14} className="text-purple-600 shrink-0" />
@@ -790,15 +878,15 @@ export default function Usuarios() {
             </select>
           </div>
 
-          {(condoFilter !== 'Todos' || roleFilter !== 'Todos' || search) && (
+          {((isAdm && condoFilter !== 'Todos') || roleFilter !== 'Todos' || search) && (
             <button
               onClick={() => {
-                setCondoFilter('Todos')
+                if (isAdm) setCondoFilter('Todos')
                 setRoleFilter('Todos')
                 setSearch('')
               }}
               className="text-xs font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shadow-2xs"
-              title="Mostrar todos os usuários de todos os condomínios"
+              title="Limpar filtros de busca"
             >
               Limpar Filtros ✕
             </button>
@@ -937,6 +1025,7 @@ export default function Usuarios() {
           onClose={() => setModal(null)}
           onSave={handleSave}
           condominios={allCondominios}
+          currentUser={currentUser}
         />
       )}
     </div>

@@ -112,7 +112,7 @@ function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialAp
               className="input uppercase font-bold"
               value={form.condominio}
               onChange={e => set('condominio', e.target.value.toUpperCase())}
-              disabled={isMorador}
+              disabled={isMorador || (currentUser?.role !== 'Administrador' && !!currentUser?.condominio)}
               placeholder="SELECIONE OU DIGITE O CONDOMÍNIO"
             />
             <datalist id="lista-condos-morador">
@@ -299,8 +299,10 @@ function ModalCompartilharLink({ link, titulo, descricao, onClose }) {
   )
 }
 
-function ModalImportarUnidades({ condominios = [], onImport, onClose }) {
-  const [condoNome, setCondoNome] = useState(condominios[0]?.nome || '')
+function ModalImportarUnidades({ condominios = [], onImport, onClose, currentUser }) {
+  const isAdm = currentUser?.role === 'Administrador'
+  const meuCondo = currentUser?.condominio || ''
+  const [condoNome, setCondoNome] = useState(() => (!isAdm && meuCondo ? meuCondo : (condominios[0]?.nome || '')))
   const [textoColado, setTextoColado] = useState('')
   const [arquivoNome, setArquivoNome] = useState('')
   const [unidadesParsed, setUnidadesParsed] = useState([])
@@ -600,6 +602,7 @@ function ModalImportarUnidades({ condominios = [], onImport, onClose }) {
               className="input text-xs font-bold bg-slate-50"
               value={condoNome}
               onChange={e => setCondoNome(e.target.value)}
+              disabled={!isAdm && !!meuCondo}
             >
               <option value="">Selecione um condomínio cadastrado...</option>
               {condominios.map(c => (
@@ -755,7 +758,9 @@ export default function Moradores() {
   const { items: allCondominios } = useFirestore('condominios')
   const { items: pets, addItem: addPet } = useFirestore('pets')
   const { user } = useAuth()
+  const isAdm = user?.role === 'Administrador'
   const isMorador = user?.role === 'Morador'
+  const meuCondominio = user?.condominio || ''
 
   // Sincroniza e mescla automaticamente moradores com contas criadas em usuários (perfil Morador/Síndico/etc.)
   const moradores = React.useMemo(() => {
@@ -809,9 +814,15 @@ export default function Moradores() {
   }, [moradoresRaw, usuarios])
 
   const [search, setSearch] = useState('')
-  const [filtroCondominio, setFiltroCondominio] = useState('Todos')
+  const [filtroCondominio, setFiltroCondominio] = useState(() => (!isAdm && meuCondominio ? meuCondominio : 'Todos'))
   const [filtroApt, setFiltroApt] = useState('Todos')
   const [viewMode, setViewMode] = useState('agrupado')
+
+  React.useEffect(() => {
+    if (!isAdm && meuCondominio && filtroCondominio !== meuCondominio) {
+      setFiltroCondominio(meuCondominio)
+    }
+  }, [isAdm, meuCondominio])
   const [modal, setModal] = useState(null)
   const [modalPet, setModalPet] = useState(null)
   const [modalImport, setModalImport] = useState(false)
@@ -879,6 +890,12 @@ export default function Moradores() {
       const matchApt = uApt && mApt && uApt === mApt
       const matchCondo = !user?.condominio || condoMatch(m.condominio, user?.condominio)
       return matchApt && matchCondo
+    }
+    // Não-administradores (Síndico, Subsíndico, Portaria, Conselho) só visualizam moradores do seu condomínio
+    if (!isAdm && meuCondominio) {
+      if (!condoMatch(m.condominio, meuCondominio)) return false
+    } else if (filtroCondominio !== 'Todos' && !condoMatch(m.condominio, filtroCondominio)) {
+      return false
     }
     const okSearch = m.nome?.toLowerCase().includes(search.toLowerCase()) || m.apt?.includes(search) || m.email?.includes(search)
     const okCondo = filtroCondominio === 'Todos' || condoMatch(m.condominio, filtroCondominio)
@@ -1373,16 +1390,23 @@ export default function Moradores() {
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               <input className="input pl-9 text-xs" placeholder="Buscar por nome, apartamento, e-mail..." value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <div className="relative sm:w-64">
-              <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <select 
-                className={`input pl-9 text-xs font-bold ${filtroCondominio !== 'Todos' ? 'border-brand-500 bg-brand-50/40 text-brand-900 ring-1 ring-brand-300' : ''}`} 
-                value={filtroCondominio} 
-                onChange={e => { setFiltroCondominio(e.target.value); setFiltroApt('Todos') }}
-              >
-                {condominiosUnicos.map(c => <option key={c} value={c}>{c === 'Todos' ? '🏢 Todos os Condomínios' : c}</option>)}
-              </select>
-            </div>
+            {isAdm ? (
+              <div className="relative sm:w-64">
+                <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <select 
+                  className={`input pl-9 text-xs font-bold ${filtroCondominio !== 'Todos' ? 'border-brand-500 bg-brand-50/40 text-brand-900 ring-1 ring-brand-300' : ''}`} 
+                  value={filtroCondominio} 
+                  onChange={e => { setFiltroCondominio(e.target.value); setFiltroApt('Todos') }}
+                >
+                  {condominiosUnicos.map(c => <option key={c} value={c}>{c === 'Todos' ? '🏢 Todos os Condomínios' : c}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 border border-brand-200 rounded-xl text-xs font-bold text-brand-800">
+                <Filter size={14} className="text-brand-600 shrink-0" />
+                <span>Condomínio: {meuCondominio || 'Não definido'}</span>
+              </div>
+            )}
             <div className="relative sm:w-48">
               <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <select 
@@ -1393,23 +1417,23 @@ export default function Moradores() {
                 {aptsUnicos.map(a => <option key={a} value={a}>{a === 'Todos' ? '🚪 Todos os Aptos' : `Apt ${a}`}</option>)}
               </select>
             </div>
-            {(filtroCondominio !== 'Todos' || filtroApt !== 'Todos' || search) && (
+            {((isAdm && filtroCondominio !== 'Todos') || filtroApt !== 'Todos' || search) && (
               <button
                 onClick={() => {
-                  setFiltroCondominio('Todos')
+                  if (isAdm) setFiltroCondominio('Todos')
                   setFiltroApt('Todos')
                   setSearch('')
                 }}
                 className="text-xs font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap shadow-2xs shrink-0 self-center"
-                title="Mostrar todos os moradores de todos os condomínios"
+                title="Limpar filtros de busca"
               >
                 Limpar Filtros ✕
               </button>
             )}
           </div>
 
-          {/* Atalhos rápidos de condomínio */}
-          {filtroCondominio === 'Todos' && condominiosUnicos.length > 1 && (
+          {/* Atalhos rápidos de condomínio (apenas para Admin) */}
+          {isAdm && filtroCondominio === 'Todos' && condominiosUnicos.length > 1 && (
             <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
               {condominiosUnicos.filter(c => c !== 'Todos').map(c => (
                 <button
@@ -1797,6 +1821,7 @@ export default function Moradores() {
           condominios={allCondominios}
           onImport={handleImportLote}
           onClose={() => setModalImport(false)}
+          currentUser={user}
         />
       )}
 

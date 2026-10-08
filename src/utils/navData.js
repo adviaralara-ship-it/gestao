@@ -156,7 +156,7 @@ export function getFilteredNavGroups(user) {
     ]
   }
 
-  // 2. SE FOR CONSELHO FISCAL: Portal de Fiscalização e Auditoria
+  // 2. SE FOR CONSELHO FISCAL: Portal de Fiscalização e Auditoria (apenas condomínio dele)
   if (isConselho) {
     return [
       {
@@ -174,14 +174,13 @@ export function getFilteredNavGroups(user) {
           { to: '/contratos',     label: 'Contratos & Seguros',       icon: FileSignature },
           { to: '/documentos',    label: 'Documentos & Regimentos',   icon: FolderOpen },
           { to: '/assembleias',   label: 'Assembleias & Atas',        icon: Gavel },
-          { to: '/seguranca',     label: 'Segurança & Backups',       icon: ShieldAlert },
           { to: '/relatorios',    label: 'Prestação de Contas',       icon: FileText }
         ]
       }
     ]
   }
 
-  // 3. SE FOR SÍNDICO / SUBSÍNDICO: Gestão do Condomínio (sem RH interno da Alpha)
+  // 3. SE FOR SÍNDICO / SUBSÍNDICO: Gestão exclusiva do Condomínio dele (sem segurança, agenda/tarefas, mediação nem finanças internas da Alpha)
   if (isSindico) {
     return [
       {
@@ -190,9 +189,7 @@ export function getFilteredNavGroups(user) {
         items: [
           { to: '/dashboard',    label: 'Dashboard',            icon: LayoutDashboard },
           { to: '/alpha-ai',     label: 'Alpha IA',             icon: Bot },
-          { to: '/seguranca',    label: 'Segurança & Backups',  icon: ShieldAlert },
           { to: '/radar',        label: 'Radar de Convivência', icon: Radar },
-          { to: '/tarefas',      label: 'Agenda & Tarefas',     icon: CheckSquare },
         ]
       },
       {
@@ -201,11 +198,11 @@ export function getFilteredNavGroups(user) {
         items: [
           { to: '/moradores',    label: 'Moradores',             icon: Users },
           { to: '/pets',         label: 'Pets',                  icon: PawPrint },
+          { to: '/usuarios',     label: 'Usuários do Condomínio', icon: Settings },
           { to: '/ocorrencias',  label: 'Solicitações & Ocorrências', icon: AlertTriangle },
           { to: '/conviver',     label: 'Conviver+',             icon: HeartHandshake },
           { to: '/mural',        label: 'Mural de Recados',      icon: Megaphone },
           { to: '/enquetes',     label: 'Enquetes',              icon: PieChart },
-          { to: '/mediacao',     label: 'Mediação & ODR',        icon: Handshake },
         ]
       },
       {

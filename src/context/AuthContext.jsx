@@ -13,8 +13,8 @@ const AuthContext = createContext(null)
 // ─── Permissões por role ───────────────────────────────────────────────────
 export const allModulesPerms = ['dashboard','whatsapp','email','condominios','moradores','rh','prestadores','usuarios','financeiro','boletos','notas-fiscais','assembleias','ocorrencias','reservas','eventos','portaria','veiculos','cameras','calculadora','encomendas','visitantes','enquetes','classificados','seguro','regime','documentos','comunicacao','tarefas','relatorios','propostas','cotacoes','recrutamento','conferencias','monitoramento-ia','radar','conviver','mediacao','locacao','manutencoes','seguranca']
 export const sindicoPerms = [
-  'dashboard', 'alpha-ai', 'moradores', 'pets', 'ocorrencias', 'conviver',
-  'comunicacao', 'mural', 'enquetes', 'classificados', 'mediacao',
+  'dashboard', 'alpha-ai', 'moradores', 'pets', 'usuarios', 'ocorrencias', 'conviver',
+  'comunicacao', 'mural', 'enquetes', 'classificados',
   'assembleias', 'conferencias', 'eventos', 'documentos', 'regime', 'contratos',
   'notas-fiscais', 'seguro', 'financeiro', 'plano-contas', 'boletos', 'inadimplencia',
   'locacao', 'calculadora', 'reservas', 'manutencoes', 'portaria', 'encomendas',

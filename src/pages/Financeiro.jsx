@@ -554,10 +554,29 @@ export default function Financeiro() {
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || (isMorador ? 'Historico' : 'Dashboard'))
   const [modalLanc, setModalLanc] = useState(null)
   const [modalConta, setModalConta] = useState(null)
-  const [condoFilter, setCondoFilter] = useState('Todos')
+  const userRole = user?.role || ''
+  const isAdm = userRole === 'Administrador'
+  const isSindicoOuConselho = ['Síndico', 'Subsíndico', 'Conselheiro', 'Conselho', 'Conselho Fiscal'].includes(userRole)
+  const meuCondominio = user?.condominio || ''
+
+  // Para síndico/conselheiro, o filtro é fixo no condomínio dele. Somente Administrador pode ver 'Todos' ou 'Alpha (Interno)'.
+  const [condoFilter, setCondoFilter] = useState(() => {
+    if (!isAdm && meuCondominio) return meuCondominio
+    return 'Todos'
+  })
+
+  // Se o usuário não for administrador, garante que o condoFilter fique travado no condomínio dele
+  React.useEffect(() => {
+    if (!isAdm && meuCondominio && condoFilter !== meuCondominio) {
+      setCondoFilter(meuCondominio)
+    }
+  }, [isAdm, meuCondominio])
+
   const [showRepasses, setShowRepasses] = useState(false)
 
-  const condominiosDisponiveis = condominiosList.filter(c => c.status !== 'Inativo').map(c => c.nome)
+  const condominiosDisponiveis = isAdm
+    ? condominiosList.filter(c => c.status !== 'Inativo').map(c => c.nome)
+    : (meuCondominio ? [meuCondominio] : [])
 
   const handleSaveLancamento = async (form) => {
     try {
@@ -688,7 +707,15 @@ export default function Financeiro() {
   }
 
   // Filtragem Inteligente: Geral, Alpha Interno ou Condomínio Específico
+  // Para síndico e conselheiro: EXCLUSIVO do condomínio dele, sem ver dados da matriz Alpha nem outros condomínios
   const lancamentos = allLancamentos.filter(l => {
+    if (!isAdm) {
+      if (!meuCondominio) return false
+      // Não pode ver lançamentos internos da Alpha
+      if (isAlphaInterno(l.condominio)) return false
+      return (l.condominio || '').trim().toLowerCase() === meuCondominio.trim().toLowerCase()
+    }
+
     if (condoFilter === 'Todos') return true
     if (condoFilter === 'Alpha (Interno)') {
       return isAlphaInterno(l.condominio)
@@ -702,32 +729,41 @@ export default function Financeiro() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl border border-pale-300 shadow-sm">
         <div>
           <h2 className="text-xl sm:text-2xl font-black text-gray-900 flex items-center gap-2">
-            <Wallet className="text-brand-600" /> Gestão Financeira Completa
+            <Wallet className="text-brand-600" /> Gestão Financeira {isAdm ? 'Completa' : `— ${meuCondominio || 'Meu Condomínio'}`}
           </h2>
           <p className="text-gray-500 font-medium text-xs sm:text-sm mt-0.5">
-            Controle de receitas, despesas, boletos em nuvem, pagamentos e fluxo de caixa
+            {isAdm 
+              ? 'Controle de receitas, despesas, boletos em nuvem, pagamentos e fluxo de caixa de todos os condomínios e Alpha interna'
+              : `Prestação de contas, receitas e despesas exclusivas do condomínio ${meuCondominio || ''}`}
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Seletor com Alpha Interno em destaque */}
-          <div className="relative">
-            <select 
-              value={condoFilter} 
-              onChange={e => setCondoFilter(e.target.value)}
-              className="input py-2 text-xs font-bold bg-amber-50/80 border-amber-300 text-gray-900 pr-8"
-            >
-              <option value="Todos">🌐 Todos os Condomínios + Alpha (Geral)</option>
-              <option value="Alpha (Interno)">👑 Alpha Soluções (Financeiro Interno / Matriz)</option>
-              <optgroup label="Condomínios Clientes">
-                {condominiosDisponiveis.map(c => <option key={c} value={c}>🏢 {c}</option>)}
-              </optgroup>
-            </select>
-          </div>
+          {/* Seletor visível apenas para Administrador */}
+          {isAdm ? (
+            <div className="relative">
+              <select 
+                value={condoFilter} 
+                onChange={e => setCondoFilter(e.target.value)}
+                className="input py-2 text-xs font-bold bg-amber-50/80 border-amber-300 text-gray-900 pr-8"
+              >
+                <option value="Todos">🌐 Todos os Condomínios + Alpha (Geral)</option>
+                <option value="Alpha (Interno)">👑 Alpha Soluções (Financeiro Interno / Matriz)</option>
+                <optgroup label="Condomínios Clientes">
+                  {condominiosDisponiveis.map(c => <option key={c} value={c}>🏢 {c}</option>)}
+                </optgroup>
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-brand-50 border border-brand-200 px-3 py-2 rounded-xl text-xs font-bold text-brand-900">
+              <Building2 size={16} className="text-brand-600" />
+              <span>Condomínio: {meuCondominio || 'Vinculado'}</span>
+            </div>
+          )}
 
           {!isMorador && (
             <button
-              onClick={() => setModalLanc({ tipo: 'Despesa', status: 'Pendente', descricao: '', categoria: '', valor: '', data: new Date().toISOString().split('T')[0], condominio: condoFilter !== 'Todos' ? condoFilter : 'Alpha (Interno)' })}
+              onClick={() => setModalLanc({ tipo: 'Despesa', status: 'Pendente', descricao: '', categoria: '', valor: '', data: new Date().toISOString().split('T')[0], condominio: !isAdm ? (meuCondominio || '') : (condoFilter !== 'Todos' ? condoFilter : 'Alpha (Interno)') })}
               className="btn-primary py-2 px-4 text-xs font-black flex items-center gap-1.5 shadow-md shadow-brand-700/20 bg-emerald-600 hover:bg-emerald-500 uppercase tracking-wider cursor-pointer"
             >
               <Plus size={16} /> + Novo Lançamento
