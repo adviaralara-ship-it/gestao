@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { 
   FileText, Upload, Sparkles, Plus, Trash2, Edit2, Download, 
   CheckCircle2, AlertTriangle, ArrowRight, Eye, RefreshCw, X,
