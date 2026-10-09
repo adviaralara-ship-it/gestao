@@ -9,7 +9,7 @@ import autoTable from 'jspdf-autotable'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { storage } from '../firebase'
+import { storage, auth } from '../firebase'
 
 export default function OrcamentosComparativo({ condominios = [], condoFiltro = 'Todos' }) {
   const { user } = useAuth()
@@ -664,16 +664,29 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
         setForm(prev => ({ ...prev, arquivoUrl: prev.arquivoUrl || base64 }))
       }
 
-      // 2. Chama a API de IA com type='orcamento' e timeout seguro de 25s
+      // 2. Chama a API de IA com type='orcamento' e timeout seguro de 30s
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 25000)
+      const timeoutId = setTimeout(() => controller.abort(), 30000)
 
       let data = null
       let statusHttp = 0
+      let erroMsg = ''
       try {
+        let token = null
+        try {
+          token = await auth.currentUser?.getIdToken?.()
+        } catch (tErr) {
+          console.warn('Erro ao obter token Firebase:', tErr)
+        }
+
+        const headers = { 'Content-Type': 'application/json' }
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+
         const res = await fetch('/api/extract', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           signal: controller.signal,
           body: JSON.stringify({
             file: base64,
@@ -684,9 +697,13 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
         clearTimeout(timeoutId)
         statusHttp = res.status
         data = await res.json()
+        if (!res.ok) {
+          erroMsg = data?.error || data?.details || `Falha HTTP ${res.status}`
+        }
       } catch (fErr) {
         clearTimeout(timeoutId)
         console.warn('Timeout ou falha na chamada de OCR pela IA:', fErr)
+        erroMsg = fErr.name === 'AbortError' ? 'Tempo de resposta excedido ao analisar documento' : fErr.message
       }
 
       if (data && data.success && data.data) {
@@ -719,12 +736,15 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
         setEtapa('revisao')
       } else {
         // A IA não conseguiu extrair ou houve erro de rede/timeout
-        console.warn('Resposta da IA sem dados ou erro:', data, statusHttp)
+        console.warn('Resposta da IA sem dados ou erro:', data, statusHttp, erroMsg)
         setForm(prev => ({
           ...prev,
           empresa: prev.empresa || file.name.replace(/\.[^/.]+$/, "")
         }))
         setStatusLeitura('parcial')
+        if (erroMsg) {
+          setErroValidacao(`Aviso: ${erroMsg}. Preencha ou confira os dados abaixo para salvar.`)
+        }
         setEtapa('revisao')
       }
     } catch (err) {
@@ -809,10 +829,13 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-2xl w-full p-0 overflow-hidden rounded-3xl" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
+      <div 
+        className="modal-content max-w-2xl w-full p-0 overflow-hidden rounded-3xl bg-white shadow-2xl border border-gray-200 flex flex-col max-h-[92vh]" 
+        onClick={e => e.stopPropagation()}
+      >
         {/* Topo do Modal */}
-        <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
+        <div className="bg-slate-900 text-white p-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black">
               <Upload size={20} />
@@ -827,7 +850,7 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
           </button>
         </div>
 
-        <div className="p-6 flex flex-col gap-4 max-h-[80vh] overflow-y-auto">
+        <div className="p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto flex-1">
           {/* Caixa de Upload Drag & Drop */}
           <div
             onClick={() => !extraindo && fileInputRef.current?.click()}
@@ -1014,19 +1037,30 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
           </div>
         </div>
 
-        {/* Rodapé do Modal */}
-        <div className="p-4 bg-slate-50 border-t border-gray-200 flex justify-end gap-2.5">
-          <button onClick={onClose} disabled={salvando} className="btn-secondary text-xs">
-            Cancelar
-          </button>
-          <button
-            onClick={handleSalvar}
-            disabled={salvando || extraindo}
-            className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-xs flex items-center gap-1.5"
-          >
-            {salvando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-            <span>Salvar no Comparativo</span>
-          </button>
+        {/* Rodapé do Modal Fixo */}
+        <div className="p-4 bg-slate-50 border-t border-gray-200 flex items-center justify-between gap-3 shrink-0">
+          <p className="text-[11px] text-gray-500 hidden sm:block">
+            {extraindo ? 'Analisando documento...' : 'Campos marcados com * são obrigatórios.'}
+          </p>
+          <div className="flex items-center gap-2.5 ml-auto">
+            <button 
+              type="button"
+              onClick={onClose} 
+              disabled={salvando} 
+              className="btn-secondary text-xs px-4 py-2"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSalvar}
+              disabled={salvando || extraindo}
+              className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-5 py-2 font-black flex items-center gap-2 shadow-lg shadow-emerald-600/20 disabled:opacity-50"
+            >
+              {salvando ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+              <span>{salvando ? 'Salvando...' : 'Salvar no Comparativo'}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
