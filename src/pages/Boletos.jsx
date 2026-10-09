@@ -914,23 +914,36 @@ function ModalGerarLote({ condominios, moradores, allBoletos = [], initialCondo 
     .trim()
     .toLowerCase()
 
-  // Agrupa moradores e dependentes por Unidade / Apartamento do condomínio selecionado
-  const todosDoCondo = moradores.filter(m => {
-    if (!condoNome) return true
-    const cM = normalizeCondo(m.condominio)
-    const cMN = normalizeCondo(m.condominioNome)
-    const cTarget = normalizeCondo(condoNome)
-    if (!cTarget || cTarget === 'todos') return true
-    return cM === cTarget || cMN === cTarget || (cM && cTarget && (cM.includes(cTarget) || cTarget.includes(cM)))
-  })
+  // Agrupa moradores, síndicos e dependentes por Unidade / Apartamento do condomínio selecionado
+  const todosDoCondo = React.useMemo(() => {
+    if (!condoNome || condoNome === 'Todos') return moradores
 
-  // Agrupamento por Apartamento com priorização estrita de PROPRIETÁRIO
+    const cTarget = normalizeCondo(condoNome)
+    const condoObj = condominiosValidos.find(c => c.nome === condoNome) || (condominios || []).find(c => c.nome === condoNome)
+    const targetId = condoObj?.id || ''
+
+    return moradores.filter(m => {
+      // 1. Verificação por ID direto do condomínio
+      if (targetId && (m.condominioId === targetId || m.condominio === targetId)) {
+        return true
+      }
+      // 2. Verificação por nome do condomínio
+      const cM = normalizeCondo(m.condominio)
+      const cMN = normalizeCondo(m.condominioNome)
+      if (cM === cTarget || cMN === cTarget) return true
+      if (cM && cTarget && (cM.includes(cTarget) || cTarget.includes(cM))) return true
+      if (cMN && cTarget && (cMN.includes(cTarget) || cTarget.includes(cMN))) return true
+      return false
+    })
+  }, [condoNome, moradores, condominios, condominiosValidos])
+
+  // Agrupamento por Apartamento com priorização estrita de PROPRIETÁRIO / TITULAR
   const unidadesAgrupadas = React.useMemo(() => {
     const map = new Map()
 
     todosDoCondo.forEach(m => {
-      // Normaliza número do apartamento (ex: "101", "101-A")
-      const aptKey = String(m.apt || m.unidade || 'Sem Apt')
+      // Normaliza número do apartamento (ex: "101", "101-A", "ADM")
+      const aptKey = String(m.apt || m.unidade || (m.status === 'Síndico' || m.tipo === 'Síndico' ? 'ADM' : 'Sem Apt'))
         .replace(/^(apto\.?|apt\.?|unidade)\s*/i, '')
         .trim()
 
@@ -949,17 +962,18 @@ function ModalGerarLote({ condominios, moradores, allBoletos = [], initialCondo 
 
     // Define o titular de cada apartamento seguindo estritamente a hierarquia:
     // 1º Proprietário (ou Morador titular)
-    // 2º Inquilino
-    // 3º Se só houver dependentes cadastrados na unidade, usa o primeiro dependente
+    // 2º Síndico / Subsíndico
+    // 3º Inquilino
+    // 4º Dependentes
     map.forEach(entry => {
       const getScore = (m) => {
         const vinculo = String(m.status || m.tipo || m.tipoMorador || '').toLowerCase().trim()
         if (vinculo === 'proprietario' || vinculo === 'proprietário') return 100
         if (vinculo === 'morador' || vinculo === 'titular') return 90
-        if (vinculo === 'sindico' || vinculo === 'síndico') return 80
+        if (vinculo.includes('sindico') || vinculo.includes('síndico')) return 85
         if (vinculo.includes('inquilino')) return 50
         if (vinculo.includes('dependente')) return 10
-        return 20
+        return 30
       }
 
       // Ordena os membros da unidade pela pontuação mais alta para eleger o titular do boleto
@@ -1385,9 +1399,11 @@ function ModalGerarLote({ condominios, moradores, allBoletos = [], initialCondo 
                                   <div className="flex items-center gap-1 truncate">
                                     <span className="truncate">{m.nome}</span>
                                     <span className={`text-[8px] font-black uppercase px-1 py-0.2 rounded ${
-                                      isDep ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                                      isDep ? 'bg-purple-100 text-purple-700' :
+                                      (m.status === 'Síndico' || m.tipo === 'Síndico') ? 'bg-amber-100 text-amber-800' :
+                                      'bg-blue-100 text-blue-700'
                                     }`}>
-                                      {isDep ? 'Dependente' : 'Titular'}
+                                      {m.status || (isDep ? 'Dependente' : 'Titular')}
                                     </span>
                                   </div>
                                   <span className="text-[10px] font-mono text-gray-500 block truncate">
@@ -2073,37 +2089,46 @@ export default function Boletos() {
   const { items: allMoradoresDocs } = useFirestore('moradores')
   const { items: allUsuariosDocs } = useFirestore('usuarios')
 
-  // Unificação automática de moradores cadastrados diretamente + usuários registrados na plataforma
+  // Unificação automática e resiliente de moradores cadastrados diretamente + usuários registrados na plataforma
   const moradores = React.useMemo(() => {
     const lista = [...allMoradoresDocs]
+    const idsDocExistentes = new Set(lista.map(m => m.idOriginalUsuario || m.id).filter(Boolean))
     const emailsExistentes = new Set(lista.map(m => (m.email || '').toLowerCase().trim()).filter(Boolean))
-    const telefonesExistentes = new Set(lista.map(m => String(m.tel || '').replace(/\D/g, '')).filter(Boolean))
+    const cpfsExistentes = new Set(lista.map(m => String(m.cpf || '').replace(/\D/g, '')).filter(Boolean))
 
     ;(allUsuariosDocs || []).forEach(u => {
+      const uId = u.id
       const uEmail = (u.email || '').toLowerCase().trim()
-      const uTel = String(u.telefone || u.tel || '').replace(/\D/g, '')
+      const uCpf = String(u.cpf || '').replace(/\D/g, '')
       const uRole = u.role || 'Morador'
 
-      const isPerfilMorador = ['Morador', 'Proprietário', 'Inquilino', 'Dependente', 'Síndico', 'Subsíndico', 'Conselheiro'].includes(uRole)
-      const temLocalizacao = u.condominio && (u.unidade || u.apt)
+      // Considera perfis de morador, síndico, ou qualquer usuário com condomínio vinculado
+      const isPerfilResidencial = ['Morador', 'Proprietário', 'Inquilino', 'Dependente', 'Síndico', 'Subsíndico', 'Conselheiro', 'Portaria'].includes(uRole)
+      const temCondominio = Boolean(u.condominio || u.condominioNome || u.condominioId)
 
-      if (isPerfilMorador || temLocalizacao) {
-        const jaCadastrado = (uEmail && emailsExistentes.has(uEmail)) || (uTel && telefonesExistentes.has(uTel))
+      if (isPerfilResidencial || temCondominio) {
+        // Validação anti-duplicação precisa por ID do documento, e-mail ou CPF (NUNCA por telefone compartilhado de recado/família)
+        const jaCadastrado = (uId && idsDocExistentes.has(uId)) ||
+                             (uEmail && emailsExistentes.has(uEmail)) ||
+                             (uCpf && cpfsExistentes.has(uCpf))
+
         if (!jaCadastrado) {
-          const aptLimpo = String(u.unidade || u.apt || '')
-            .replace(/^(apto\.?|apt\.?|unidade|bl\.?\s*\d+\s*apt\.?)\s*/i, '')
-            .trim()
+          const rawApt = String(u.unidade || u.apt || '').trim()
+          const aptLimpo = rawApt.replace(/^(apto\.?|apt\.?|unidade|bl\.?\s*\d+\s*apt\.?)\s*/i, '').trim()
 
           lista.push({
             id: `usr_${u.id}`,
-            nome: u.nome || 'Morador',
+            idOriginalUsuario: u.id,
+            nome: u.nome || (uRole === 'Síndico' ? 'Síndico' : 'Morador'),
             email: u.email || '',
-            tel: u.telefone || u.tel || '',
-            condominio: u.condominio || '',
+            tel: u.telefone || u.tel || u.whatsapp || u.celular || '',
+            condominio: u.condominio || u.condominioNome || '',
+            condominioId: u.condominioId || '',
             bloco: u.bloco || '',
-            apt: aptLimpo || u.unidade || u.apt || '1',
+            apt: aptLimpo || rawApt || (uRole === 'Síndico' ? 'ADM' : '1'),
             cpf: u.cpf || '',
             status: u.statusMorador || (uRole === 'Morador' ? 'Proprietário' : uRole),
+            tipo: uRole,
             fotoRosto: u.foto || u.fotoRosto || '',
             origem: 'usuario-sincronizado'
           })
