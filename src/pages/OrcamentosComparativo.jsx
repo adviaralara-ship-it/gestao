@@ -11,7 +11,7 @@ import { useAuth } from '../context/AuthContext'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage } from '../firebase'
 
-export default function OrcamentosComparativo({ condominios = [], condoFiltro: condoFiltroProp = 'Todos' }) {
+export default function OrcamentosComparativo({ condominios = [], condoFiltro = 'Todos' }) {
   const { user } = useAuth()
   const isAdm = user?.role === 'Administrador'
   const meuCondo = user?.condominio || ''
@@ -20,14 +20,14 @@ export default function OrcamentosComparativo({ condominios = [], condoFiltro: c
 
   const [condoFiltroLocal, setCondoFiltroLocal] = useState(() => {
     if (!isAdm && meuCondo) return meuCondo
-    return condoFiltroProp || 'Todos'
+    return condoFiltro || 'Todos'
   })
 
   useEffect(() => {
-    if (isAdm && condoFiltroProp) {
-      setCondoFiltroLocal(condoFiltroProp)
+    if (isAdm && condoFiltro) {
+      setCondoFiltroLocal(condoFiltro)
     }
-  }, [isAdm, condoFiltroProp])
+  }, [isAdm, condoFiltro])
 
   const [modalUpload, setModalUpload] = useState(false)
   const [modalVisualizar, setModalVisualizar] = useState(null)
