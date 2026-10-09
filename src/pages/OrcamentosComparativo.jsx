@@ -1015,6 +1015,46 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
               />
             </div>
 
+            <div>
+              <label className="label text-xs font-black">Prazo de Entrega / Execução</label>
+              <input
+                className="input text-xs"
+                value={form.prazo}
+                onChange={e => set('prazo', e.target.value)}
+                placeholder="Ex: 30 dias ou 10 dias úteis"
+              />
+            </div>
+
+            <div>
+              <label className="label text-xs font-black">Garantia / Validade</label>
+              <input
+                className="input text-xs"
+                value={form.garantia}
+                onChange={e => set('garantia', e.target.value)}
+                placeholder="Ex: 1 ano ou Validade 10 dias"
+              />
+            </div>
+
+            <div>
+              <label className="label text-xs font-black">Telefone / WhatsApp</label>
+              <input
+                className="input text-xs"
+                value={form.telefone}
+                onChange={e => set('telefone', e.target.value)}
+                placeholder="Ex: (83) 98174-2932"
+              />
+            </div>
+
+            <div>
+              <label className="label text-xs font-black">E-mail do Prestador</label>
+              <input
+                className="input text-xs"
+                value={form.email}
+                onChange={e => set('email', e.target.value)}
+                placeholder="Ex: contato@empresa.com"
+              />
+            </div>
+
             <div className="sm:col-span-2">
               <label className="label text-xs font-black">Observações Relevantes</label>
               <input

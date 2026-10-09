@@ -94,28 +94,33 @@ Use APENAS o seguinte formato JSON puro, sem markdown:
         "data": "data de emissão ou pagamento no formato YYYY-MM-DD"
       }]`;
     } else if (type === 'orcamento') {
-      prompt = `Você é um engenheiro e especialista em compras/orçamentos para condomínios.
-Analise com atenção a proposta comercial, orçamento ou cotação em anexo.
-Extraia todas as informações do orçamento e retorne um único objeto JSON estruturado (sem markdown, apenas JSON puro):
+      prompt = `Você é um engenheiro e especialista em compras/orçamentos para condomínios e manutenção predial.
+Analise com atenção a proposta comercial, orçamento ou cotação em anexo (seja PDF de 1 ou várias páginas, imagem ou escaneamento).
+Extraia todas as informações do orçamento e retorne um único objeto JSON estruturado (sem markdown, estritamente JSON puro):
 
 {
-  "empresa": "Nome da Empresa ou Prestador / Razão Social ou Nome Fantasia",
-  "numero": "Número ou Código do Orçamento se houver (ex: Orçamento nº 260910-002/01)",
-  "grupo": "Área ou Objeto do orçamento para agrupar comparativos (ex: PORTA DE ENTRADA, COBERTURA / TELHADO, PINTURA, INTERFONIA, BOMBAS, etc.)",
-  "tipoServico": "Resumo objetivo do serviço ou escopo (ex: Fornecimento e instalação de porta de giro, 1 folha, com fechadura)",
-  "materiais": "Especificações detalhadas dos materiais, modelos, marcas, medidas (ex: Porta 1,00 x 2,25 m; linha Santa Marina Temperado; vidro incolor 8mm; perfil alumínio RAL 9003)",
+  "empresa": "Nome da Empresa ou Prestador / Razão Social ou Nome Fantasia (ex: Elite Premium Esquadrias LTDA, Med Vidros, etc.)",
+  "numero": "Número, Código ou Proposta se houver (ex: 049, Orçamento nº 260910-002/01, etc.)",
+  "grupo": "Área ou Objeto do orçamento para agrupar comparativos (ex: PORTA DE ENTRADA, ESQUADRIAS, COBERTURA / TELHADO, PINTURA, INTERFONIA, BOMBAS, etc.)",
+  "tipoServico": "Resumo objetivo do serviço ou escopo (ex: Esquadrias de Alumínio com Aplicação de Vidros / Porta de Giro F45º ou Instalação de Porta de Vidro Temperado 8mm com Mola)",
+  "materiais": "Especificações detalhadas dos materiais, modelos, marcas, acabamentos e medidas (ex: Porta de Giro F45º Suprema 1.000 x 2.250 m, Alumínio Bronze, Vidro Temperado Bronze/Incolor 6mm ou Vidro Incolor 8mm Temperado, Ferragens, Fechadura, Mola de Piso GDS/Dorma)",
   "valor": 0.00,
-  "condicaoPagamento": "Condições de pagamento (ex: À vista com 5% desc; 50% entrada + 50% entrega; 12x no cartão com juros)",
-  "prazo": "Prazo de execução ou entrega (ex: 15 dias úteis)",
-  "garantia": "Tempo de garantia informado (ex: 1 ano para esquadria, 6 meses para fechadura)",
-  "observacoes": "Observações relevantes, o que está incluso e o que NÃO está incluso, taxas extras, etc.",
-  "telefone": "Telefone ou WhatsApp do prestador/vendedor se houver",
-  "email": "E-mail do prestador se houver",
-  "analiseIA": "Breve parecer técnico sintético (1 ou 2 frases) avaliando custo-benefício, completude dos materiais e segurança técnica"
+  "condicaoPagamento": "Condições de pagamento (ex: 50% de entrada e 50% na entrega; Pix; Cartão em 10x; À vista com 5% desc)",
+  "prazo": "Prazo de execução ou entrega (ex: 30 dias; 10 dias úteis)",
+  "garantia": "Tempo de garantia informado ou validade da proposta (ex: 1 ano de garantia / Validade 10 dias)",
+  "observacoes": "Observações relevantes, itens inclusos e não inclusos, modelo de mola selecionado, etc.",
+  "telefone": "Telefone ou WhatsApp do prestador/vendedor (ex: (83) 98174-2932)",
+  "email": "E-mail do prestador se houver (ex: elitepremiumesquadrias@hotmail.com)",
+  "analiseIA": "Breve parecer técnico sintético (1 ou 2 frases) avaliando custo-benefício, completude dos materiais, acabamento e especificações técnicas"
 }
 
-Observação sobre "valor": retorne um número float com ponto (ex: 2100.00), convertendo vírgulas brasileiras para ponto.
-Se algum campo não for identificado no arquivo, use vazio ("").`;
+Instruções cruciais sobre os dados:
+1. "valor": retorne um número float com ponto (ex: 4207.50 ou 1700.00). 
+   - Se o documento tiver um "TOTAL" geral explícito (como TOTAL: 4.207,50), use este valor total consolidado.
+   - Se o documento apresentar itens com opções adicionais (ex: Porta 1.700,00 e opções de molas), priorize o valor principal do serviço ou o total base. Converta vírgulas brasileiras para ponto.
+2. "empresa": procure pelo cabeçalho, logotipo ou rodapé com nome da empresa, razão social ou nome fantasia.
+3. "materiais": detalhe os itens da obra com medidas (largura x altura), linha (ex: Suprema), cor/tratamento (ex: Bronze, Incolor), espessura do vidro e acessórios (fechadura, mola).
+4. Retorne APENAS o JSON puro. Não adicione crases de markdown (\`\`\`json) e nem texto antes ou depois.`;
     } else {
       prompt = `Extraia as seguintes informações deste documento (boleto, apólice, conta, carnê). Se o arquivo for um carnê ou apólice com MÚLTIPLAS parcelas/boletos, extraia os dados de CADA UM separadamente e retorne um ARRAY de objetos JSON. Se houver apenas um pagamento, retorne um ARRAY com um único objeto. Use APENAS o formato abaixo, sem markdown:
       [{
