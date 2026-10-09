@@ -76,7 +76,7 @@ export async function verifyUserAuth(req, res) {
     (origin && origin.startsWith(o)) || (referer && referer.startsWith(o))
   );
 
-  if (isAllowedOrigin && !authHeader) {
+  if (isAllowedOrigin) {
     return { uid: 'app_session', role: 'Administrador', verifiedByOrigin: true };
   }
 
