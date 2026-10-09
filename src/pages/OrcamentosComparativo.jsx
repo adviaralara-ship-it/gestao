@@ -11,12 +11,23 @@ import { useAuth } from '../context/AuthContext'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage } from '../firebase'
 
-export default function OrcamentosComparativo({ condominios = [], condoFiltro = 'Todos' }) {
+export default function OrcamentosComparativo({ condominios = [], condoFiltro: condoFiltroProp = 'Todos' }) {
   const { user } = useAuth()
   const isAdm = user?.role === 'Administrador'
   const meuCondo = user?.condominio || ''
 
   const { items: allOrcamentos, addItem, updateItem, deleteItem } = useFirestore('orcamentos_comparativos')
+
+  const [condoFiltroLocal, setCondoFiltroLocal] = useState(() => {
+    if (!isAdm && meuCondo) return meuCondo
+    return condoFiltroProp || 'Todos'
+  })
+
+  useEffect(() => {
+    if (isAdm && condoFiltroProp) {
+      setCondoFiltroLocal(condoFiltroProp)
+    }
+  }, [isAdm, condoFiltroProp])
 
   const [modalUpload, setModalUpload] = useState(false)
   const [modalVisualizar, setModalVisualizar] = useState(null)
@@ -28,19 +39,19 @@ export default function OrcamentosComparativo({ condominios = [], condoFiltro = 
   const orcamentosDoCondo = useMemo(() => {
     return (allOrcamentos || []).filter(o => {
       if (!isAdm) {
-        if (!meuCondo) return false
+        if (!meuCondo) return true
         const ocCondo = (o.condominio || '').trim().toLowerCase()
         const uCondo = meuCondo.trim().toLowerCase()
-        return ocCondo === uCondo || ocCondo.includes(uCondo) || uCondo.includes(ocCondo)
+        return !ocCondo || ocCondo === uCondo || ocCondo.includes(uCondo) || uCondo.includes(ocCondo)
       }
-      if (condoFiltro !== 'Todos') {
+      if (condoFiltroLocal !== 'Todos') {
         const ocCondo = (o.condominio || '').trim().toLowerCase()
-        const fCondo = String(condoFiltro).trim().toLowerCase()
+        const fCondo = String(condoFiltroLocal).trim().toLowerCase()
         return ocCondo === fCondo || ocCondo.includes(fCondo) || fCondo.includes(ocCondo)
       }
       return true
     })
-  }, [allOrcamentos, isAdm, meuCondo, condoFiltro])
+  }, [allOrcamentos, isAdm, meuCondo, condoFiltroLocal])
 
   // Lista de grupos únicos (ex: PORTA DE ENTRADA, COBERTURA / TELHADO)
   const gruposDisponiveis = useMemo(() => {
@@ -323,6 +334,22 @@ export default function OrcamentosComparativo({ condominios = [], condoFiltro = 
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {isAdm && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-gray-500">Condomínio:</span>
+              <select
+                className="input text-xs font-bold bg-white border-gray-300 text-gray-900 py-2"
+                value={condoFiltroLocal}
+                onChange={e => setCondoFiltroLocal(e.target.value)}
+              >
+                <option value="Todos">🏢 Todos os Condomínios</option>
+                {condominios?.map(c => (
+                  <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-bold text-gray-500">Filtrar Objeto:</span>
             <select
@@ -583,20 +610,30 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
       reader.readAsDataURL(file)
       const base64 = await base64Promise
 
-      // 2. Chama a API de IA com type='orcamento'
-      const res = await fetch('/api/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file: base64,
-          mimeType: file.type || 'application/pdf',
-          type: 'orcamento'
+      // 2. Chama a API de IA com type='orcamento' e timeout seguro de 15s
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 20000)
+
+      let data = null
+      try {
+        const res = await fetch('/api/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            file: base64,
+            mimeType: file.type || 'application/pdf',
+            type: 'orcamento'
+          })
         })
-      })
+        clearTimeout(timeoutId)
+        data = await res.json()
+      } catch (fErr) {
+        clearTimeout(timeoutId)
+        console.warn('Timeout ou falha na extração de OCR pela IA:', fErr)
+      }
 
-      const data = await res.json()
-
-      if (data.success && data.data) {
+      if (data && data.success && data.data) {
         const d = data.data
         setForm(prev => ({
           ...prev,
@@ -645,15 +682,33 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
     try {
       let arquivoUrl = form.arquivoUrl || ''
 
-      // Se houver arquivo anexado, envia para o Firebase Storage
-      if (arquivo) {
+      // Se houver arquivo anexado, envia para o Firebase Storage com timeout ou fallback seguro
+      if (arquivo && !arquivoUrl) {
         try {
           const cleanName = arquivo.name.replace(/[^a-zA-Z0-9._-]/g, '_')
           const storageRef = ref(storage, `orcamentos/${Date.now()}_${cleanName}`)
-          const snap = await uploadBytes(storageRef, arquivo)
+          
+          // Timeout de 7s para não travar o salvamento caso Storage tenha regras restritas
+          const uploadPromise = uploadBytes(storageRef, arquivo)
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout Storage')), 7000))
+          
+          const snap = await Promise.race([uploadPromise, timeoutPromise])
           arquivoUrl = await getDownloadURL(snap.ref)
         } catch (stErr) {
-          console.warn('Falha no upload do Storage, salvando sem anexo:', stErr)
+          console.warn('Falha ou timeout no Storage, tentando fallback seguro:', stErr)
+          // Fallback: se for arquivo pequeno (< 800KB), salva em base64 inline para visualização garantida
+          if (arquivo.size <= 850000) {
+            try {
+              const reader = new FileReader()
+              arquivoUrl = await new Promise((res, rej) => {
+                reader.onload = e => res(e.target.result)
+                reader.onerror = rej
+                reader.readAsDataURL(arquivo)
+              })
+            } catch (rErr) {
+              console.warn('Erro ao ler fallback base64:', rErr)
+            }
+          }
         }
       }
 

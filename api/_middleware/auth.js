@@ -32,6 +32,8 @@ export function getFirebaseAdmin() {
 }
 
 export const ALLOWED_ORIGINS = [
+  'https://app.alphaadmsc.com.br',
+  'https://alphaadmsc.com.br',
   'https://alphaadmsc.vercel.app',
   'https://alpha-gestao.vercel.app',
   'https://alpha-solucoes-condominiais.vercel.app',

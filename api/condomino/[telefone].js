@@ -20,6 +20,8 @@ const ROLES_PERMITIDOS = ['Administrador', 'Financeiro', 'Síndico', 'Porteiro']
 
 // ─── Domínios permitidos (CORS restrito) ──────────────────────────────────
 const ALLOWED_ORIGINS = [
+  'https://app.alphaadmsc.com.br',
+  'https://alphaadmsc.com.br',
   'https://alphaadmsc.vercel.app',
   'https://alpha-gestao.vercel.app',
   'http://localhost:5173',
