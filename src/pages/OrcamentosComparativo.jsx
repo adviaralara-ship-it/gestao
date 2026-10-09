@@ -593,28 +593,83 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  const [statusLeitura, setStatusLeitura] = useState(null) // null, 'sucesso', 'parcial', 'erro'
+  const [erroValidacao, setErroValidacao] = useState('')
+
+  // Função utilitária para comprimir/redimensionar imagens antes do envio para a API (evitando payload > 4.5MB da Vercel)
+  const comprimirImagemSeNecessario = (file) => {
+    return new Promise((resolve) => {
+      if (!file.type.startsWith('image/')) {
+        // Se for PDF ou outro arquivo, lê normalmente
+        const reader = new FileReader()
+        reader.onload = ev => resolve({ base64: ev.target.result, mimeType: file.type || 'application/pdf' })
+        reader.onerror = () => resolve({ base64: null, mimeType: file.type })
+        reader.readAsDataURL(file)
+        return
+      }
+
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const img = new Image()
+        img.onload = () => {
+          const MAX_WIDTH = 1600
+          const MAX_HEIGHT = 1600
+          let width = img.width
+          let height = img.height
+
+          if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+            if (width > height) {
+              height = Math.round((height * MAX_WIDTH) / width)
+              width = MAX_WIDTH
+            } else {
+              width = Math.round((width * MAX_HEIGHT) / height)
+              height = MAX_HEIGHT
+            }
+          }
+
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, 0, 0, width, height)
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+          resolve({ base64: dataUrl, mimeType: 'image/jpeg' })
+        }
+        img.onerror = () => resolve({ base64: ev.target.result, mimeType: file.type || 'image/jpeg' })
+        img.src = ev.target.result
+      }
+      reader.onerror = () => resolve({ base64: null, mimeType: file.type })
+      reader.readAsDataURL(file)
+    })
+  }
+
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     setArquivo(file)
     setExtraindo(true)
+    setStatusLeitura(null)
+    setErroValidacao('')
 
     try {
-      // 1. Converte para Base64
-      const reader = new FileReader()
-      const base64Promise = new Promise((resolve, reject) => {
-        reader.onload = ev => resolve(ev.target.result)
-        reader.onerror = reject
-      })
-      reader.readAsDataURL(file)
-      const base64 = await base64Promise
+      // 1. Processa e comprime imagem se necessário
+      const { base64, mimeType } = await comprimirImagemSeNecessario(file)
+      if (!base64) {
+        throw new Error('Não foi possível ler o arquivo selecionado.')
+      }
 
-      // 2. Chama a API de IA com type='orcamento' e timeout seguro de 15s
+      // Se for leve, guarda no form como preview/fallback caso Storage demore
+      if (base64.length < 2000000) {
+        setForm(prev => ({ ...prev, arquivoUrl: prev.arquivoUrl || base64 }))
+      }
+
+      // 2. Chama a API de IA com type='orcamento' e timeout seguro de 25s
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 20000)
+      const timeoutId = setTimeout(() => controller.abort(), 25000)
 
       let data = null
+      let statusHttp = 0
       try {
         const res = await fetch('/api/extract', {
           method: 'POST',
@@ -622,19 +677,23 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
           signal: controller.signal,
           body: JSON.stringify({
             file: base64,
-            mimeType: file.type || 'application/pdf',
+            mimeType: mimeType || 'image/jpeg',
             type: 'orcamento'
           })
         })
         clearTimeout(timeoutId)
+        statusHttp = res.status
         data = await res.json()
       } catch (fErr) {
         clearTimeout(timeoutId)
-        console.warn('Timeout ou falha na extração de OCR pela IA:', fErr)
+        console.warn('Timeout ou falha na chamada de OCR pela IA:', fErr)
       }
 
       if (data && data.success && data.data) {
         const d = data.data
+        const temValor = d.valor !== undefined && d.valor !== null && d.valor !== ''
+        const temEmpresa = !!d.empresa
+
         setForm(prev => ({
           ...prev,
           empresa: d.empresa || prev.empresa || file.name.replace(/\.[^/.]+$/, ""),
@@ -642,7 +701,7 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
           grupo: d.grupo ? d.grupo.toUpperCase() : prev.grupo,
           tipoServico: d.tipoServico || prev.tipoServico || '',
           materiais: d.materiais || prev.materiais || '',
-          valor: d.valor !== undefined ? String(d.valor) : prev.valor,
+          valor: temValor ? String(d.valor) : prev.valor,
           condicaoPagamento: d.condicaoPagamento || prev.condicaoPagamento || '',
           prazo: d.prazo || prev.prazo || '',
           garantia: d.garantia || prev.garantia || '',
@@ -651,21 +710,30 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
           email: d.email || prev.email || '',
           analiseIA: d.analiseIA || prev.analiseIA || ''
         }))
+
+        if (temValor && temEmpresa) {
+          setStatusLeitura('sucesso')
+        } else {
+          setStatusLeitura('parcial')
+        }
         setEtapa('revisao')
       } else {
-        // Se a IA não conseguir extrair todos os dados, deixa o usuário preencher
+        // A IA não conseguiu extrair ou houve erro de rede/timeout
+        console.warn('Resposta da IA sem dados ou erro:', data, statusHttp)
         setForm(prev => ({
           ...prev,
-          empresa: file.name.replace(/\.[^/.]+$/, "")
+          empresa: prev.empresa || file.name.replace(/\.[^/.]+$/, "")
         }))
+        setStatusLeitura('parcial')
         setEtapa('revisao')
       }
     } catch (err) {
-      console.warn('Falha no OCR IA de orçamento:', err)
+      console.warn('Falha no processamento do arquivo:', err)
       setForm(prev => ({
         ...prev,
-        empresa: file.name.replace(/\.[^/.]+$/, "")
+        empresa: prev.empresa || file.name.replace(/\.[^/.]+$/, "")
       }))
+      setStatusLeitura('parcial')
       setEtapa('revisao')
     } finally {
       setExtraindo(false)
@@ -673,57 +741,68 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
   }
 
   const handleSalvar = async () => {
-    if (!form.empresa || !form.valor) {
-      alert('Por favor, informe ao menos o Nome da Empresa e o Valor do orçamento.')
+    setErroValidacao('')
+
+    if (!form.empresa?.trim()) {
+      setErroValidacao('Por favor, informe o Nome da Empresa / Prestador.')
+      return
+    }
+
+    const valLimpo = typeof form.valor === 'number' 
+      ? form.valor 
+      : (parseFloat(String(form.valor || '').replace(/\./g, '').replace(',', '.')) || 0)
+
+    if (!valLimpo || isNaN(valLimpo) || valLimpo <= 0) {
+      setErroValidacao('Por favor, preencha o campo "Valor Total (R$)" com o valor do orçamento (ex: 12000.00).')
       return
     }
 
     setSalvando(true)
     try {
-      let arquivoUrl = form.arquivoUrl || ''
+      let arquivoUrlFinal = form.arquivoUrl || ''
 
-      // Se houver arquivo anexado, envia para o Firebase Storage com timeout ou fallback seguro
-      if (arquivo && !arquivoUrl) {
+      // Se houver arquivo selecionado, tenta enviar para o Firebase Storage com timeout seguro de 6s
+      if (arquivo && (!arquivoUrlFinal || arquivoUrlFinal.startsWith('data:'))) {
         try {
           const cleanName = arquivo.name.replace(/[^a-zA-Z0-9._-]/g, '_')
           const storageRef = ref(storage, `orcamentos/${Date.now()}_${cleanName}`)
           
-          // Timeout de 7s para não travar o salvamento caso Storage tenha regras restritas
           const uploadPromise = uploadBytes(storageRef, arquivo)
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout Storage')), 7000))
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout Storage')), 6000))
           
           const snap = await Promise.race([uploadPromise, timeoutPromise])
-          arquivoUrl = await getDownloadURL(snap.ref)
+          arquivoUrlFinal = await getDownloadURL(snap.ref)
         } catch (stErr) {
-          console.warn('Falha ou timeout no Storage, tentando fallback seguro:', stErr)
-          // Fallback: se for arquivo pequeno (< 800KB), salva em base64 inline para visualização garantida
-          if (arquivo.size <= 850000) {
+          console.warn('Storage indisponível ou regras bloqueando, mantendo fallback de visualização:', stErr)
+          // Se já tínhamos o preview em base64 (até 1.5MB), mantemos para não perder a visualização
+          if (!arquivoUrlFinal && arquivo.size <= 850000) {
             try {
               const reader = new FileReader()
-              arquivoUrl = await new Promise((res, rej) => {
+              arquivoUrlFinal = await new Promise((res, rej) => {
                 reader.onload = e => res(e.target.result)
                 reader.onerror = rej
                 reader.readAsDataURL(arquivo)
               })
             } catch (rErr) {
-              console.warn('Erro ao ler fallback base64:', rErr)
+              console.warn('Erro ao ler base64 fallback:', rErr)
             }
           }
         }
       }
 
-      const valLimpo = typeof form.valor === 'number' ? form.valor : (parseFloat(String(form.valor).replace(/\./g, '').replace(',', '.')) || 0)
-
       await onSave({
         ...form,
+        empresa: form.empresa.trim(),
+        grupo: (form.grupo || 'GERAL').trim().toUpperCase(),
         valor: valLimpo,
-        arquivoUrl,
+        arquivoUrl: arquivoUrlFinal,
+        arquivoNome: arquivo?.name || '',
         criadoPor: user?.nome || 'Usuário',
         criadoEm: new Date().toISOString()
       })
     } catch (err) {
       console.error(err)
-      alert('Erro ao salvar orçamento: ' + err.message)
+      setErroValidacao('Erro ao salvar no Firestore: ' + err.message)
     } finally {
       setSalvando(false)
     }
@@ -776,7 +855,7 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
                 </div>
                 <div className="text-left">
                   <p className="text-xs font-black text-gray-900">{arquivo.name}</p>
-                  <p className="text-[11px] text-emerald-600 font-bold">Arquivo processado com sucesso! Revise os dados abaixo:</p>
+                  <p className="text-[11px] text-emerald-600 font-bold">Arquivo anexado! Confira e complete os dados abaixo:</p>
                 </div>
               </div>
             ) : (
@@ -789,6 +868,33 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
               </div>
             )}
           </div>
+
+          {/* Feedback do Status da Leitura por IA */}
+          {statusLeitura === 'sucesso' && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2.5 text-xs text-emerald-800 animate-fade-in">
+              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+              <span><strong>Leitura concluída com sucesso!</strong> Os dados principais da proposta foram preenchidos pela IA. Você pode ajustá-los se desejar.</span>
+            </div>
+          )}
+
+          {statusLeitura === 'parcial' && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2.5 text-xs text-amber-900 animate-fade-in">
+              <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Aviso sobre o documento anexado:</p>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  A imagem/PDF foi anexada com sucesso, mas alguns dados (como Valor ou Empresa) precisam ser informados ou conferidos manualmente nos campos abaixo antes de salvar.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {erroValidacao && (
+            <div className="bg-rose-50 border border-rose-300 rounded-xl p-3 flex items-center gap-2.5 text-xs text-rose-800 font-bold animate-fade-in">
+              <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+              <span>{erroValidacao}</span>
+            </div>
+          )}
 
           {/* Formulário de Revisão Preenchido pela IA */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
