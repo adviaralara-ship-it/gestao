@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { FileText, Plus, Download, DollarSign, Printer, CheckCircle2, Clock, AlertCircle, Trash2, Edit2, X, MessageSquare, Sparkles, Check, TrendingUp, Bell, Building, Upload, Copy, Share2, QrCode, Package } from 'lucide-react'
+import { FileText, Plus, Download, DollarSign, Printer, CheckCircle2, Clock, AlertCircle, Trash2, Edit2, X, MessageSquare, Sparkles, Check, TrendingUp, Bell, Building, Upload, Copy, Share2, QrCode, Package, Send, Users } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
@@ -1426,6 +1426,315 @@ function ModalGerarLote({ condominios, moradores, allBoletos = [], initialCondo 
   )
 }
 
+function ModalNotificarVencimento({ boletosPendentes, moradores, condominios, onClose, onEnviarLote }) {
+  const [selecionadosIds, setSelecionadosIds] = useState(() => boletosPendentes.map(b => b.id))
+  const [busca, setBusca] = useState('')
+  const [tipoTemplate, setTipoTemplate] = useState('vencendo') // 'vencendo', 'hoje', 'vencido', 'custom'
+  const [mensagemPersonalizada, setMensagemPersonalizada] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [progresso, setProgresso] = useState(null)
+
+  // Mensagens modelo pré-configuradas com variáveis inteligentes
+  const templates = {
+    vencendo: `Olá *{morador}* (Apt *{apt}*)!\n\nPassando para lembrar que o seu *Boleto Condominial* referente a *{competencia}* do *{condominio}* está próximo do vencimento em *{vencimento}*.\n\n💰 *Valor:* R$ {valor}\n\nSegue o boleto oficial em anexo com o QR Code PIX para sua comodidade. Evite multas pagando em dia!\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`,
+    hoje: `🔴 *Seu Boleto Condominial Vence HOJE*\n\nOlá *{morador}* (Apt *{apt}*)!\n\nLembramos que a taxa de condomínio referente a *{competencia}* do *{condominio}* vence *hoje* ({vencimento}).\n\n💰 *Valor:* R$ {valor}\n\nEfetue o pagamento via PIX no documento em anexo para evitar a incidência de juros e encargos.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`,
+    vencido: `Prezado(a) *{morador}* (Apt *{apt}*),\n\nIdentificamos que o boleto condominial referente a *{competencia}* do *{condominio}* encontra-se em aberto (venceu em {vencimento}).\n\n💰 *Valor:* R$ {valor}\n\nPara facilitar a regularização, segue em anexo o documento oficial com o *QR Code PIX*. Caso já tenha efetuado o pagamento, por favor desconsidere este aviso.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`,
+    custom: `Olá *{morador}* (Apt *{apt}*)!\n\nSegue em anexo o seu boleto de *{competencia}* do *{condominio}* com vencimento em *{vencimento}*, no valor de R$ {valor}.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+  }
+
+  const textoBase = tipoTemplate === 'custom' ? (mensagemPersonalizada || templates.custom) : templates[tipoTemplate]
+
+  // Boletos filtrados por busca
+  const boletosFiltrados = boletosPendentes.filter(b => {
+    if (!busca) return true
+    const s = busca.toLowerCase()
+    return (b.morador || '').toLowerCase().includes(s) ||
+           String(b.apt || '').toLowerCase().includes(s) ||
+           (b.condominio || '').toLowerCase().includes(s)
+  })
+
+  const toggleSelect = (id) => {
+    setSelecionadosIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
+
+  const toggleTodos = () => {
+    if (selecionadosIds.length === boletosFiltrados.length) {
+      setSelecionadosIds([])
+    } else {
+      setSelecionadosIds(boletosFiltrados.map(b => b.id))
+    }
+  }
+
+  const handleDisparar = async () => {
+    const listaParaEnviar = boletosPendentes.filter(b => selecionadosIds.includes(b.id))
+    if (listaParaEnviar.length === 0) {
+      alert('Selecione ao menos um morador para disparar a notificação.')
+      return
+    }
+
+    setEnviando(true)
+    try {
+      await onEnviarLote(listaParaEnviar, textoBase, (prog) => {
+        setProgresso(prog)
+      })
+      onClose()
+    } catch (err) {
+      console.error(err)
+      alert('Erro durante o envio: ' + err.message)
+    } finally {
+      setEnviando(false)
+      setProgresso(null)
+    }
+  }
+
+  return (
+    <div className="modal-overlay z-50" onClick={!enviando ? onClose : undefined}>
+      <div className="modal-content max-w-3xl w-full p-0 flex flex-col max-h-[92vh] overflow-hidden rounded-3xl shadow-2xl bg-white" onClick={e => e.stopPropagation()}>
+        
+        {/* Cabeçalho */}
+        <div className="p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-brand-950 text-white flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-400 flex items-center justify-center">
+              <MessageSquare size={22} />
+            </div>
+            <div>
+              <h3 className="font-black text-base sm:text-lg flex items-center gap-2">
+                Notificar Vencimento via WhatsApp
+                <span className="bg-emerald-500 text-slate-950 text-[10px] font-black uppercase px-2 py-0.5 rounded-full">Boleto + PDF Oficial</span>
+              </h3>
+              <p className="text-xs text-slate-300">
+                Selecione os moradores que ainda não pagaram para disparar o aviso de vencimento com o PDF do boleto anexado
+              </p>
+            </div>
+          </div>
+          {!enviando && (
+            <button onClick={onClose} className="text-gray-400 hover:text-white p-1 rounded-xl">
+              <X size={20} />
+            </button>
+          )}
+        </div>
+
+        {/* Corpo */}
+        <div className="p-5 sm:p-6 overflow-y-auto flex-1 flex flex-col gap-5">
+          
+          {/* Seletor de Modelo de Mensagem */}
+          <div className="bg-slate-50 p-4 rounded-2xl border border-gray-200 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="text-xs font-black text-gray-800 uppercase flex items-center gap-1.5">
+                <Sparkles size={14} className="text-amber-500" />
+                Modelo da Mensagem de Notificação
+              </label>
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setTipoTemplate('vencendo')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                    tipoTemplate === 'vencendo' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  ⏳ Vencendo em Breve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoTemplate('hoje')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                    tipoTemplate === 'hoje' ? 'bg-rose-500 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  🔴 Vence Hoje
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoTemplate('vencido')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                    tipoTemplate === 'vencido' ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  ⚠️ Em Atraso
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoTemplate('custom')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                    tipoTemplate === 'custom' ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  ✏️ Personalizar
+                </button>
+              </div>
+            </div>
+
+            {tipoTemplate === 'custom' ? (
+              <textarea
+                className="input text-xs min-h-[90px] font-mono leading-relaxed"
+                value={mensagemPersonalizada}
+                onChange={e => setMensagemPersonalizada(e.target.value)}
+                placeholder="Digite a mensagem. Variáveis disponíveis: {morador}, {apt}, {condominio}, {competencia}, {vencimento}, {valor}"
+              />
+            ) : (
+              <div className="bg-white p-3 rounded-xl border border-gray-200 text-xs text-gray-700 whitespace-pre-line leading-relaxed font-sans">
+                {textoBase}
+              </div>
+            )}
+            <p className="text-[11px] text-gray-400">
+              💡 <b>Nota:</b> O arquivo PDF com o código de barras e o QR Code PIX do boleto de cada morador é gerado e anexado automaticamente no WhatsApp.
+            </p>
+          </div>
+
+          {/* Lista de Moradores Pendentes com Checkbox */}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-gray-800 uppercase">
+                  Moradores que ainda não pagaram ({boletosFiltrados.length})
+                </span>
+                <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  {selecionadosIds.length} selecionado(s)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Buscar morador, apt..."
+                  value={busca}
+                  onChange={e => setBusca(e.target.value)}
+                  className="input text-xs py-1.5 px-3 w-48 sm:w-56"
+                />
+                <button
+                  type="button"
+                  onClick={toggleTodos}
+                  className="text-xs font-bold text-brand-600 hover:text-brand-800 underline cursor-pointer shrink-0"
+                >
+                  {selecionadosIds.length === boletosFiltrados.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                </button>
+              </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-2xl overflow-hidden divide-y divide-gray-100 max-h-[320px] overflow-y-auto bg-white">
+              {boletosFiltrados.length === 0 ? (
+                <div className="p-8 text-center text-xs text-gray-400">
+                  Nenhum morador pendente encontrado com os filtros atuais.
+                </div>
+              ) : (
+                boletosFiltrados.map(b => {
+                  const isSel = selecionadosIds.includes(b.id)
+                  const moradorDoc = (moradores || []).find(m => 
+                    (m.id && b.moradorId && m.id === b.moradorId) ||
+                    (m.nome && b.morador && m.nome.trim().toLowerCase() === b.morador.trim().toLowerCase()) ||
+                    (m.apt && b.apt && String(m.apt).trim() === String(b.apt).trim() && (!b.condominio || m.condominio === b.condominio))
+                  )
+                  const rawTel = moradorDoc?.tel || moradorDoc?.telefone || moradorDoc?.whatsapp || b.telefone || b.tel || ''
+                  const temTel = !!rawTel && String(rawTel).replace(/\D/g, '').length >= 8
+
+                  const d = b.vencimento ? Math.round((new Date(b.vencimento + 'T12:00:00') - new Date()) / 86400000) : null
+                  const labelVenc = d === null ? '' : d < 0 ? `Vencido há ${Math.abs(d)} dia(s)` : d === 0 ? 'Vence HOJE' : `Vence em ${d} dia(s)`
+                  const corVenc = d === null ? 'text-gray-500' : d < 0 ? 'text-purple-600 font-bold' : d === 0 ? 'text-rose-600 font-bold' : 'text-amber-700 font-bold'
+
+                  return (
+                    <div
+                      key={b.id}
+                      onClick={() => toggleSelect(b.id)}
+                      className={`p-3.5 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                        isSel ? 'bg-emerald-50/50' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isSel}
+                          onChange={() => {}} // tratado no onClick do container
+                          className="w-4 h-4 rounded text-emerald-600 border-gray-300 focus:ring-emerald-500 cursor-pointer shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-xs text-gray-900 truncate">{b.morador}</span>
+                            <span className="text-[11px] font-black text-brand-700 bg-brand-50 px-1.5 py-0.2 rounded border border-brand-200">
+                              {b.apt ? `Apt ${b.apt}` : '—'}
+                            </span>
+                            <span className="text-[10px] text-gray-500 truncate max-w-[140px]">
+                              • {b.condominio || 'Geral'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 text-[11px]">
+                            <span className={`text-[10px] ${corVenc}`}>
+                              📅 Venc: {b.vencimento || '—'} ({labelVenc})
+                            </span>
+                            <span className="text-gray-300">•</span>
+                            <span className={temTel ? 'text-emerald-700 font-semibold' : 'text-rose-600 font-bold'}>
+                              {temTel ? `📞 ${rawTel}` : '⚠️ Sem WhatsApp cadastrado'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="font-mono font-black text-xs text-gray-900 block">
+                          R$ {Number(b.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100/70 px-1.5 py-0.2 rounded">
+                          {b.competencia || 'Mês Atual'}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Barra de Progresso durante o envio */}
+          {progresso && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex flex-col gap-2 animate-fade-in">
+              <div className="flex items-center justify-between text-xs font-black text-emerald-950">
+                <span>Enviando boleto para: {progresso.morador}...</span>
+                <span>{progresso.atual} de {progresso.total}</span>
+              </div>
+              <div className="w-full bg-emerald-200/60 rounded-full h-2.5 overflow-hidden">
+                <div 
+                  className="bg-emerald-600 h-full transition-all duration-300"
+                  style={{ width: `${(progresso.atual / progresso.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+        </div>
+
+        {/* Rodapé */}
+        <div className="p-4 bg-slate-50 border-t border-gray-200 flex items-center justify-between gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={enviando}
+            className="btn-secondary text-xs"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDisparar}
+            disabled={enviando || selecionadosIds.length === 0}
+            className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-xs font-black flex items-center gap-2 py-2.5 px-5 shadow-lg shadow-emerald-700/20 disabled:opacity-50 cursor-pointer"
+          >
+            <Send size={15} />
+            <span>
+              {enviando 
+                ? 'Disparando WhatsApp com Boleto...' 
+                : `Disparar Aviso para ${selecionadosIds.length} ${selecionadosIds.length === 1 ? 'Morador' : 'Moradores'}`
+              }
+            </span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 function ModalImportarPlanilha({ condominios, moradores, initialCondo = '', onClose, onSave }) {
   const [condominio, setCondominio] = useState(() => {
     if (initialCondo && initialCondo !== 'Todos') return initialCondo
@@ -1832,6 +2141,7 @@ export default function Boletos() {
   const [modal, setModal] = useState(null)
   const [modalLote, setModalLote] = useState(false)
   const [modalImportarPlanilha, setModalImportarPlanilha] = useState(false)
+  const [modalNotificarVencimento, setModalNotificarVencimento] = useState(false)
   const [condoFundoEdit, setCondoFundoEdit] = useState(null)
   const [selectedIds, setSelectedIds] = useState([])
   const [downloadingLote, setDownloadingLote] = useState(false)
@@ -2350,6 +2660,70 @@ export default function Boletos() {
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
+  const handleDispararNotificacoesVencimento = async (lista, textoTemplate, onProgresso) => {
+    let enviados = 0
+    let falhas = 0
+
+    for (let i = 0; i < lista.length; i++) {
+      const b = lista[i]
+      if (onProgresso) {
+        onProgresso({ total: lista.length, atual: i + 1, morador: `${b.morador} (Apt ${b.apt || '—'})` })
+      }
+
+      const moradorDoc = (moradores || []).find(m => 
+        (m.id && b.moradorId && m.id === b.moradorId) ||
+        (m.nome && b.morador && m.nome.trim().toLowerCase() === b.morador.trim().toLowerCase()) ||
+        (m.apt && b.apt && String(m.apt).trim() === String(b.apt).trim() && (!b.condominio || m.condominio === b.condominio))
+      ) || {
+        nome: b.morador,
+        tel: b.telefone || b.tel || '',
+        apt: b.apt,
+        condominio: b.condominio
+      }
+
+      const condoDoc = allCondominios.find(c => c.nome === (b.condominio || moradorDoc?.condominio))
+      const valorFmt = Number(b.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+      const vencFmt = b.vencimento ? (b.vencimento.includes('-') ? b.vencimento.split('-').reverse().join('/') : b.vencimento) : '—'
+
+      // Substitui variáveis do template
+      const msgPersonalizada = (textoTemplate || '')
+        .replace(/{morador}/g, b.morador || 'Morador')
+        .replace(/{apt}/g, b.apt || '—')
+        .replace(/{condominio}/g, condoDoc?.nome || b.condominio || 'Condomínio')
+        .replace(/{competencia}/g, b.competencia || 'Mês Vigente')
+        .replace(/{vencimento}/g, vencFmt)
+        .replace(/{valor}/g, valorFmt)
+
+      try {
+        const res = await enviarBoletoWhatsAppAuto(b, moradorDoc, condoDoc, msgPersonalizada)
+        if (res && res.success) {
+          enviados++
+          // Atualiza flags no boleto
+          await updateItem(b.id, {
+            ultimoAvisoWhatsEm: new Date().toISOString()
+          })
+        } else {
+          console.warn(`Falha no envio para ${b.morador}:`, res?.error)
+          falhas++
+        }
+      } catch (err) {
+        console.error(`Erro ao disparar para ${b.morador}:`, err)
+        falhas++
+      }
+
+      // Intervalo de segurança anti-bloqueio entre envios
+      if (i < lista.length - 1) {
+        await new Promise(r => setTimeout(r, 1200))
+      }
+    }
+
+    if (enviados > 0) {
+      alert(`🎉 Disparo de Vencimento Concluído!\n\n📲 ${enviados} moradores notificados no WhatsApp com a mensagem e o boleto em PDF anexado!\n${falhas > 0 ? `⚠️ ${falhas} envios não puderam ser entregues (morador sem número de WhatsApp cadastrado ou erro na rota).` : ''}`)
+    } else {
+      alert(`⚠️ Nenhum disparo pôde ser concluído.\n\nVerifique se os moradores selecionados possuem o número de WhatsApp/celular cadastrado no sistema.`)
+    }
+  }
+
   const marcarPago = async b => {
     const novoStatus = b.status === 'Pago' ? 'Pendente' : 'Pago'
     await updateItem(b.id, { ...b, status: novoStatus })
@@ -2666,6 +3040,14 @@ export default function Boletos() {
                   <Upload size={14} className="text-brand-600" />
                   <span>Importar Planilha (CSV)</span>
                 </button>
+                <button
+                  onClick={() => setModalNotificarVencimento(true)}
+                  className="btn-secondary text-sm flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 font-black shadow-sm"
+                  title="Disparar aviso de vencimento no WhatsApp com o boleto em PDF para moradores pendentes"
+                >
+                  <MessageSquare size={15} className="text-emerald-600" />
+                  <span>Notificar Vencimento (WhatsApp)</span>
+                </button>
                 <button onClick={()=>setModal('new')} className="btn-primary text-sm flex items-center gap-1"><Plus size={14}/> Novo Individual</button>
               </>
             )}
@@ -2793,15 +3175,33 @@ export default function Boletos() {
 
           {/* Aviso boletos próximos do vencimento */}
           {boletos.filter(b=>{ if(b.status==='Pago'||!b.vencimento)return false; const d=Math.round((new Date(b.vencimento+'T12:00:00')-new Date())/86400000); return d>=0&&d<=5 }).length > 0 && (
-            <div className="card bg-amber-50 border-amber-200 flex items-start gap-3">
-              <Bell size={18} className="text-amber-600 mt-0.5 shrink-0"/>
-              <div>
-                <p className="font-bold text-amber-800 text-sm">⚠️ Boletos vencendo em breve</p>
-                {boletos.filter(b=>{ if(b.status==='Pago'||!b.vencimento)return false; const d=Math.round((new Date(b.vencimento+'T12:00:00')-new Date())/86400000); return d>=0&&d<=5 }).map(b=>{
-                  const d=Math.round((new Date(b.vencimento+'T12:00:00')-new Date())/86400000)
-                  return <p key={b.id} className="text-xs text-amber-700">{b.morador} – Apt {b.apt} – R$ {fmt(b.valor)} – {d===0?'Vence HOJE':`Vence em ${d} dia(s)`}</p>
-                })}
+            <div className="card bg-amber-50 border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4">
+              <div className="flex items-start gap-3">
+                <Bell size={20} className="text-amber-600 mt-0.5 shrink-0"/>
+                <div>
+                  <p className="font-bold text-amber-900 text-sm">⚠️ Boletos vencendo em breve</p>
+                  <div className="mt-1 flex flex-col gap-0.5">
+                    {boletos.filter(b=>{ if(b.status==='Pago'||!b.vencimento)return false; const d=Math.round((new Date(b.vencimento+'T12:00:00')-new Date())/86400000); return d>=0&&d<=5 }).map(b=>{
+                      const d=Math.round((new Date(b.vencimento+'T12:00:00')-new Date())/86400000)
+                      return (
+                        <p key={b.id} className="text-xs text-amber-800">
+                          <b>{b.morador}</b> – Apt {b.apt} – R$ {fmt(b.valor)} – <span className={d===0?'text-rose-600 font-black':'font-bold'}>{d===0?'Vence HOJE':`Vence em ${d} dia(s)`}</span>
+                        </p>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
+
+              {(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
+                <button
+                  onClick={() => setModalNotificarVencimento(true)}
+                  className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-xs font-black px-4 py-2 flex items-center gap-1.5 shadow-md self-start sm:self-center shrink-0 cursor-pointer"
+                >
+                  <Send size={14} />
+                  <span>Disparar Aviso no WhatsApp</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -2834,6 +3234,20 @@ export default function Boletos() {
 
                   {selectedIds.length > 0 && (
                     <>
+                      <button
+                        onClick={() => {
+                          const selecionadosPendentes = boletos.filter(b => selectedIds.includes(b.id) && b.status !== 'Pago')
+                          if (selecionadosPendentes.length === 0) {
+                            alert('Todos os boletos selecionados já constam como Pagos.')
+                            return
+                          }
+                          setModalNotificarVencimento(true)
+                        }}
+                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                        title="Enviar aviso de vencimento no WhatsApp dos moradores selecionados"
+                      >
+                        <MessageSquare size={14} /> Notificar Vencimento ({selectedIds.length})
+                      </button>
                       <button
                         onClick={async () => {
                           if (window.confirm(`⚠️ Tem certeza que deseja EXCLUIR os ${selectedIds.length} boletos selecionados? Esta ação não pode ser desfeita.`)) {
@@ -3127,6 +3541,23 @@ export default function Boletos() {
       {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores} condominios={condominios} initialCondo={user?.role !== 'Administrador' ? user?.condominio : (condoFilter !== 'Todos' ? condoFilter : '')}/>}
       {modalLote&&<ModalGerarLote condominios={condominios} moradores={moradores} allBoletos={allBoletos} initialCondo={user?.role !== 'Administrador' ? user?.condominio : (condoFilter !== 'Todos' ? condoFilter : '')} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
       {modalImportarPlanilha&&<ModalImportarPlanilha condominios={condominios} moradores={moradores} initialCondo={user?.role !== 'Administrador' ? user?.condominio : (condoFilter !== 'Todos' ? condoFilter : '')} onClose={()=>setModalImportarPlanilha(false)} onSave={handleSaveImportarPlanilha}/>}
+      {modalNotificarVencimento && (
+        <ModalNotificarVencimento
+          boletosPendentes={(() => {
+            // Se houver boletos selecionados pelo checkbox na tabela, prioriza os selecionados pendentes
+            if (selectedIds.length > 0) {
+              const selecionados = boletos.filter(b => selectedIds.includes(b.id) && b.status !== 'Pago')
+              if (selecionados.length > 0) return selecionados
+            }
+            // Caso contrário, pega todos os boletos que ainda não foram pagos (filtrados pelo condomínio/mês atual)
+            return boletosFiltradosPorCondo.filter(b => b.status !== 'Pago')
+          })()}
+          moradores={moradores}
+          condominios={allCondominios}
+          onClose={() => setModalNotificarVencimento(false)}
+          onEnviarLote={handleDispararNotificacoesVencimento}
+        />
+      )}
       {condoFundoEdit&&<ModalFundo condo={condoFundoEdit} onClose={()=>setCondoFundoEdit(null)} onSave={handleSaveFundo}/>}
       <RepassesAlphaModal
         isOpen={showRepasses}
