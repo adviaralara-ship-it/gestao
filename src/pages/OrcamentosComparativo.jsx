@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { 
   FileText, Upload, Sparkles, Plus, Trash2, Edit2, Download, 
   CheckCircle2, AlertTriangle, ArrowRight, Eye, RefreshCw, X,
-  Building2, DollarSign, Award, ThumbsUp, Calendar, Search, Loader2
+  Building2, DollarSign, Award, ThumbsUp, Calendar, Search, Loader2,
+  LayoutGrid, ListFilter, Phone, Mail, Clock, ShieldCheck
 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -10,6 +11,30 @@ import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage, auth } from '../firebase'
+
+export function sanitizarValor(val) {
+  if (val === null || val === undefined || val === '') return 0
+  if (typeof val === 'number') return isNaN(val) ? 0 : val
+  let str = String(val).trim()
+  // Se contiver R$, limpa
+  str = str.replace(/R\$\s?/gi, '').trim()
+  // Se contiver tanto ponto quanto vírgula (ex: 4.207,50 ou 4,207.50)
+  if (str.includes('.') && str.includes(',')) {
+    if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+      // Padrão brasileiro: 4.207,50 -> remove ponto, troca virgula por ponto
+      str = str.replace(/\./g, '').replace(',', '.')
+    } else {
+      // Padrão americano com vírgula de milhar: 4,207.50 -> remove virgula
+      str = str.replace(/,/g, '')
+    }
+  } else if (str.includes(',')) {
+    // Apenas vírgula: 4207,50 -> troca por ponto
+    str = str.replace(',', '.')
+  }
+  // Se for apenas número com ponto (ex: "4207.50"), parseFloat direto
+  const num = parseFloat(str)
+  return isNaN(num) ? 0 : num
+}
 
 export default function OrcamentosComparativo({ condominios = [], condoFiltro = 'Todos' }) {
   const { user } = useAuth()
@@ -31,6 +56,8 @@ export default function OrcamentosComparativo({ condominios = [], condoFiltro = 
 
   const [modalUpload, setModalUpload] = useState(false)
   const [modalVisualizar, setModalVisualizar] = useState(null)
+  const [modalEditar, setModalEditar] = useState(null)
+  const [modoVisualizacao, setModoVisualizacao] = useState('vertical') // 'vertical' (cards espaçosos padrão) ou 'tabela' (horizontal)
   const [grupoFiltro, setGrupoFiltro] = useState('Todos')
   const [search, setSearch] = useState('')
   const [gerandoPdf, setGerandoPdf] = useState(false)
@@ -363,6 +390,34 @@ export default function OrcamentosComparativo({ condominios = [], condoFiltro = 
               ))}
             </select>
           </div>
+
+          {/* Alternador de Layout: Vertical (Cards espaçosos) vs Tabela */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-gray-200">
+            <button
+              onClick={() => setModoVisualizacao('vertical')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                modoVisualizacao === 'vertical'
+                  ? 'bg-white text-brand-700 shadow-sm font-black'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+              title="Disposição Vertical (Mais espaço para ler e editar materiais e especificações sem espremer as letras)"
+            >
+              <LayoutGrid size={14} />
+              <span>Vertical (Espaçoso)</span>
+            </button>
+            <button
+              onClick={() => setModoVisualizacao('tabela')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                modoVisualizacao === 'tabela'
+                  ? 'bg-white text-brand-700 shadow-sm font-black'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+              title="Disposição em Tabela Horizontal Clássica"
+            >
+              <ListFilter size={14} />
+              <span>Tabela</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -384,112 +439,120 @@ export default function OrcamentosComparativo({ condominios = [], condoFiltro = 
           </button>
         </div>
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-8">
           {quadrosAgrupados.map((quadro) => (
-            <div key={quadro.grupo} className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+            <div key={quadro.grupo} className="bg-white rounded-3xl border border-gray-200 shadow-md overflow-hidden">
               {/* Topo do Quadro */}
-              <div className="p-4 sm:p-5 bg-slate-50 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-7 h-7 rounded-lg bg-brand-600 text-white font-black text-xs flex items-center justify-center">
+              <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-xl bg-brand-600 text-white font-black text-sm flex items-center justify-center shadow-sm">
                     {quadro.numeroQuadro}
                   </span>
                   <div>
-                    <h4 className="font-black text-sm sm:text-base text-gray-900 uppercase tracking-wide">
+                    <h4 className="font-black text-base sm:text-lg text-gray-900 uppercase tracking-wide">
                       QUADRO {quadro.numeroQuadro} – ORÇAMENTOS DA {quadro.grupo}
                     </h4>
-                    <p className="text-[11px] text-gray-500">
-                      {quadro.itens.length} proposta{quadro.itens.length > 1 ? 's' : ''} comparada{quadro.itens.length > 1 ? 's' : ''}
+                    <p className="text-xs text-gray-500 font-medium">
+                      {quadro.itens.length} proposta{quadro.itens.length > 1 ? 's' : ''} analisada{quadro.itens.length > 1 ? 's' : ''} e comparada{quadro.itens.length > 1 ? 's' : ''}
                     </p>
                   </div>
                 </div>
 
                 {quadro.menorOpcao && (
-                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
-                    <Award size={16} className="text-emerald-600 shrink-0" />
-                    <div className="text-right">
-                      <span className="text-[10px] font-bold text-emerald-800 uppercase block">Menor Valor</span>
-                      <span className="text-xs font-black text-emerald-900">
-                        {quadro.menorOpcao.empresa} (R$ {Number(quadro.menorOpcao.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+                  <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 px-3.5 py-2 rounded-2xl shadow-sm">
+                    <Award size={18} className="text-emerald-600 shrink-0" />
+                    <div>
+                      <span className="text-[10px] font-bold text-emerald-800 uppercase block tracking-wider">Menor Valor Global</span>
+                      <span className="text-xs sm:text-sm font-black text-emerald-950">
+                        {quadro.menorOpcao.empresa} (R$ {Number(sanitizarValor(quadro.menorOpcao.valor)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                       </span>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Tabela do Quadro no Estilo Fiel da Imagem */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-[#d7e2ee] text-slate-900 border-b border-slate-300 font-black">
-                      <th className="p-3 text-center w-12 border-r border-slate-300">Nº</th>
-                      <th className="p-3 w-48 border-r border-slate-300">Empresa / Orçamento</th>
-                      <th className="p-3 w-64 border-r border-slate-300">Tipo de serviço</th>
-                      <th className="p-3 border-r border-slate-300">Modelo / Materiais</th>
-                      <th className="p-3 w-32 border-r border-slate-300">Valor</th>
-                      <th className="p-3 w-52 border-r border-slate-300">Condição de pagamento</th>
-                      <th className="p-3 w-24 text-center">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {quadro.itens.map((item, idx) => {
-                      const isMenor = quadro.menorOpcao && item.id === quadro.menorOpcao.id
-                      return (
-                        <tr 
-                          key={item.id} 
-                          className={`hover:bg-slate-50 transition-colors ${
-                            isMenor ? 'bg-emerald-50/40 font-semibold' : ''
-                          }`}
-                        >
-                          <td className="p-3 text-center font-bold text-gray-500 border-r border-gray-200">
-                            {idx + 1}
-                          </td>
-                          <td className="p-3 font-bold text-gray-900 border-r border-gray-200">
-                            {item.numero ? (
-                              <>
-                                <span className="block text-[11px] text-gray-500 font-mono">{item.numero}</span>
-                                <span>{item.empresa}</span>
-                              </>
-                            ) : (
-                              <span>{item.empresa}</span>
-                            )}
-                            {isMenor && (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded ml-1.5 border border-emerald-300">
-                                ⭐ Melhor Opção
+              {/* RENDERIZAÇÃO 1: MODO VERTICAL (CARDS ESPAÇOSOS COM LINHAS AMPLAS) */}
+              {modoVisualizacao === 'vertical' ? (
+                <div className="p-4 sm:p-6 bg-slate-50/50 flex flex-col gap-4">
+                  {quadro.itens.map((item, idx) => {
+                    const isMenor = quadro.menorOpcao && item.id === quadro.menorOpcao.id
+                    return (
+                      <div
+                        key={item.id}
+                        className={`bg-white rounded-2xl p-5 border transition-all shadow-sm hover:shadow-md ${
+                          isMenor
+                            ? 'border-emerald-300 ring-2 ring-emerald-500/20 bg-gradient-to-r from-emerald-50/20 to-white'
+                            : 'border-gray-200'
+                        }`}
+                      >
+                        {/* Linha 1 do Card: Cabeçalho com Empresa, Tag de Menor Valor, Valor em Destaque e Ações */}
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+                          <div className="flex items-start sm:items-center gap-3">
+                            <span className="w-7 h-7 rounded-lg bg-slate-200 text-slate-800 font-black text-xs flex items-center justify-center shrink-0">
+                              #{idx + 1}
+                            </span>
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h5 className="text-base font-black text-gray-900">
+                                  {item.empresa}
+                                </h5>
+                                {item.numero && (
+                                  <span className="text-[11px] font-mono bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-bold">
+                                    {item.numero}
+                                  </span>
+                                )}
+                                {isMenor && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                                    ⭐ Melhor Opção
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-500 mt-0.5 font-medium">
+                                {item.condominio ? `Condomínio: ${item.condominio}` : 'Proposta cadastrada'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between md:justify-end gap-4 shrink-0">
+                            {/* Valor destacado */}
+                            <div className="text-left md:text-right">
+                              <span className="text-[10px] font-bold text-gray-500 uppercase block">Valor Total</span>
+                              <span className="text-lg sm:text-xl font-black font-mono text-emerald-700 whitespace-nowrap">
+                                R$ {Number(sanitizarValor(item.valor)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>
-                            )}
-                          </td>
-                          <td className="p-3 text-gray-700 border-r border-gray-200">
-                            {item.tipoServico || '—'}
-                          </td>
-                          <td className="p-3 text-gray-600 border-r border-gray-200 leading-relaxed">
-                            {item.materiais || '—'}
-                          </td>
-                          <td className="p-3 font-mono font-black text-gray-900 text-sm border-r border-gray-200 whitespace-nowrap">
-                            R$ {Number(item.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="p-3 text-gray-700 border-r border-gray-200">
-                            {item.condicaoPagamento || '—'}
-                          </td>
-                          <td className="p-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
+                            </div>
+
+                            {/* Botões de Ação com Editar bem destacado */}
+                            <div className="flex items-center gap-1.5 pl-3 border-l border-gray-200">
+                              <button
+                                onClick={() => setModalEditar(item)}
+                                title="Editar dados deste orçamento"
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                              >
+                                <Edit2 size={13} />
+                                <span>Editar</span>
+                              </button>
+
+                              <button
+                                onClick={() => setModalVisualizar(item)}
+                                title="Visualizar detalhes completos"
+                                className="p-1.5 rounded-xl text-gray-700 hover:bg-gray-100 border border-gray-200 cursor-pointer"
+                              >
+                                <Eye size={15} />
+                              </button>
+
                               {item.arquivoUrl && (
                                 <a
                                   href={item.arquivoUrl}
                                   target="_blank"
                                   rel="noreferrer"
                                   title="Ver arquivo original da proposta"
-                                  className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50"
+                                  className="p-1.5 rounded-xl text-brand-600 hover:bg-brand-50 border border-brand-200"
                                 >
                                   <FileText size={15} />
                                 </a>
                               )}
-                              <button
-                                onClick={() => setModalVisualizar(item)}
-                                title="Ver Detalhes e Parecer da IA"
-                                className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50"
-                              >
-                                <Eye size={15} />
-                              </button>
+
                               <button
                                 onClick={() => {
                                   if (window.confirm(`Excluir o orçamento da empresa "${item.empresa}"?`)) {
@@ -497,31 +560,187 @@ export default function OrcamentosComparativo({ condominios = [], condoFiltro = 
                                   }
                                 }}
                                 title="Excluir"
-                                className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50"
+                                className="p-1.5 rounded-xl text-rose-500 hover:bg-rose-50 border border-rose-200 cursor-pointer"
                               >
                                 <Trash2 size={15} />
                               </button>
                             </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                          </div>
+                        </div>
+
+                        {/* Linha 2 do Card: Escopo e Materiais em layout vertical amplo (sem espremer letras) */}
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pt-4 text-xs">
+                          {/* Tipo de Serviço / Escopo */}
+                          <div className="md:col-span-4 flex flex-col">
+                            <span className="text-[10px] font-black text-gray-500 uppercase tracking-wide mb-1">
+                              Tipo de Serviço / Escopo:
+                            </span>
+                            <div className="bg-slate-50 p-3 rounded-xl border border-gray-200 text-gray-800 font-semibold leading-relaxed flex-1">
+                              {item.tipoServico || 'Conforme especificação da proposta'}
+                            </div>
+                          </div>
+
+                          {/* Modelo / Materiais & Medidas (Amplo espaço vertical para escrita longa) */}
+                          <div className="md:col-span-8 flex flex-col">
+                            <span className="text-[10px] font-black text-gray-500 uppercase tracking-wide mb-1">
+                              Modelo / Materiais &amp; Medidas Detalhadas:
+                            </span>
+                            <div className="bg-slate-50 p-3.5 rounded-xl border border-gray-200 text-gray-800 leading-relaxed font-normal whitespace-pre-line flex-1">
+                              {item.materiais || 'Conforme projeto e materiais informados'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Linha 3 do Card: Detalhes Complementares (Pagamento, Prazo, Garantia, Contato) */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3.5 mt-3.5 border-t border-gray-100 text-xs">
+                          <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase block">Condição de Pagamento</span>
+                            <span className="text-xs font-semibold text-gray-800 mt-0.5 block">{item.condicaoPagamento || 'Não informada'}</span>
+                          </div>
+
+                          <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase block">Prazo de Execução</span>
+                            <span className="text-xs font-semibold text-gray-800 mt-0.5 block">{item.prazo || '—'}</span>
+                          </div>
+
+                          <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase block">Garantia / Validade</span>
+                            <span className="text-xs font-semibold text-gray-800 mt-0.5 block">{item.garantia || '—'}</span>
+                          </div>
+
+                          <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase block">Contato</span>
+                            <span className="text-xs font-semibold text-gray-800 mt-0.5 block truncate">
+                              {item.telefone || item.email || '—'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Observações específicas */}
+                        {item.observacoes && (
+                          <div className="mt-3 text-xs bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-amber-900 leading-relaxed">
+                            <strong>Observação:</strong> {item.observacoes}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                /* RENDERIZAÇÃO 2: MODO TABELA HORIZONTAL */
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-[#d7e2ee] text-slate-900 border-b border-slate-300 font-black">
+                        <th className="p-3 text-center w-12 border-r border-slate-300">Nº</th>
+                        <th className="p-3 w-48 border-r border-slate-300">Empresa / Orçamento</th>
+                        <th className="p-3 w-64 border-r border-slate-300">Tipo de serviço</th>
+                        <th className="p-3 border-r border-slate-300">Modelo / Materiais</th>
+                        <th className="p-3 w-32 border-r border-slate-300">Valor</th>
+                        <th className="p-3 w-52 border-r border-slate-300">Condição de pagamento</th>
+                        <th className="p-3 w-28 text-center">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {quadro.itens.map((item, idx) => {
+                        const isMenor = quadro.menorOpcao && item.id === quadro.menorOpcao.id
+                        return (
+                          <tr 
+                            key={item.id} 
+                            className={`hover:bg-slate-50 transition-colors ${
+                              isMenor ? 'bg-emerald-50/40 font-semibold' : ''
+                            }`}
+                          >
+                            <td className="p-3 text-center font-bold text-gray-500 border-r border-gray-200">
+                              {idx + 1}
+                            </td>
+                            <td className="p-3 font-bold text-gray-900 border-r border-gray-200">
+                              {item.numero ? (
+                                <>
+                                  <span className="block text-[11px] text-gray-500 font-mono">{item.numero}</span>
+                                  <span>{item.empresa}</span>
+                                </>
+                              ) : (
+                                <span>{item.empresa}</span>
+                              )}
+                              {isMenor && (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded ml-1.5 border border-emerald-300">
+                                  ⭐ Melhor Opção
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-gray-700 border-r border-gray-200">
+                              {item.tipoServico || '—'}
+                            </td>
+                            <td className="p-3 text-gray-600 border-r border-gray-200 leading-relaxed whitespace-pre-line">
+                              {item.materiais || '—'}
+                            </td>
+                            <td className="p-3 font-mono font-black text-emerald-800 text-sm border-r border-gray-200 whitespace-nowrap">
+                              R$ {Number(sanitizarValor(item.valor)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="p-3 text-gray-700 border-r border-gray-200">
+                              {item.condicaoPagamento || '—'}
+                            </td>
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => setModalEditar(item)}
+                                  title="Editar orçamento"
+                                  className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50"
+                                >
+                                  <Edit2 size={14} />
+                                </button>
+                                {item.arquivoUrl && (
+                                  <a
+                                    href={item.arquivoUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    title="Ver arquivo original da proposta"
+                                    className="p-1.5 rounded-lg text-brand-600 hover:bg-brand-50"
+                                  >
+                                    <FileText size={14} />
+                                  </a>
+                                )}
+                                <button
+                                  onClick={() => setModalVisualizar(item)}
+                                  title="Ver Detalhes e Parecer da IA"
+                                  className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
+                                >
+                                  <Eye size={14} />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`Excluir o orçamento da empresa "${item.empresa}"?`)) {
+                                      deleteItem(item.id)
+                                    }
+                                  }}
+                                  title="Excluir"
+                                  className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {/* Rodapé do Quadro com Parecer e Observações */}
-              <div className="p-4 bg-slate-50 border-t border-gray-200 text-xs text-gray-700 flex flex-col gap-2">
+              <div className="p-4 sm:p-5 bg-slate-50 border-t border-gray-200 text-xs text-gray-700 flex flex-col gap-2.5">
                 {quadro.itens.some(i => i.observacoes) && (
-                  <p className="font-medium text-gray-600">
-                    <strong>Observação:</strong> {quadro.itens.filter(i => i.observacoes).map(i => `${i.empresa}: ${i.observacoes}`).join('. ')}
+                  <p className="font-medium text-gray-600 leading-relaxed">
+                    <strong>Resumo das Observações:</strong> {quadro.itens.filter(i => i.observacoes).map(i => `${i.empresa}: ${i.observacoes}`).join('. ')}
                   </p>
                 )}
                 {quadro.menorOpcao && (
-                  <p className="font-semibold text-emerald-800 bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200 flex items-center gap-2">
-                    <Sparkles size={16} className="text-emerald-600 shrink-0" />
+                  <p className="font-semibold text-emerald-800 bg-emerald-50/80 p-3 rounded-xl border border-emerald-200 flex items-start sm:items-center gap-2.5 leading-relaxed">
+                    <Sparkles size={18} className="text-emerald-600 shrink-0 mt-0.5 sm:mt-0" />
                     <span>
-                      <strong>Parecer da Alpha IA ({quadro.grupo}):</strong> A proposta da empresa <u>{quadro.menorOpcao.empresa}</u> destaca-se como a melhor opção com o menor valor global (R$ {Number(quadro.menorOpcao.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}). {quadro.menorOpcao.analiseIA || ''}
+                      <strong>Parecer da Alpha IA ({quadro.grupo}):</strong> A proposta da empresa <u>{quadro.menorOpcao.empresa}</u> destaca-se como a melhor opção com o menor valor global (R$ {Number(sanitizarValor(quadro.menorOpcao.valor)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}). {quadro.menorOpcao.analiseIA || ''}
                     </span>
                   </p>
                 )}
@@ -549,10 +768,25 @@ export default function OrcamentosComparativo({ condominios = [], condoFiltro = 
         <ModalDetalhesOrcamento
           item={modalVisualizar}
           condominios={condominios}
+          initialEdit={false}
           onClose={() => setModalVisualizar(null)}
           onUpdate={async (dadosAtualizados) => {
             await updateItem(modalVisualizar.id, dadosAtualizados)
             setModalVisualizar(null)
+          }}
+        />
+      )}
+
+      {/* Modal de Edição Direta */}
+      {modalEditar && (
+        <ModalDetalhesOrcamento
+          item={modalEditar}
+          condominios={condominios}
+          initialEdit={true}
+          onClose={() => setModalEditar(null)}
+          onUpdate={async (dadosAtualizados) => {
+            await updateItem(modalEditar.id, dadosAtualizados)
+            setModalEditar(null)
           }}
         />
       )}
@@ -709,6 +943,7 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
       if (data && data.success && data.data) {
         const d = data.data
         const temValor = d.valor !== undefined && d.valor !== null && d.valor !== ''
+        const valSanitizado = temValor ? sanitizarValor(d.valor) : null
         const temEmpresa = !!d.empresa
 
         setForm(prev => ({
@@ -718,7 +953,7 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
           grupo: d.grupo ? d.grupo.toUpperCase() : prev.grupo,
           tipoServico: d.tipoServico || prev.tipoServico || '',
           materiais: d.materiais || prev.materiais || '',
-          valor: temValor ? String(d.valor) : prev.valor,
+          valor: (valSanitizado !== null && !isNaN(valSanitizado) && valSanitizado > 0) ? String(valSanitizado) : (temValor ? String(d.valor) : prev.valor),
           condicaoPagamento: d.condicaoPagamento || prev.condicaoPagamento || '',
           prazo: d.prazo || prev.prazo || '',
           garantia: d.garantia || prev.garantia || '',
@@ -768,12 +1003,10 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
       return
     }
 
-    const valLimpo = typeof form.valor === 'number' 
-      ? form.valor 
-      : (parseFloat(String(form.valor || '').replace(/\./g, '').replace(',', '.')) || 0)
+    const valLimpo = sanitizarValor(form.valor)
 
     if (!valLimpo || isNaN(valLimpo) || valLimpo <= 0) {
-      setErroValidacao('Por favor, preencha o campo "Valor Total (R$)" com o valor do orçamento (ex: 12000.00).')
+      setErroValidacao('Por favor, preencha o campo "Valor Total (R$)" com o valor do orçamento (ex: 4207.50).')
       return
     }
 
@@ -1108,20 +1341,55 @@ function ModalUploadOrcamento({ condominios = [], initialCondo = '', onClose, on
 }
 
 // =========================================================================
-// MODAL DE DETALHES / VISUALIZAÇÃO DO ORÇAMENTO
+// MODAL DE DETALHES E EDIÇÃO COMPLETA DO ORÇAMENTO
 // =========================================================================
-function ModalDetalhesOrcamento({ item, condominios = [], onClose, onUpdate }) {
+function ModalDetalhesOrcamento({ item, condominios = [], initialEdit = false, onClose, onUpdate }) {
   const { user } = useAuth()
   const isAdm = user?.role === 'Administrador'
   const [salvando, setSalvando] = useState(false)
-  const [editando, setEditando] = useState(false)
-  const [form, setForm] = useState({ ...item })
+  const [editando, setEditando] = useState(initialEdit)
+  const [form, setForm] = useState({
+    condominio: item.condominio || '',
+    empresa: item.empresa || '',
+    numero: item.numero || '',
+    grupo: item.grupo || 'PORTA DE ENTRADA',
+    tipoServico: item.tipoServico || '',
+    materiais: item.materiais || '',
+    valor: item.valor !== undefined && item.valor !== null ? String(item.valor) : '',
+    condicaoPagamento: item.condicaoPagamento || '',
+    prazo: item.prazo || '',
+    garantia: item.garantia || '',
+    telefone: item.telefone || '',
+    email: item.email || '',
+    observacoes: item.observacoes || '',
+    analiseIA: item.analiseIA || '',
+    arquivoUrl: item.arquivoUrl || ''
+  })
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSalvarEdicao = async () => {
+    if (!form.empresa?.trim()) {
+      alert('Por favor, preencha o nome da empresa/prestador.')
+      return
+    }
+
+    const valLimpo = sanitizarValor(form.valor)
+    if (!valLimpo || isNaN(valLimpo) || valLimpo <= 0) {
+      alert('Por favor, informe um valor total válido (ex: 4207.50).')
+      return
+    }
+
     setSalvando(true)
     try {
-      await onUpdate(form)
+      await onUpdate({
+        ...form,
+        empresa: form.empresa.trim(),
+        grupo: (form.grupo || 'GERAL').trim().toUpperCase(),
+        valor: valLimpo,
+        atualizadoPor: user?.nome || 'Usuário',
+        atualizadoEm: new Date().toISOString()
+      })
       setEditando(false)
     } catch (e) {
       alert('Erro ao atualizar orçamento: ' + e.message)
@@ -1131,110 +1399,335 @@ function ModalDetalhesOrcamento({ item, condominios = [], onClose, onUpdate }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content max-w-xl w-full p-0 overflow-hidden rounded-3xl" onClick={e => e.stopPropagation()}>
-        <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
-          <div>
-            <h3 className="font-black text-base">{form.empresa}</h3>
-            <p className="text-xs text-slate-400">Área: {form.grupo || 'Geral'}</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white p-1">
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="p-6 flex flex-col gap-3.5 text-xs max-h-[75vh] overflow-y-auto">
-          <div>
-            <label className="font-bold text-gray-500 block text-[10px] uppercase mb-1">Condomínio Vinculado</label>
-            {isAdm ? (
-              <select
-                className="input text-xs font-bold bg-white border-brand-300 text-gray-900"
-                value={form.condominio || ''}
-                onChange={e => {
-                  set('condominio', e.target.value)
-                  setEditando(true)
-                }}
-              >
-                <option value="">Selecione o Condomínio...</option>
-                {condominios?.map(c => (
-                  <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
-                ))}
-              </select>
-            ) : (
-              <p className="font-bold text-gray-800 bg-slate-100 p-2 rounded-lg">{form.condominio || 'Geral'}</p>
-            )}
-          </div>
-          <div>
-            <span className="font-bold text-gray-500 block text-[10px] uppercase">Tipo de Serviço</span>
-            <p className="font-semibold text-gray-900 text-sm mt-0.5">{item.tipoServico || '—'}</p>
-          </div>
-
-          <div>
-            <span className="font-bold text-gray-500 block text-[10px] uppercase">Modelo / Materiais &amp; Medidas</span>
-            <p className="text-gray-700 leading-relaxed mt-0.5 bg-slate-50 p-2.5 rounded-xl border border-gray-200">
-              {item.materiais || '—'}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-gray-200">
+    <div className="modal-overlay z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="modal-content max-w-2xl w-full p-0 overflow-hidden rounded-3xl bg-white shadow-2xl border border-gray-200 flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
+        {/* Topo do Modal */}
+        <div className="bg-slate-900 text-white p-5 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-black">
+              {editando ? <Edit2 size={20} /> : <FileText size={20} />}
+            </div>
             <div>
-              <span className="font-bold text-gray-500 block text-[10px] uppercase">Valor Total</span>
-              <p className="font-black text-emerald-700 text-base font-mono">
-                R$ {Number(item.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              <h3 className="font-black text-base sm:text-lg">
+                {editando ? 'Editar Proposta / Orçamento' : form.empresa}
+              </h3>
+              <p className="text-xs text-slate-400">
+                Área: <strong>{form.grupo || 'Geral'}</strong> {form.numero ? `• Nº ${form.numero}` : ''}
               </p>
             </div>
-            <div>
-              <span className="font-bold text-gray-500 block text-[10px] uppercase">Condição de Pagamento</span>
-              <p className="font-bold text-gray-800">{item.condicaoPagamento || '—'}</p>
-            </div>
           </div>
-
-          {item.observacoes && (
-            <div>
-              <span className="font-bold text-gray-500 block text-[10px] uppercase">Observações</span>
-              <p className="text-gray-700 mt-0.5">{item.observacoes}</p>
-            </div>
-          )}
-
-          {item.analiseIA && (
-            <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl">
-              <span className="font-black text-emerald-900 block text-[10px] uppercase flex items-center gap-1">
-                <Sparkles size={12} className="text-emerald-600" /> Parecer Técnico da Alpha IA
-              </span>
-              <p className="text-emerald-800 mt-1 leading-relaxed">{item.analiseIA}</p>
-            </div>
-          )}
-
-          {item.arquivoUrl && (
-            <div className="pt-2">
-              <a
-                href={item.arquivoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn-primary w-full text-center flex items-center justify-center gap-2 py-2.5 bg-brand-600 hover:bg-brand-500 text-xs"
+          <div className="flex items-center gap-2">
+            {!editando && (
+              <button
+                onClick={() => setEditando(true)}
+                className="btn-secondary text-xs px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white border-white/20 flex items-center gap-1.5"
               >
-                <FileText size={16} /> Abrir Documento / Proposta Original
-              </a>
+                <Edit2 size={13} />
+                <span>Editar</span>
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-white p-1 rounded-lg">
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        {/* Corpo do Modal */}
+        <div className="p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto flex-1">
+          {editando ? (
+            /* Modo Edição Completa */
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div>
+                <label className="label text-xs font-black">Condomínio *</label>
+                {isAdm ? (
+                  <select
+                    className="input text-xs font-bold bg-white border-brand-300 text-gray-900"
+                    value={form.condominio}
+                    onChange={e => set('condominio', e.target.value)}
+                  >
+                    <option value="">Selecione o Condomínio...</option>
+                    {condominios?.map(c => (
+                      <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="input text-xs font-bold bg-slate-100 cursor-not-allowed"
+                    value={form.condominio}
+                    readOnly
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="label text-xs font-black">Área / Objeto do Quadro *</label>
+                <input
+                  className="input text-xs font-bold uppercase"
+                  value={form.grupo}
+                  onChange={e => set('grupo', e.target.value.toUpperCase())}
+                  placeholder="Ex: PORTA DE ENTRADA, COBERTURA"
+                />
+              </div>
+
+              <div>
+                <label className="label text-xs font-black">Empresa / Prestador *</label>
+                <input
+                  className="input text-xs font-bold"
+                  value={form.empresa}
+                  onChange={e => set('empresa', e.target.value)}
+                  placeholder="Ex: Elite Premium Esquadrias"
+                />
+              </div>
+
+              <div>
+                <label className="label text-xs font-black">Nº do Orçamento / Código</label>
+                <input
+                  className="input text-xs"
+                  value={form.numero}
+                  onChange={e => set('numero', e.target.value)}
+                  placeholder="Ex: Orçamento nº 049"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="label text-xs font-black">Tipo de Serviço / Escopo *</label>
+                <input
+                  className="input text-xs font-semibold"
+                  value={form.tipoServico}
+                  onChange={e => set('tipoServico', e.target.value)}
+                  placeholder="Ex: Porta de giro, 1 folha, com fechadura e mola de piso"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="label text-xs font-black">Modelo / Materiais &amp; Medidas (Espaçoso)</label>
+                <textarea
+                  rows={4}
+                  className="input text-xs resize-y"
+                  value={form.materiais}
+                  onChange={e => set('materiais', e.target.value)}
+                  placeholder="Descreva detalhadamente perfis, medidas, vidros, acessórios e ferragens..."
+                />
+              </div>
+
+              <div>
+                <label className="label text-xs font-black text-emerald-800">Valor Total (R$) *</label>
+                <input
+                  type="text"
+                  className="input text-xs font-mono font-black text-emerald-900 bg-emerald-50/50"
+                  value={form.valor}
+                  onChange={e => set('valor', e.target.value)}
+                  placeholder="Ex: 4207.50 ou 4.207,50"
+                />
+                <span className="text-[10px] text-gray-500 mt-0.5 block">
+                  Reconhece centavos tanto com vírgula quanto ponto (ex: 4.207,50)
+                </span>
+              </div>
+
+              <div>
+                <label className="label text-xs font-black">Condição de Pagamento</label>
+                <input
+                  className="input text-xs"
+                  value={form.condicaoPagamento}
+                  onChange={e => set('condicaoPagamento', e.target.value)}
+                  placeholder="Ex: 50% entrada e 50% entrega"
+                />
+              </div>
+
+              <div>
+                <label className="label text-xs font-black">Prazo de Entrega / Execução</label>
+                <input
+                  className="input text-xs"
+                  value={form.prazo}
+                  onChange={e => set('prazo', e.target.value)}
+                  placeholder="Ex: 30 dias"
+                />
+              </div>
+
+              <div>
+                <label className="label text-xs font-black">Garantia / Validade</label>
+                <input
+                  className="input text-xs"
+                  value={form.garantia}
+                  onChange={e => set('garantia', e.target.value)}
+                  placeholder="Ex: 1 ano de garantia"
+                />
+              </div>
+
+              <div>
+                <label className="label text-xs font-black">Telefone / WhatsApp</label>
+                <input
+                  className="input text-xs"
+                  value={form.telefone}
+                  onChange={e => set('telefone', e.target.value)}
+                  placeholder="Ex: (83) 98174-2932"
+                />
+              </div>
+
+              <div>
+                <label className="label text-xs font-black">E-mail do Prestador</label>
+                <input
+                  className="input text-xs"
+                  value={form.email}
+                  onChange={e => set('email', e.target.value)}
+                  placeholder="Ex: contato@empresa.com"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="label text-xs font-black">Observações Relevantes</label>
+                <textarea
+                  rows={2}
+                  className="input text-xs resize-y"
+                  value={form.observacoes}
+                  onChange={e => set('observacoes', e.target.value)}
+                  placeholder="Ex: Mola hidráulica inclusa na proposta..."
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="label text-xs font-black text-emerald-800">Parecer Técnico / Análise IA</label>
+                <textarea
+                  rows={2}
+                  className="input text-xs resize-y bg-emerald-50/40 border-emerald-200"
+                  value={form.analiseIA}
+                  onChange={e => set('analiseIA', e.target.value)}
+                  placeholder="Parecer ou recomendação da proposta..."
+                />
+              </div>
+            </div>
+          ) : (
+            /* Modo Visualização Detalhada */
+            <div className="flex flex-col gap-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-gray-200">
+                <div>
+                  <span className="font-bold text-gray-500 block text-[10px] uppercase">Condomínio</span>
+                  <p className="font-bold text-gray-900 mt-0.5">{form.condominio || 'Não informado'}</p>
+                </div>
+                <div>
+                  <span className="font-bold text-gray-500 block text-[10px] uppercase">Área / Objeto</span>
+                  <p className="font-bold text-gray-900 mt-0.5">{form.grupo || 'Geral'}</p>
+                </div>
+                <div>
+                  <span className="font-bold text-gray-500 block text-[10px] uppercase">Valor Total</span>
+                  <p className="font-black text-emerald-700 text-lg font-mono mt-0.5">
+                    R$ {Number(sanitizarValor(form.valor)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-bold text-gray-500 block text-[10px] uppercase">Condição de Pagamento</span>
+                  <p className="font-bold text-gray-800 mt-0.5">{form.condicaoPagamento || 'Não informada'}</p>
+                </div>
+              </div>
+
+              <div>
+                <span className="font-bold text-gray-500 block text-[10px] uppercase mb-1">Tipo de Serviço / Escopo</span>
+                <p className="font-semibold text-gray-900 text-sm bg-slate-50 p-3 rounded-xl border border-gray-200">
+                  {form.tipoServico || 'Conforme projeto'}
+                </p>
+              </div>
+
+              <div>
+                <span className="font-bold text-gray-500 block text-[10px] uppercase mb-1">Modelo / Materiais &amp; Medidas</span>
+                <div className="text-gray-800 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-gray-200 whitespace-pre-line text-xs font-normal">
+                  {form.materiais || 'Conforme especificação da proposta'}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-gray-200">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase block">Prazo</span>
+                  <span className="text-xs font-semibold text-gray-800">{form.prazo || '—'}</span>
+                </div>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-gray-200">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase block">Garantia</span>
+                  <span className="text-xs font-semibold text-gray-800">{form.garantia || '—'}</span>
+                </div>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-gray-200">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase block">Telefone</span>
+                  <span className="text-xs font-semibold text-gray-800">{form.telefone || '—'}</span>
+                </div>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-gray-200">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase block">E-mail</span>
+                  <span className="text-xs font-semibold text-gray-800 truncate block">{form.email || '—'}</span>
+                </div>
+              </div>
+
+              {form.observacoes && (
+                <div>
+                  <span className="font-bold text-gray-500 block text-[10px] uppercase mb-1">Observações</span>
+                  <p className="text-gray-700 bg-amber-50/50 p-3 rounded-xl border border-amber-200 leading-relaxed">
+                    {form.observacoes}
+                  </p>
+                </div>
+              )}
+
+              {form.analiseIA && (
+                <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl">
+                  <span className="font-black text-emerald-900 block text-[10px] uppercase flex items-center gap-1.5 mb-1">
+                    <Sparkles size={14} className="text-emerald-600" /> Parecer Técnico da Alpha IA
+                  </span>
+                  <p className="text-emerald-800 leading-relaxed">{form.analiseIA}</p>
+                </div>
+              )}
+
+              {form.arquivoUrl && (
+                <div className="pt-1">
+                  <a
+                    href={form.arquivoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn-primary w-full text-center flex items-center justify-center gap-2 py-2.5 bg-brand-600 hover:bg-brand-500 text-xs shadow"
+                  >
+                    <FileText size={16} /> Abrir Documento / Proposta Original
+                  </a>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        <div className="p-4 bg-slate-50 border-t border-gray-200 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary text-xs">
-            Fechar
-          </button>
-          {editando && (
-            <button
-              onClick={handleSalvarEdicao}
-              disabled={salvando}
-              className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-xs flex items-center gap-1.5"
-            >
-              {salvando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-              Salvar Alterações
+        {/* Rodapé do Modal */}
+        <div className="p-4 bg-slate-50 border-t border-gray-200 flex items-center justify-between gap-3 shrink-0">
+          <div>
+            {editando ? (
+              <button
+                type="button"
+                onClick={() => setEditando(false)}
+                className="btn-secondary text-xs px-3 py-2"
+              >
+                Cancelar Edição
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditando(true)}
+                className="btn-secondary text-xs px-3 py-2 flex items-center gap-1.5 text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100"
+              >
+                <Edit2 size={13} />
+                <span>Editar este Orçamento</span>
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="btn-secondary text-xs px-4 py-2">
+              Fechar
             </button>
-          )}
+            {editando && (
+              <button
+                onClick={handleSalvarEdicao}
+                disabled={salvando}
+                className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-5 py-2 font-black flex items-center gap-2 shadow-lg shadow-emerald-600/20 disabled:opacity-50"
+              >
+                {salvando ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                <span>{salvando ? 'Salvando...' : 'Salvar Alterações'}</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
   )
 }
+
