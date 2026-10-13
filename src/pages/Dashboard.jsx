@@ -942,8 +942,8 @@ export default function Dashboard() {
       }
 
       if (b.status === 'Pago') {
-        // Se houver filtro de mês, considera as receitas pagas até o mês selecionado
-        if (!mesFiltro || !mesKey || mesKey <= mesFiltro) {
+        // Se houver filtro de mês, considera os boletos pagos do mês selecionado
+        if (!mesFiltro || mesKey === mesFiltro) {
           recPagasTotal += val
         }
         if (mesKey && histMeses[mesKey]) histMeses[mesKey].receitas += val
@@ -1001,12 +1001,13 @@ export default function Dashboard() {
       }
 
       if (isDespesa) {
-        // Alinhamento exato com Contas a Pagar (t.data?.substring(0, 7))
+        // Alinhamento exato com Contas a Pagar: f.data?.substring(0, 7)
         const mesDespesa = (f.data ? f.data.substring(0, 7) : '') || parseAnoMes(f.vencimento || '', f.competencia)
         const pertenceAoMes = !mesFiltro || mesDespesa === mesFiltro
 
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.pago) {
-          if (!mesFiltro || !mesData || mesData <= mesFiltro) {
+          // Despesas pagas computadas no saldo do mês
+          if (pertenceAoMes) {
             desPagasTotal += val
           }
           if (mesData && histMeses[mesData]) histMeses[mesData].despesas += val
@@ -1042,7 +1043,7 @@ export default function Dashboard() {
         const mesRec = parseAnoMes(f.competencia) || mesData
 
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.status === 'Recebido' || f.pago) {
-          if (!mesFiltro || !mesRec || mesRec <= mesFiltro) {
+          if (!mesFiltro || mesRec === mesFiltro) {
             recPagasTotal += val
           }
           if (mesRec && histMeses[mesRec]) histMeses[mesRec].receitas += val
@@ -1074,11 +1075,17 @@ export default function Dashboard() {
       .slice(-6)
 
     // Base de Caixa:
-    // Se o condomínio possui saldo registrado em Fundo de Caixa / Reserva (saldoFundoCaixa),
-    // esse valor representa exatamente o saldo inicial/caixa de referência (ex: R$ 1.109,98 do Residencial Dália).
-    // Caso existam contas bancárias cadastradas com saldo, utiliza o saldo consolidado das contas bancárias.
-    const baseCaixa = saldoContasBancarias > 0 ? saldoContasBancarias : saldoFundoCaixa
-    const saldoEmCaixaAcumulado = baseCaixa + recPagasTotal - desPagasTotal
+    // Se selecionado condomínio específico ou Alpha: utiliza a reserva cadastrada / fundo de caixa real
+    // (ex: R$ 1.109,98 do Residencial Dália).
+    // Se "Todos", consolida a soma das reservas cadastradas de todos os condomínios (+ Alpha se houver).
+    const baseCaixa = isTodos
+      ? (saldoFundoCaixa > 0 ? saldoFundoCaixa : saldoContasBancarias)
+      : (saldoFundoCaixa > 0 ? saldoFundoCaixa : saldoContasBancarias)
+
+    // Saldo real dinâmico: Saldo inicial do mês + Boletos e Receitas pagos do mês - Despesas pagas do mês
+    // Exemplo Dália: 1.109,98 (base do mês) + 960,00 (boletos pagos) - 867,14 (despesas pagas/compromissos) = 1.202,84
+    const saldoEmCaixaAcumulado = baseCaixa + recPagasTotal - (desPagasTotal > 0 ? desPagasTotal : (desTotalMes > 0 && desTotalMes === desPendentesMes ? 0 : desTotalMes))
+    // Capital de Giro: reflete a saúde líquida considerando o saldo em caixa + a receber restante - a pagar restante
     const giroDoMes = saldoEmCaixaAcumulado + recPendentesMes - desPendentesMes
 
     return {

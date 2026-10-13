@@ -77,10 +77,39 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
     }
   }, [configDoc, configId, configs, condominios, selectedCondo, isAlpha, isTodos])
 
+  const hoje = new Date()
+  const mesAtualStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
+  const [mesFiltro, setMesFiltro] = useState(mesAtualStr)
+
+  const parseAnoMes = (str, competenciaStr) => {
+    if (!str && !competenciaStr) return ''
+    const s = String(str || '').trim()
+    if (/^\d{4}-\d{2}/.test(s)) return s.substring(0, 7)
+    const brMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (brMatch) return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}`
+    if (competenciaStr) {
+      const c = String(competenciaStr).toLowerCase().trim()
+      const mNum = c.match(/(\d{1,2})\/(\d{4})/)
+      if (mNum) return `${mNum[2]}-${mNum[1].padStart(2, '0')}`
+      const mesesMap = {
+        jan: '01', fev: '02', mar: '03', abr: '04', mai: '05', jun: '06',
+        jul: '07', ago: '08', set: '09', out: '10', nov: '11', dez: '12'
+      }
+      for (const [prefix, num] of Object.entries(mesesMap)) {
+        if (c.includes(prefix)) {
+          const anoMatch = c.match(/\d{4}/)
+          if (anoMatch) return `${anoMatch[0]}-${num}`
+        }
+      }
+    }
+    return ''
+  }
+
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   // Filtrar lançamentos da unidade selecionada
   const lFiltrados = lancamentos.filter(l => {
+    if (l.status === 'Cancelado' || l.status === 'Excluído' || l.excluido || l.deletado) return false
     if (isTodos) return true
     if (isAlpha) return isAlphaInterno(l.condominio)
     return l.condominio === selectedCondo || condoMatch(l.condominio, selectedCondo)
@@ -94,18 +123,35 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
     return b.condominio === selectedCondo || condoMatch(b.condominio, selectedCondo)
   })
 
-  // Total Geral de Receitas e Despesas do Caixa
-  const totalReceitasFinPagas = lFiltrados.filter(l => l.tipo === 'Receita' && (l.status === 'Pago' || l.status === 'Recebido')).reduce((a, b) => a + Number(b.valor || 0), 0)
-  const totalReceitasBolPagas = bFiltrados.filter(b => b.status === 'Pago').reduce((a, b) => a + Number(b.valor || 0), 0)
+  // Lançamentos e boletos filtrados pelo mês de competência ativo (ex: 2026-10)
+  const lMes = lFiltrados.filter(l => {
+    if (!mesFiltro) return true
+    const m = (l.data ? l.data.substring(0, 7) : '') || parseAnoMes(l.vencimento || '', l.competencia)
+    return m === mesFiltro
+  })
+
+  const bMes = bFiltrados.filter(b => {
+    if (!mesFiltro) return true
+    const m = parseAnoMes(b.competencia) || parseAnoMes(b.vencimento || b.data || '')
+    return m === mesFiltro
+  })
+
+  // Total Geral de Receitas e Despesas do Mês
+  const totalReceitasFinPagas = lMes.filter(l => l.tipo === 'Receita' && (l.status === 'Pago' || l.status === 'Recebido')).reduce((a, b) => a + Number(b.valor || 0), 0)
+  const totalReceitasBolPagas = bMes.filter(b => b.status === 'Pago').reduce((a, b) => a + Number(b.valor || 0), 0)
   const totalReceitasLiquidadas = totalReceitasFinPagas + totalReceitasBolPagas
 
-  const totalDespesasPagas = lFiltrados.filter(l => l.tipo === 'Despesa' && (l.status === 'Pago' || l.status === 'Liquidado' || l.pago)).reduce((a, b) => a + Number(b.valor || 0), 0)
+  const totalDespesasPagas = lMes.filter(l => l.tipo === 'Despesa' && (l.status === 'Pago' || l.status === 'Liquidado' || l.pago)).reduce((a, b) => a + Number(b.valor || 0), 0)
+  const totalDespesasCompromisso = lMes.filter(l => l.tipo === 'Despesa').reduce((a, b) => a + Number(b.valor || 0), 0)
   
-  // Saldo real dinâmico em caixa: base real + entradas pagas - contas pagas
-  const saldoCaixaDinamico = saldoReal + totalReceitasLiquidadas - totalDespesasPagas
+  // Saldo real dinâmico em caixa:
+  // Saldo base anterior + Boletos e receitas pagos do mês - Contas do mês (ou pagas conforme liquidado)
+  // Exemplo Dália: R$ 1.109,98 + R$ 960,00 - R$ 867,14 = R$ 1.202,84
+  const deducaoDespesa = totalDespesasPagas > 0 ? totalDespesasPagas : totalDespesasCompromisso
+  const saldoCaixaDinamico = saldoReal + totalReceitasLiquidadas - deducaoDespesa
 
-  const totalReceitas = lFiltrados.filter(l => l.tipo === 'Receita').reduce((a, b) => a + Number(b.valor || 0), 0) + bFiltrados.reduce((a, b) => a + Number(b.valor || 0), 0)
-  const totalDespesas = lFiltrados.filter(l => l.tipo === 'Despesa').reduce((a, b) => a + Number(b.valor || 0), 0)
+  const totalReceitas = lMes.filter(l => l.tipo === 'Receita').reduce((a, b) => a + Number(b.valor || 0), 0) + bMes.reduce((a, b) => a + Number(b.valor || 0), 0)
+  const totalDespesas = totalDespesasCompromisso
   const saldoOperacional = totalReceitas - totalDespesas
 
   // 1. SEPARAÇÃO: MANUTENÇÃO PREVENTIVA
@@ -180,8 +226,15 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
           </div>
         </div>
 
-        {/* Seletor Rápido de Residência / Alpha */}
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        {/* Seletor Rápido de Residência / Alpha e Mês */}
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+          <input
+            type="month"
+            value={mesFiltro}
+            onChange={e => setMesFiltro(e.target.value)}
+            className="input py-2 text-xs font-bold bg-white border-pale-300 text-gray-900 shadow-xs"
+            title="Mês de Referência"
+          />
           <select 
             value={selectedCondo} 
             onChange={e => setSelectedCondo(e.target.value)}
@@ -242,15 +295,15 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
       {/* Resumo do Caixa em 3 Colunas */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card border-l-4 border-emerald-500 bg-white shadow-sm p-4">
-          <p className="text-xs text-gray-500 font-bold uppercase">Entradas / Receitas</p>
+          <p className="text-xs text-gray-500 font-bold uppercase">Entradas / Receitas (Mês)</p>
           <p className="text-2xl font-black text-emerald-600 mt-1">R$ {fmt(totalReceitas)}</p>
-          <p className="text-[11px] text-gray-400 mt-1">Total de receitas vinculadas</p>
+          <p className="text-[11px] text-gray-400 mt-1">Receitas e boletos do mês selecionado</p>
         </div>
         
         <div className="card border-l-4 border-rose-500 bg-white shadow-sm p-4">
-          <p className="text-xs text-gray-500 font-bold uppercase">Saídas / Despesas Totais</p>
+          <p className="text-xs text-gray-500 font-bold uppercase">Saídas / Despesas Totais (Mês)</p>
           <p className="text-2xl font-black text-rose-600 mt-1">R$ {fmt(totalDespesas)}</p>
-          <p className="text-[11px] text-gray-400 mt-1">Despesas pagas e pendentes</p>
+          <p className="text-[11px] text-gray-400 mt-1">Total de contas e compromissos do mês</p>
         </div>
 
         <div className={`card border-l-4 ${saldoOperacional >= 0 ? 'border-brand-500 bg-brand-50/50' : 'border-amber-500 bg-amber-50/50'} shadow-sm p-4`}>
@@ -258,7 +311,7 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
           <p className={`text-2xl font-black mt-1 ${saldoOperacional >= 0 ? 'text-brand-700' : 'text-amber-700'}`}>
             R$ {fmt(saldoOperacional)}
           </p>
-          <p className="text-[11px] text-gray-500 mt-1">Balanço líquido das movimentações</p>
+          <p className="text-[11px] text-gray-500 mt-1">Balanço líquido do mês selecionado</p>
         </div>
       </div>
 
