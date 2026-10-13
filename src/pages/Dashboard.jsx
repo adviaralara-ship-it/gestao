@@ -768,35 +768,49 @@ export default function Dashboard() {
     return n1 === n2 || n1.includes(n2) || n2.includes(n1)
   }
 
-  const filterByCondo = (items) => {
+  const filterByCondo = (items, isBoleto = false) => {
     if (!items || !Array.isArray(items)) return []
+
+    // Helper para extrair condomínio do item (incluindo busca do morador para boletos)
+    const getItemCondo = (it) => {
+      if (it.condominio) return it.condominio
+      if (isBoleto && it.morador) {
+        const mor = (moradores || []).find(m => m?.nome && String(m.nome).trim().toLowerCase() === String(it.morador).trim().toLowerCase())
+        if (mor?.condominio) return mor.condominio
+      }
+      return ''
+    }
 
     // Para usuários não-administradores (Síndico, Subsíndico, Conselho):
     // Jamais exibe dados de Alpha Interno nem lançamentos sem condomínio definido
     if (!isAdm) {
       if (!meuCondominio) return []
       return items.filter(it => {
-        if (!it.condominio) return false
-        if (isAlphaInterno(it.condominio)) return false
-        return condoMatch(it.condominio, meuCondominio)
+        const cNome = getItemCondo(it)
+        if (!cNome) return false
+        if (isAlphaInterno(cNome)) return false
+        return condoMatch(cNome, meuCondominio)
       })
     }
 
     // Para Administradores:
     if (!condoFiltro || condoFiltro === 'Todos') return items
     if (condoFiltro === 'Alpha (Interno)') {
-      return items.filter(it => isAlphaInterno(it.condominio))
+      return items.filter(it => isAlphaInterno(getItemCondo(it)))
     }
     // Quando selecionado um condomínio específico, aceita estritamente lançamentos dele
-    return items.filter(it => Boolean(it.condominio) && condoMatch(it.condominio, condoFiltro))
+    return items.filter(it => {
+      const cNome = getItemCondo(it)
+      return Boolean(cNome) && condoMatch(cNome, condoFiltro)
+    })
   }
 
-  const finFiltrado = useMemo(() => filterByCondo(financeiro), [financeiro, condoFiltro])
-  const bolFiltrado = useMemo(() => filterByCondo(boletos), [boletos, condoFiltro])
-  const cotFiltradas = useMemo(() => filterByCondo(cotacoes), [cotacoes, condoFiltro])
-  const manFiltradas = useMemo(() => filterByCondo(manutencoes), [manutencoes, condoFiltro])
-  const apoFiltradas = useMemo(() => filterByCondo(apolices), [apolices, condoFiltro])
-  const ocFiltradas = useMemo(() => filterByCondo(ocorrencias), [ocorrencias, condoFiltro])
+  const finFiltrado = useMemo(() => filterByCondo(financeiro, false), [financeiro, condoFiltro, moradores, isAdm, meuCondominio])
+  const bolFiltrado = useMemo(() => filterByCondo(boletos, true), [boletos, condoFiltro, moradores, isAdm, meuCondominio])
+  const cotFiltradas = useMemo(() => filterByCondo(cotacoes, false), [cotacoes, condoFiltro, moradores, isAdm, meuCondominio])
+  const manFiltradas = useMemo(() => filterByCondo(manutencoes, false), [manutencoes, condoFiltro, moradores, isAdm, meuCondominio])
+  const apoFiltradas = useMemo(() => filterByCondo(apolices, false), [apolices, condoFiltro, moradores, isAdm, meuCondominio])
+  const ocFiltradas = useMemo(() => filterByCondo(ocorrencias, false), [ocorrencias, condoFiltro, moradores, isAdm, meuCondominio])
 
   // Função utilitária para extrair ano-mês (YYYY-MM) de qualquer string de data ou competência
   const parseAnoMes = (str, competenciaStr) => {
@@ -867,27 +881,37 @@ export default function Dashboard() {
     })
     const saldoContasBancarias = contasFiltradas.reduce((acc, c) => acc + Number(c.saldo || 0), 0)
 
-    // Fundo de Caixa cadastrado na Reserva de Emergência (financeiro_config)
+    // Fundo de Caixa cadastrado na Reserva de Emergência (financeiro_config) ou no Cadastro do Condomínio (fundoReserva)
     let saldoFundoCaixa = 0
     if (isAlpha) {
       const doc = (financeiroConfigs || []).find(c => c.id === 'caixa_alpha')
       if (doc && doc.saldo_real !== undefined) saldoFundoCaixa = Number(doc.saldo_real || 0)
     } else if (isTodos) {
-      // No consolidado 'Todos', soma os saldos reais de todos os caixas cadastrados
-      saldoFundoCaixa = (financeiroConfigs || []).reduce((acc, c) => acc + Number(c.saldo_real || 0), 0)
+      // No consolidado 'Todos', soma os saldos reais de todos os caixas cadastrados e fundos de reserva
+      const somaCaixas = (financeiroConfigs || []).reduce((acc, c) => acc + Number(c.saldo_real || 0), 0)
+      const somaFundos = (condominios || []).reduce((acc, c) => acc + Number(c.fundoReserva || 0), 0)
+      saldoFundoCaixa = somaCaixas > 0 ? somaCaixas : somaFundos
     } else {
       const configId = `caixa_${condoFiltro.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
       const doc = (financeiroConfigs || []).find(c => c.id === configId)
       if (doc && doc.saldo_real !== undefined) {
         saldoFundoCaixa = Number(doc.saldo_real || 0)
       } else {
-        // Fallback: procura por correspondência no nome da chave ou condominio
+        // Fallback 1: procura por correspondência no nome da chave do financeiro_config
         const docAlt = (financeiroConfigs || []).find(c => {
           const cid = (c.id || '').toLowerCase()
           const cNome = normalizarNomeCondo(condoFiltro)
-          return cid.includes(cNome)
+          return cid.includes(cNome) || (c.condominio && condoMatch(c.condominio, condoFiltro))
         })
-        if (docAlt && docAlt.saldo_real !== undefined) saldoFundoCaixa = Number(docAlt.saldo_real || 0)
+        if (docAlt && docAlt.saldo_real !== undefined) {
+          saldoFundoCaixa = Number(docAlt.saldo_real || 0)
+        } else {
+          // Fallback 2: busca no cadastro do condomínio (tabela condominios -> fundoReserva)
+          const condoObj = (condominios || []).find(c => condoMatch(c.nome, condoFiltro))
+          if (condoObj && condoObj.fundoReserva !== undefined) {
+            saldoFundoCaixa = Number(condoObj.fundoReserva || 0)
+          }
+        }
       }
     }
 
@@ -1060,7 +1084,7 @@ export default function Dashboard() {
         { mes: format(new Date(), 'MMM'), receitas: 0, despesas: 0 }
       ]
     }
-  }, [bolFiltrado, finFiltrado, mesFiltro, condoFiltro, financeiroConfigs, financeiroContas])
+  }, [bolFiltrado, finFiltrado, mesFiltro, condoFiltro, financeiroConfigs, financeiroContas, condominios])
 
   const statsCotacoes = useMemo(() => {
     let emAndamento = 0
