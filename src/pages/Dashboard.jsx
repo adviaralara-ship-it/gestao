@@ -900,7 +900,7 @@ export default function Dashboard() {
 
       const val = parseFloat(b.valor) || 0
       const dStr = b.vencimento || b.data || ''
-      const mesKey = parseAnoMes(dStr, b.competencia) || (mesFiltro || '')
+      const mesKey = parseAnoMes(dStr, b.competencia)
 
       let dObj = refHoje
       if (dStr) {
@@ -916,7 +916,10 @@ export default function Dashboard() {
       }
 
       if (b.status === 'Pago') {
-        recPagasTotal += val
+        // Se houver filtro de mês, considera as receitas pagas até o mês selecionado
+        if (!mesFiltro || !mesKey || mesKey <= mesFiltro) {
+          recPagasTotal += val
+        }
         if (mesKey && histMeses[mesKey]) histMeses[mesKey].receitas += val
       } else {
         // A Receber no Mês Selecionado (Pendente ou Vencido)
@@ -953,10 +956,10 @@ export default function Dashboard() {
       }
 
       const val = parseFloat(f.valor) || 0
-      const isDespesa = f.tipo === 'Despesa' || f.categoria?.toLowerCase().includes('despesa')
-      // Padronização alinhada com ContasPagar: usa prioritariamente f.data ou f.vencimento
+      const isDespesa = f.tipo === 'Despesa'
+      // Alinhamento estrito com Contas a Pagar: data do lançamento (f.data) ou vencimento
       const dStr = f.data || f.vencimento || ''
-      const mesKey = parseAnoMes(dStr, f.competencia) || (mesFiltro || '')
+      const mesKey = parseAnoMes(dStr, f.competencia)
 
       let dObj = refHoje
       if (dStr) {
@@ -973,10 +976,12 @@ export default function Dashboard() {
 
       if (isDespesa) {
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.pago) {
-          desPagasTotal += val
+          if (!mesFiltro || !mesKey || mesKey <= mesFiltro) {
+            desPagasTotal += val
+          }
           if (mesKey && histMeses[mesKey]) histMeses[mesKey].despesas += val
-        } else {
-          // A Pagar no Mês Selecionado (Pendente ou Aguardando Aprovação)
+        } else if (f.status === 'Pendente' || f.status === 'Aguardando Aprovação' || !f.status) {
+          // A Pagar no Mês Selecionado (Exatamente igual ao 'Pendente' de Contas a Pagar)
           if (!mesFiltro || mesKey === mesFiltro) {
             desPendentesMes += val
           }
@@ -993,8 +998,11 @@ export default function Dashboard() {
           }
         }
       } else {
+        // Receitas Avulsas
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.status === 'Recebido' || f.pago) {
-          recPagasTotal += val
+          if (!mesFiltro || !mesKey || mesKey <= mesFiltro) {
+            recPagasTotal += val
+          }
           if (mesKey && histMeses[mesKey]) histMeses[mesKey].receitas += val
         } else {
           if (!mesFiltro || mesKey === mesFiltro) {
@@ -1023,9 +1031,9 @@ export default function Dashboard() {
       .sort((a, b) => a.order - b.order)
       .slice(-6)
 
-    // Saldo Atual em Caixa: Saldo inicial do Fundo de Caixa / Contas + Receitas pagas realizadas - Despesas pagas
-    // Se houver saldo inicial em caixa/fundo ou contas, inicia a partir dele
-    const baseCaixa = saldoFundoCaixa + saldoContasBancarias
+    // Se o condomínio possui saldo inicial/fundo configurado ou contas bancárias cadastradas,
+    // verifica se o histórico já contém o lançamento inicial (ex: Fundo de Caixa / Saldo anterior)
+    const baseCaixa = saldoContasBancarias > 0 ? saldoContasBancarias : (saldoFundoCaixa > 0 && recPagasTotal === 0 ? saldoFundoCaixa : 0)
     const saldoEmCaixaAcumulado = baseCaixa + recPagasTotal - desPagasTotal
     const giroDoMes = saldoEmCaixaAcumulado + recPendentesMes - desPendentesMes
 

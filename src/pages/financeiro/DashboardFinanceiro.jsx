@@ -103,7 +103,8 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
     .reduce((acc, c) => acc + Number(c.valor || 0), 0)
 
   // Saldo real em caixa consolidado
-  const saldoCaixa = saldoFundoCaixa + saldoContasBancarias + totalRecebidoHistoricoFin + totalRecebidoHistoricoBol - totalPagoHistorico
+  const baseCaixa = saldoContasBancarias > 0 ? saldoContasBancarias : (saldoFundoCaixa > 0 && (totalRecebidoHistoricoFin + totalRecebidoHistoricoBol) === 0 ? saldoFundoCaixa : 0)
+  const saldoCaixa = baseCaixa + totalRecebidoHistoricoFin + totalRecebidoHistoricoBol - totalPagoHistorico
 
   // 3. Filtragem estrita dos lançamentos pelo período selecionado
   const lancamentosPeriodo = lancamentos.filter(t => {
