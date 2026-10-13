@@ -899,10 +899,11 @@ export default function Dashboard() {
       }
 
       const val = parseFloat(b.valor) || 0
-      const dStr = b.vencimento || b.data || ''
-      const mesKey = parseAnoMes(dStr, b.competencia)
+      // Identificar o mês da competência do boleto com prioridade para a competência informada
+      const mesKey = parseAnoMes(b.competencia) || parseAnoMes(b.vencimento || b.data || '')
 
       let dObj = refHoje
+      const dStr = b.vencimento || b.data || ''
       if (dStr) {
         try {
           const parsed = parseISO(dStr)
@@ -922,7 +923,7 @@ export default function Dashboard() {
         }
         if (mesKey && histMeses[mesKey]) histMeses[mesKey].receitas += val
       } else {
-        // A Receber no Mês Selecionado (Pendente ou Vencido)
+        // A Receber no Mês Selecionado (Pendente, Emitido ou Vencido)
         if (!mesFiltro || mesKey === mesFiltro) {
           recPendentesMes += val
         }
@@ -958,8 +959,8 @@ export default function Dashboard() {
       const val = parseFloat(f.valor) || 0
       const isDespesa = f.tipo === 'Despesa'
       // Alinhamento estrito com Contas a Pagar: data do lançamento (f.data) ou vencimento
+      const mesData = (f.data ? f.data.substring(0, 7) : '') || parseAnoMes(f.vencimento || '', f.competencia)
       const dStr = f.data || f.vencimento || ''
-      const mesKey = parseAnoMes(dStr, f.competencia)
 
       let dObj = refHoje
       if (dStr) {
@@ -968,14 +969,13 @@ export default function Dashboard() {
           if (!isNaN(parsed.getTime())) dObj = parsed
         } catch(e) {}
       }
-      const mesAbrev = mesKey ? new Date(`${mesKey}-01T12:00:00`).toLocaleDateString('pt-BR', { month: 'short' }) : dObj.toLocaleDateString('pt-BR', { month: 'short' })
+      const mesAbrev = mesData ? new Date(`${mesData}-01T12:00:00`).toLocaleDateString('pt-BR', { month: 'short' }) : dObj.toLocaleDateString('pt-BR', { month: 'short' })
 
-      if (mesKey && !histMeses[mesKey]) {
-        histMeses[mesKey] = { mes: mesAbrev, receitas: 0, despesas: 0, order: new Date(`${mesKey}-01T12:00:00`).getTime() || dObj.getTime() }
+      if (mesData && !histMeses[mesData]) {
+        histMeses[mesData] = { mes: mesAbrev, receitas: 0, despesas: 0, order: new Date(`${mesData}-01T12:00:00`).getTime() || dObj.getTime() }
       }
 
       if (isDespesa) {
-        const mesData = (f.data ? f.data.substring(0, 7) : '') || mesKey
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.pago) {
           if (!mesFiltro || !mesData || mesData <= mesFiltro) {
             desPagasTotal += val
@@ -999,14 +999,22 @@ export default function Dashboard() {
           }
         }
       } else {
-        // Receitas Avulsas
+        // Receitas Avulsas do financeiro_lancamentos
+        // Evitar duplicidade caso seja lançamento espelho automático de Rateio de Água já emitido em boletos
+        const isRateioAguaBoleto = f.categoria === 'Taxa de Água' && (f.descricao || '').toLowerCase().includes('rateio de água - apt')
+        if (isRateioAguaBoleto && bolFiltrado.length > 0) {
+          return
+        }
+
+        const mesRec = parseAnoMes(f.competencia) || mesData
+
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.status === 'Recebido' || f.pago) {
-          if (!mesFiltro || !mesKey || mesKey <= mesFiltro) {
+          if (!mesFiltro || !mesRec || mesRec <= mesFiltro) {
             recPagasTotal += val
           }
-          if (mesKey && histMeses[mesKey]) histMeses[mesKey].receitas += val
+          if (mesRec && histMeses[mesRec]) histMeses[mesRec].receitas += val
         } else {
-          if (!mesFiltro || mesKey === mesFiltro) {
+          if (!mesFiltro || mesRec === mesFiltro) {
             recPendentesMes += val
           }
           // Se for receita avulsa marcada como atrasada ou vencida
@@ -1032,9 +1040,11 @@ export default function Dashboard() {
       .sort((a, b) => a.order - b.order)
       .slice(-6)
 
-    // Se o condomínio possui saldo inicial/fundo configurado ou contas bancárias cadastradas,
-    // verifica se o histórico já contém o lançamento inicial (ex: Fundo de Caixa / Saldo anterior)
-    const baseCaixa = saldoContasBancarias > 0 ? saldoContasBancarias : (saldoFundoCaixa > 0 && recPagasTotal === 0 ? saldoFundoCaixa : 0)
+    // Base de Caixa:
+    // Se o condomínio possui saldo registrado em Fundo de Caixa / Reserva (saldoFundoCaixa),
+    // esse valor representa exatamente o saldo inicial/caixa de referência (ex: R$ 1.109,98 do Residencial Dália).
+    // Caso existam contas bancárias cadastradas com saldo, utiliza o saldo consolidado das contas bancárias.
+    const baseCaixa = saldoContasBancarias > 0 ? saldoContasBancarias : saldoFundoCaixa
     const saldoEmCaixaAcumulado = baseCaixa + recPagasTotal - desPagasTotal
     const giroDoMes = saldoEmCaixaAcumulado + recPendentesMes - desPendentesMes
 
