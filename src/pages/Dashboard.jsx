@@ -1034,9 +1034,10 @@ export default function Dashboard() {
         }
       } else {
         // Receitas Avulsas do financeiro_lancamentos
-        // Evitar duplicidade caso seja lançamento espelho automático de Rateio de Água já emitido em boletos
+        // Evitar duplicidade caso seja lançamento espelho de cota já paga em boletos ou taxa de água
+        const isTaxaCota = (f.categoria || '').toLowerCase().includes('condomin') || (f.descricao || '').toLowerCase().includes('cota')
         const isRateioAguaBoleto = f.categoria === 'Taxa de Água' && (f.descricao || '').toLowerCase().includes('rateio de água - apt')
-        if (isRateioAguaBoleto && bolFiltrado.length > 0) {
+        if ((isRateioAguaBoleto || (isTaxaCota && bolFiltrado.length > 0)) && recPagasTotal > 0) {
           return
         }
 
@@ -1082,9 +1083,11 @@ export default function Dashboard() {
       ? (saldoFundoCaixa > 0 ? saldoFundoCaixa : saldoContasBancarias)
       : (saldoFundoCaixa > 0 ? saldoFundoCaixa : saldoContasBancarias)
 
-    // Saldo real dinâmico: Saldo inicial do mês + Boletos e Receitas pagos do mês - Despesas pagas do mês
+    // Saldo real dinâmico: Saldo inicial do mês + Boletos e Receitas pagos do mês - Despesas do mês
+    // Se todas as contas do mês já estiverem pagas ou se a despesa do mês for compromisso ativo:
     // Exemplo Dália: 1.109,98 (base do mês) + 960,00 (boletos pagos) - 867,14 (despesas pagas/compromissos) = 1.202,84
-    const saldoEmCaixaAcumulado = baseCaixa + recPagasTotal - (desPagasTotal > 0 ? desPagasTotal : (desTotalMes > 0 && desTotalMes === desPendentesMes ? 0 : desTotalMes))
+    const deducao = desPagasTotal > 0 ? desPagasTotal : desTotalMes
+    const saldoEmCaixaAcumulado = baseCaixa + recPagasTotal - deducao
     // Capital de Giro: reflete a saúde líquida considerando o saldo em caixa + a receber restante - a pagar restante
     const giroDoMes = saldoEmCaixaAcumulado + recPendentesMes - desPendentesMes
 

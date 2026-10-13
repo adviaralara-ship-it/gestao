@@ -124,6 +124,7 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
   })
 
   // Lançamentos e boletos filtrados pelo mês de competência ativo (ex: 2026-10)
+  // Alinhamento estrito com Contas a Pagar: l.data?.substring(0, 7)
   const lMes = lFiltrados.filter(l => {
     if (!mesFiltro) return true
     const m = (l.data ? l.data.substring(0, 7) : '') || parseAnoMes(l.vencimento || '', l.competencia)
@@ -137,12 +138,23 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
   })
 
   // Total Geral de Receitas e Despesas do Mês
+  // Prevenção de duplicidade: se as receitas já forem originadas dos boletos emitidos
   const totalReceitasFinPagas = lMes.filter(l => l.tipo === 'Receita' && (l.status === 'Pago' || l.status === 'Recebido')).reduce((a, b) => a + Number(b.valor || 0), 0)
   const totalReceitasBolPagas = bMes.filter(b => b.status === 'Pago').reduce((a, b) => a + Number(b.valor || 0), 0)
-  const totalReceitasLiquidadas = totalReceitasFinPagas + totalReceitasBolPagas
+  // Se ambas existirem e forem iguais (lançamento espelho), usa a maior ou não duplica
+  const totalReceitasLiquidadas = totalReceitasFinPagas > 0 && totalReceitasBolPagas > 0 && totalReceitasFinPagas === totalReceitasBolPagas
+    ? totalReceitasBolPagas
+    : (totalReceitasFinPagas + totalReceitasBolPagas)
 
-  const totalDespesasPagas = lMes.filter(l => l.tipo === 'Despesa' && (l.status === 'Pago' || l.status === 'Liquidado' || l.pago)).reduce((a, b) => a + Number(b.valor || 0), 0)
-  const totalDespesasCompromisso = lMes.filter(l => l.tipo === 'Despesa').reduce((a, b) => a + Number(b.valor || 0), 0)
+  // Despesas filtradas estritamente pelo mês alinhado a ContasPagar (t.data?.substring(0, 7))
+  const despesasMes = lFiltrados.filter(l => {
+    if (l.tipo !== 'Despesa') return false
+    const m = l.data?.substring(0, 7)
+    return !mesFiltro || m === mesFiltro
+  })
+
+  const totalDespesasPagas = despesasMes.filter(l => l.status === 'Pago' || l.status === 'Liquidado' || l.pago).reduce((a, b) => a + Number(b.valor || 0), 0)
+  const totalDespesasCompromisso = despesasMes.reduce((a, b) => a + Number(b.valor || 0), 0)
   
   // Saldo real dinâmico em caixa:
   // Saldo base anterior + Boletos e receitas pagos do mês - Contas do mês (ou pagas conforme liquidado)
@@ -150,7 +162,9 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
   const deducaoDespesa = totalDespesasPagas > 0 ? totalDespesasPagas : totalDespesasCompromisso
   const saldoCaixaDinamico = saldoReal + totalReceitasLiquidadas - deducaoDespesa
 
-  const totalReceitas = lMes.filter(l => l.tipo === 'Receita').reduce((a, b) => a + Number(b.valor || 0), 0) + bMes.reduce((a, b) => a + Number(b.valor || 0), 0)
+  const totalReceitas = totalReceitasFinPagas > 0 && totalReceitasBolPagas > 0 && totalReceitasFinPagas === totalReceitasBolPagas
+    ? totalReceitasBolPagas
+    : (lMes.filter(l => l.tipo === 'Receita').reduce((a, b) => a + Number(b.valor || 0), 0) + bMes.reduce((a, b) => a + Number(b.valor || 0), 0))
   const totalDespesas = totalDespesasCompromisso
   const saldoOperacional = totalReceitas - totalDespesas
 
