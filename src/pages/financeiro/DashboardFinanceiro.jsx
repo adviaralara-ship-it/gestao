@@ -3,7 +3,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, L
 import { Wallet, TrendingUp, TrendingDown, DollarSign, Activity, AlertTriangle, ShieldCheck } from 'lucide-react'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 
-export default function DashboardFinanceiro({ lancamentos = [], contas = [] }) {
+export default function DashboardFinanceiro({ lancamentos = [], contas = [], configs = [], boletos = [], condoFilter = 'Todos' }) {
   const hoje = new Date()
   const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`
   const [mesDe, setMesDe] = useState(mesAtual)
@@ -11,51 +11,151 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [] }) {
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-  // 1. Saldo em Caixa Total Acumulado (Entradas reais liquidadas menos saídas pagas de todo o histórico da entidade)
-  const totalRecebidoHistorico = lancamentos
+  // Função utilitária para extrair ano-mês (YYYY-MM)
+  const parseAnoMes = (str, competenciaStr) => {
+    if (!str && !competenciaStr) return ''
+    const s = String(str || '').trim()
+    if (/^\d{4}-\d{2}/.test(s)) return s.substring(0, 7)
+    const brMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (brMatch) return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}`
+    if (competenciaStr) {
+      const c = String(competenciaStr).toLowerCase().trim()
+      const mNum = c.match(/(\d{1,2})\/(\d{4})/)
+      if (mNum) return `${mNum[2]}-${mNum[1].padStart(2, '0')}`
+      const mesesMap = {
+        jan: '01', fev: '02', mar: '03', abr: '04', mai: '05', jun: '06',
+        jul: '07', ago: '08', set: '09', out: '10', nov: '11', dez: '12'
+      }
+      for (const [prefix, num] of Object.entries(mesesMap)) {
+        if (c.includes(prefix)) {
+          const anoMatch = c.match(/\d{4}/)
+          if (anoMatch) return `${anoMatch[0]}-${num}`
+        }
+      }
+    }
+    return ''
+  }
+
+  const normalizarNomeCondo = (nome) => {
+    return String(nome || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/^(residencial|condominio|edificio|ed\.)\s+/i, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .trim()
+      .toLowerCase()
+  }
+
+  const condoMatch = (c1, c2) => {
+    if (!c1 || !c2) return false
+    const n1 = normalizarNomeCondo(c1)
+    const n2 = normalizarNomeCondo(c2)
+    return n1 === n2 || n1.includes(n2) || n2.includes(n1)
+  }
+
+  // Filtrar boletos pelo condomínio selecionado
+  const isAlpha = condoFilter === 'Alpha (Interno)' || condoFilter?.toLowerCase()?.includes('alpha')
+  const isTodos = !condoFilter || condoFilter === 'Todos'
+
+  const boletosDoCondo = (boletos || []).filter(b => {
+    if (b.status === 'Cancelado' || b.status === 'Excluído' || b.status === 'Excluido' || b.excluido || b.deletado) return false
+    if (isTodos) return true
+    if (isAlpha) return false // Alpha matriz não emite taxa condominial
+    return condoMatch(b.condominio, condoFilter)
+  })
+
+  // 1. Saldo do Fundo de Caixa (financeiro_config) e Contas Bancárias (financeiro_contas)
+  const contasFiltradas = (contas || []).filter(c => {
+    if (isTodos) return true
+    if (isAlpha) return c.condominio && c.condominio.toLowerCase().includes('alpha')
+    return condoMatch(c.condominio, condoFilter)
+  })
+  const saldoContasBancarias = contasFiltradas.reduce((acc, c) => acc + Number(c.saldo || 0), 0)
+
+  let saldoFundoCaixa = 0
+  if (isAlpha) {
+    const doc = (configs || []).find(c => c.id === 'caixa_alpha')
+    if (doc && doc.saldo_real !== undefined) saldoFundoCaixa = Number(doc.saldo_real || 0)
+  } else if (isTodos) {
+    saldoFundoCaixa = (configs || []).reduce((acc, c) => acc + Number(c.saldo_real || 0), 0)
+  } else {
+    const configId = `caixa_${condoFilter.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
+    const doc = (configs || []).find(c => c.id === configId)
+    if (doc && doc.saldo_real !== undefined) {
+      saldoFundoCaixa = Number(doc.saldo_real || 0)
+    } else {
+      const docAlt = (configs || []).find(c => (c.id || '').toLowerCase().includes(normalizarNomeCondo(condoFilter)))
+      if (docAlt && docAlt.saldo_real !== undefined) saldoFundoCaixa = Number(docAlt.saldo_real || 0)
+    }
+  }
+
+  // 2. Histórico de Entradas e Saídas Liquidadas
+  const totalRecebidoHistoricoFin = lancamentos
     .filter(t => t.tipo === 'Receita' && (t.status === 'Recebido' || t.status === 'Pago'))
+    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
+
+  const totalRecebidoHistoricoBol = boletosDoCondo
+    .filter(b => b.status === 'Pago')
     .reduce((acc, c) => acc + Number(c.valor || 0), 0)
 
   const totalPagoHistorico = lancamentos
     .filter(t => t.tipo === 'Despesa' && (t.status === 'Pago' || t.status === 'Liquidado' || t.pago))
     .reduce((acc, c) => acc + Number(c.valor || 0), 0)
 
-  // Saldo real em caixa: diferença de entradas e saídas liquidadas (se houver contas cadastradas, somam-se)
-  const saldoContasBancarias = contas.reduce((acc, c) => acc + Number(c.saldo || 0), 0)
-  const saldoCaixa = (totalRecebidoHistorico - totalPagoHistorico) + saldoContasBancarias
+  // Saldo real em caixa consolidado
+  const saldoCaixa = saldoFundoCaixa + saldoContasBancarias + totalRecebidoHistoricoFin + totalRecebidoHistoricoBol - totalPagoHistorico
 
-  // 2. Filtragem estrita dos lançamentos pelo período selecionado (Mês Selecionado)
+  // 3. Filtragem estrita dos lançamentos pelo período selecionado
   const lancamentosPeriodo = lancamentos.filter(t => {
-    if (!t.data) return false
-    const mes = t.data.substring(0, 7)
+    const dStr = t.data || t.vencimento || ''
+    const mes = parseAnoMes(dStr, t.competencia)
+    if (!mes) return false
     if (mesDe && mesAte) return mes >= mesDe && mes <= mesAte
     if (mesDe) return mes >= mesDe
     if (mesAte) return mes <= mesAte
     return true
   })
 
-  // 3. Contas a Pagar e a Receber estritamente do mês/período selecionado
+  const boletosPeriodo = boletosDoCondo.filter(b => {
+    const dStr = b.vencimento || b.data || ''
+    const mes = parseAnoMes(dStr, b.competencia)
+    if (!mes) return false
+    if (mesDe && mesAte) return mes >= mesDe && mes <= mesAte
+    if (mesDe) return mes >= mesDe
+    if (mesAte) return mes <= mesAte
+    return true
+  })
+
+  // 4. Contas a Pagar e a Receber estritamente do mês/período selecionado
   const pagarPendenteMes = lancamentosPeriodo
     .filter(t => t.tipo === 'Despesa' && (t.status === 'Pendente' || t.status === 'Aguardando Aprovação'))
     .reduce((acc, c) => acc + Number(c.valor || 0), 0)
 
-  const receberPendenteMes = lancamentosPeriodo
+  const receberPendenteMesFin = lancamentosPeriodo
     .filter(t => t.tipo === 'Receita' && (t.status === 'Pendente' || t.status === 'Vencido'))
     .reduce((acc, c) => acc + Number(c.valor || 0), 0)
+
+  const receberPendenteMesBol = boletosPeriodo
+    .filter(b => b.status === 'Pendente' || b.status === 'Vencido')
+    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
+
+  const receberPendenteMes = receberPendenteMesFin + receberPendenteMesBol
 
   const despesasPagasMes = lancamentosPeriodo
     .filter(t => t.tipo === 'Despesa' && (t.status === 'Pago' || t.status === 'Liquidado' || t.pago))
     .reduce((acc, c) => acc + Number(c.valor || 0), 0)
 
-  const receitasRecebidasMes = lancamentosPeriodo
+  const receitasRecebidasMesFin = lancamentosPeriodo
     .filter(t => t.tipo === 'Receita' && (t.status === 'Recebido' || t.status === 'Pago'))
     .reduce((acc, c) => acc + Number(c.valor || 0), 0)
 
-  // Saldo Real do Mês (Entradas liquidadas - Despesas pagas no mês)
-  const saldoLiquidoMes = receitasRecebidasMes - despesasPagasMes
+  const receitasRecebidasMesBol = boletosPeriodo
+    .filter(b => b.status === 'Pago')
+    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
 
-  // 4. Capital de Giro Operacional do Mês = Recursos Disponíveis / Saúde do Mês:
-  // Saldo em Caixa Acumulado + A Receber do Mês - A Pagar do Mês
+  const receitasRecebidasMes = receitasRecebidasMesFin + receitasRecebidasMesBol
+
+  // 5. Capital de Giro Operacional do Mês
   const capitalDeGiro = saldoCaixa + receberPendenteMes - pagarPendenteMes
 
   const lucroMes = receitasRecebidasMes - despesasPagasMes

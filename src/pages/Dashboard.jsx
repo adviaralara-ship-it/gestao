@@ -38,6 +38,8 @@ export default function Dashboard() {
   const { items: acessosPortaria } = useFirestore('portaria_visitantes')
   const { items: prestadores }  = useFirestore('portaria_prestadores')
   const { items: encomendas }   = useFirestore('encomendas')
+  const { items: financeiroConfigs } = useFirestore('financeiro_config')
+  const { items: financeiroContas }  = useFirestore('financeiro_contas')
 
   // =========================================================================
   // 1. SE FOR MORADOR -> PORTAL DO MORADOR
@@ -796,6 +798,49 @@ export default function Dashboard() {
   const apoFiltradas = useMemo(() => filterByCondo(apolices), [apolices, condoFiltro])
   const ocFiltradas = useMemo(() => filterByCondo(ocorrencias), [ocorrencias, condoFiltro])
 
+  // Função utilitária para extrair ano-mês (YYYY-MM) de qualquer string de data ou competência
+  const parseAnoMes = (str, competenciaStr) => {
+    if (!str && !competenciaStr) return ''
+    const s = String(str || '').trim()
+    // Caso 1: YYYY-MM ou YYYY-MM-DD
+    if (/^\d{4}-\d{2}/.test(s)) {
+      return s.substring(0, 7)
+    }
+    // Caso 2: DD/MM/YYYY
+    const brMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (brMatch) {
+      return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}`
+    }
+    // Caso 3: Tenta via Date parse se não for vazio
+    if (s && !isNaN(Date.parse(s))) {
+      try {
+        const d = new Date(s)
+        if (!isNaN(d.getTime())) {
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        }
+      } catch (e) {}
+    }
+    // Caso 4: Competência textual (ex: "out/2026", "outubro/2026", "10/2026")
+    if (competenciaStr) {
+      const c = String(competenciaStr).toLowerCase().trim()
+      const mNum = c.match(/(\d{1,2})\/(\d{4})/)
+      if (mNum) {
+        return `${mNum[2]}-${mNum[1].padStart(2, '0')}`
+      }
+      const mesesMap = {
+        jan: '01', fev: '02', mar: '03', abr: '04', mai: '05', jun: '06',
+        jul: '07', ago: '08', set: '09', out: '10', nov: '11', dez: '12'
+      }
+      for (const [prefix, num] of Object.entries(mesesMap)) {
+        if (c.includes(prefix)) {
+          const anoMatch = c.match(/\d{4}/)
+          if (anoMatch) return `${anoMatch[0]}-${num}`
+        }
+      }
+    }
+    return ''
+  }
+
   const { saldoAtual, capitalDeGiro, aReceber, aPagar, inadimplenciaTotal, itensInadimplentes = [], contasVencidas, chartData } = useMemo(() => {
     let recPagasTotal = 0
     let desPagasTotal = 0
@@ -810,6 +855,42 @@ export default function Dashboard() {
 
     let itensInadimp = []
 
+    // 1. Obter saldo inicial configurado no Fundo de Caixa / Reserva e Contas Bancárias
+    const isAlpha = condoFiltro === 'Alpha (Interno)' || condoFiltro?.toLowerCase()?.includes('alpha')
+    const isTodos = !condoFiltro || condoFiltro === 'Todos'
+    
+    // Contas bancárias vinculadas ao condomínio selecionado
+    const contasFiltradas = (financeiroContas || []).filter(c => {
+      if (isTodos) return true
+      if (isAlpha) return isAlphaInterno(c.condominio)
+      return condoMatch(c.condominio, condoFiltro)
+    })
+    const saldoContasBancarias = contasFiltradas.reduce((acc, c) => acc + Number(c.saldo || 0), 0)
+
+    // Fundo de Caixa cadastrado na Reserva de Emergência (financeiro_config)
+    let saldoFundoCaixa = 0
+    if (isAlpha) {
+      const doc = (financeiroConfigs || []).find(c => c.id === 'caixa_alpha')
+      if (doc && doc.saldo_real !== undefined) saldoFundoCaixa = Number(doc.saldo_real || 0)
+    } else if (isTodos) {
+      // No consolidado 'Todos', soma os saldos reais de todos os caixas cadastrados
+      saldoFundoCaixa = (financeiroConfigs || []).reduce((acc, c) => acc + Number(c.saldo_real || 0), 0)
+    } else {
+      const configId = `caixa_${condoFiltro.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
+      const doc = (financeiroConfigs || []).find(c => c.id === configId)
+      if (doc && doc.saldo_real !== undefined) {
+        saldoFundoCaixa = Number(doc.saldo_real || 0)
+      } else {
+        // Fallback: procura por correspondência no nome da chave ou condominio
+        const docAlt = (financeiroConfigs || []).find(c => {
+          const cid = (c.id || '').toLowerCase()
+          const cNome = normalizarNomeCondo(condoFiltro)
+          return cid.includes(cNome)
+        })
+        if (docAlt && docAlt.saldo_real !== undefined) saldoFundoCaixa = Number(docAlt.saldo_real || 0)
+      }
+    }
+
     // Processamento de Boletos (Receitas de Cotas Condominiais)
     bolFiltrado.forEach(b => {
       // Ignorar boletos cancelados, excluídos ou soft-deleted
@@ -819,29 +900,33 @@ export default function Dashboard() {
 
       const val = parseFloat(b.valor) || 0
       const dStr = b.vencimento || b.data || ''
+      const mesKey = parseAnoMes(dStr, b.competencia) || (mesFiltro || '')
+
       let dObj = refHoje
       if (dStr) {
-        try { dObj = parseISO(dStr) } catch(e) {}
+        try {
+          const parsed = parseISO(dStr)
+          if (!isNaN(parsed.getTime())) dObj = parsed
+        } catch(e) {}
       }
-      const mesKey = `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}`
-      const mesAbrev = dObj.toLocaleDateString('pt-BR', { month: 'short' })
+      const mesAbrev = mesKey ? new Date(`${mesKey}-01T12:00:00`).toLocaleDateString('pt-BR', { month: 'short' }) : dObj.toLocaleDateString('pt-BR', { month: 'short' })
 
-      if (!histMeses[mesKey]) {
-        histMeses[mesKey] = { mes: mesAbrev, receitas: 0, despesas: 0, order: dObj.getTime() }
+      if (mesKey && !histMeses[mesKey]) {
+        histMeses[mesKey] = { mes: mesAbrev, receitas: 0, despesas: 0, order: new Date(`${mesKey}-01T12:00:00`).getTime() || dObj.getTime() }
       }
 
       if (b.status === 'Pago') {
         recPagasTotal += val
-        histMeses[mesKey].receitas += val
+        if (mesKey && histMeses[mesKey]) histMeses[mesKey].receitas += val
       } else {
-        // A Receber no Mês Selecionado
+        // A Receber no Mês Selecionado (Pendente ou Vencido)
         if (!mesFiltro || mesKey === mesFiltro) {
           recPendentesMes += val
         }
         if (dStr) {
           try {
             const d = parseISO(dStr)
-            if (differenceInDays(d, refHoje) < 0) {
+            if (!isNaN(d.getTime()) && differenceInDays(d, refHoje) < 0) {
               inadimp += val
               itensInadimp.push({
                 origem: 'boletos',
@@ -869,33 +954,40 @@ export default function Dashboard() {
 
       const val = parseFloat(f.valor) || 0
       const isDespesa = f.tipo === 'Despesa' || f.categoria?.toLowerCase().includes('despesa')
-      const dStr = f.vencimento || f.data || ''
+      // Padronização alinhada com ContasPagar: usa prioritariamente f.data ou f.vencimento
+      const dStr = f.data || f.vencimento || ''
+      const mesKey = parseAnoMes(dStr, f.competencia) || (mesFiltro || '')
+
       let dObj = refHoje
       if (dStr) {
-        try { dObj = parseISO(dStr) } catch(e) {}
+        try {
+          const parsed = parseISO(dStr)
+          if (!isNaN(parsed.getTime())) dObj = parsed
+        } catch(e) {}
       }
-      const mesKey = `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}`
-      const mesAbrev = dObj.toLocaleDateString('pt-BR', { month: 'short' })
+      const mesAbrev = mesKey ? new Date(`${mesKey}-01T12:00:00`).toLocaleDateString('pt-BR', { month: 'short' }) : dObj.toLocaleDateString('pt-BR', { month: 'short' })
 
-      if (!histMeses[mesKey]) {
-        histMeses[mesKey] = { mes: mesAbrev, receitas: 0, despesas: 0, order: dObj.getTime() }
+      if (mesKey && !histMeses[mesKey]) {
+        histMeses[mesKey] = { mes: mesAbrev, receitas: 0, despesas: 0, order: new Date(`${mesKey}-01T12:00:00`).getTime() || dObj.getTime() }
       }
 
       if (isDespesa) {
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.pago) {
           desPagasTotal += val
-          histMeses[mesKey].despesas += val
+          if (mesKey && histMeses[mesKey]) histMeses[mesKey].despesas += val
         } else {
-          // A Pagar no Mês Selecionado
+          // A Pagar no Mês Selecionado (Pendente ou Aguardando Aprovação)
           if (!mesFiltro || mesKey === mesFiltro) {
             desPendentesMes += val
           }
           if (dStr) {
             try {
               const d = parseISO(dStr)
-              const diff = differenceInDays(d, refHoje)
-              if (diff < 0) {
-                vencidas.push({ ...f, diasAtraso: Math.abs(diff) })
+              if (!isNaN(d.getTime())) {
+                const diff = differenceInDays(d, refHoje)
+                if (diff < 0) {
+                  vencidas.push({ ...f, diasAtraso: Math.abs(diff) })
+                }
               }
             } catch(e) {}
           }
@@ -903,7 +995,7 @@ export default function Dashboard() {
       } else {
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.status === 'Recebido' || f.pago) {
           recPagasTotal += val
-          histMeses[mesKey].receitas += val
+          if (mesKey && histMeses[mesKey]) histMeses[mesKey].receitas += val
         } else {
           if (!mesFiltro || mesKey === mesFiltro) {
             recPendentesMes += val
@@ -931,7 +1023,10 @@ export default function Dashboard() {
       .sort((a, b) => a.order - b.order)
       .slice(-6)
 
-    const saldoEmCaixaAcumulado = recPagasTotal - desPagasTotal
+    // Saldo Atual em Caixa: Saldo inicial do Fundo de Caixa / Contas + Receitas pagas realizadas - Despesas pagas
+    // Se houver saldo inicial em caixa/fundo ou contas, inicia a partir dele
+    const baseCaixa = saldoFundoCaixa + saldoContasBancarias
+    const saldoEmCaixaAcumulado = baseCaixa + recPagasTotal - desPagasTotal
     const giroDoMes = saldoEmCaixaAcumulado + recPendentesMes - desPendentesMes
 
     return {
@@ -946,7 +1041,7 @@ export default function Dashboard() {
         { mes: format(new Date(), 'MMM'), receitas: 0, despesas: 0 }
       ]
     }
-  }, [bolFiltrado, finFiltrado, mesFiltro])
+  }, [bolFiltrado, finFiltrado, mesFiltro, condoFiltro, financeiroConfigs, financeiroContas])
 
   const statsCotacoes = useMemo(() => {
     let emAndamento = 0

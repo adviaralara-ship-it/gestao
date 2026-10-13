@@ -547,6 +547,7 @@ export default function Financeiro() {
 
   const { items: allLancamentos, addItem: addLancamento, updateItem: updateLancamento, deleteItem: deleteLancamento } = useFirestore('financeiro_lancamentos')
   const { items: contas, addItem: addConta, updateItem: updateConta, deleteItem: deleteConta } = useFirestore('financeiro_contas')
+  const { items: financeiroConfigs } = useFirestore('financeiro_config')
   const { items: condominiosList } = useFirestore('condominios')
   const { items: allBoletos } = useFirestore('boletos')
 
@@ -835,7 +836,16 @@ export default function Financeiro() {
       </div>
 
       {/* Conteúdo Renderizado da Aba Ativa */}
-      {activeTab === 'Dashboard' && <DashboardFinanceiro lancamentos={lancamentos} contas={contas} setModalLanc={setModalLanc} />}
+      {activeTab === 'Dashboard' && (
+        <DashboardFinanceiro 
+          lancamentos={lancamentos} 
+          contas={contas} 
+          configs={financeiroConfigs}
+          boletos={allBoletos}
+          condoFilter={condoFilter}
+          setModalLanc={setModalLanc} 
+        />
+      )}
       {activeTab === 'ContasPagar' && <ContasPagar lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
       {activeTab === 'ContasReceber' && <ContasReceber lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
       {activeTab === 'RateioAgua' && <RateioAgua lancamentos={lancamentos} condoFilter={condoFilter} condominiosDisponiveis={condominiosDisponiveis} />}
