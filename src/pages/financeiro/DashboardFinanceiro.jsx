@@ -3,7 +3,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, L
 import { Wallet, TrendingUp, TrendingDown, DollarSign, Activity, AlertTriangle, ShieldCheck } from 'lucide-react'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 
-export default function DashboardFinanceiro({ lancamentos = [], contas = [], configs = [], boletos = [], condoFilter = 'Todos' }) {
+export default function DashboardFinanceiro({ lancamentos = [], contas = [], configs = [], condominios = [], boletos = [], condoFilter = 'Todos' }) {
   const hoje = new Date()
   const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`
   const [mesDe, setMesDe] = useState(mesAtual)
@@ -77,15 +77,28 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
     const doc = (configs || []).find(c => c.id === 'caixa_alpha')
     if (doc && doc.saldo_real !== undefined) saldoFundoCaixa = Number(doc.saldo_real || 0)
   } else if (isTodos) {
-    saldoFundoCaixa = (configs || []).reduce((acc, c) => acc + Number(c.saldo_real || 0), 0)
+    const somaCaixas = (configs || []).reduce((acc, c) => acc + Number(c.saldo_real || 0), 0)
+    const somaFundos = (condominios || []).reduce((acc, c) => acc + Number(c.fundoReserva || 0), 0)
+    saldoFundoCaixa = somaCaixas > 0 ? somaCaixas : somaFundos
   } else {
     const configId = `caixa_${condoFilter.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
     const doc = (configs || []).find(c => c.id === configId)
     if (doc && doc.saldo_real !== undefined) {
       saldoFundoCaixa = Number(doc.saldo_real || 0)
     } else {
-      const docAlt = (configs || []).find(c => (c.id || '').toLowerCase().includes(normalizarNomeCondo(condoFilter)))
-      if (docAlt && docAlt.saldo_real !== undefined) saldoFundoCaixa = Number(docAlt.saldo_real || 0)
+      const docAlt = (configs || []).find(c => {
+        const cid = (c.id || '').toLowerCase()
+        const cNome = normalizarNomeCondo(condoFilter)
+        return cid.includes(cNome) || (c.condominio && condoMatch(c.condominio, condoFilter))
+      })
+      if (docAlt && docAlt.saldo_real !== undefined) {
+        saldoFundoCaixa = Number(docAlt.saldo_real || 0)
+      } else {
+        const condoObj = (condominios || []).find(c => condoMatch(c.nome, condoFilter))
+        if (condoObj && condoObj.fundoReserva !== undefined) {
+          saldoFundoCaixa = Number(condoObj.fundoReserva || 0)
+        }
+      }
     }
   }
 
@@ -103,7 +116,7 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
     .reduce((acc, c) => acc + Number(c.valor || 0), 0)
 
   // Saldo real em caixa consolidado
-  const baseCaixa = saldoContasBancarias > 0 ? saldoContasBancarias : (saldoFundoCaixa > 0 && (totalRecebidoHistoricoFin + totalRecebidoHistoricoBol) === 0 ? saldoFundoCaixa : 0)
+  const baseCaixa = saldoContasBancarias > 0 ? saldoContasBancarias : saldoFundoCaixa
   const saldoCaixa = baseCaixa + totalRecebidoHistoricoFin + totalRecebidoHistoricoBol - totalPagoHistorico
 
   // 3. Filtragem estrita dos lançamentos pelo período selecionado

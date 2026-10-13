@@ -841,6 +841,7 @@ export default function Financeiro() {
           lancamentos={lancamentos} 
           contas={contas} 
           configs={financeiroConfigs}
+          condominios={condominiosList}
           boletos={allBoletos}
           condoFilter={condoFilter}
           setModalLanc={setModalLanc} 
