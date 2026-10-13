@@ -983,8 +983,17 @@ export default function Dashboard() {
 
       const val = parseFloat(f.valor) || 0
       const isDespesa = f.tipo === 'Despesa'
-      // Alinhamento estrito com Contas a Pagar: data do lançamento (f.data) ou vencimento
-      const mesData = (f.data ? f.data.substring(0, 7) : '') || parseAnoMes(f.vencimento || '', f.competencia)
+      
+      // Alinhamento estrito: extrai o mês da data do lançamento, vencimento ou competência
+      const getMesItem = (item) => {
+        const d = String(item.data || '').trim()
+        if (/^\d{4}-\d{2}/.test(d)) return d.substring(0, 7)
+        const brMatch = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+        if (brMatch) return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}`
+        return parseAnoMes(item.vencimento || '', item.competencia)
+      }
+
+      const mesData = getMesItem(f)
       const dStr = f.data || f.vencimento || ''
 
       let dObj = refHoje
@@ -1001,9 +1010,7 @@ export default function Dashboard() {
       }
 
       if (isDespesa) {
-        // Alinhamento exato com Contas a Pagar: f.data?.substring(0, 7)
-        const mesDespesa = (f.data ? f.data.substring(0, 7) : '') || parseAnoMes(f.vencimento || '', f.competencia)
-        const pertenceAoMes = !mesFiltro || mesDespesa === mesFiltro
+        const pertenceAoMes = !mesFiltro || mesData === mesFiltro
 
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.pago) {
           // Despesas pagas computadas no saldo do mês
@@ -1028,7 +1035,7 @@ export default function Dashboard() {
           }
         }
 
-        // Soma todas as contas do mês selecionado (total do mês: pendentes + pagas = R$ 867,14)
+        // Soma todas as contas do mês selecionado (total do mês: pendentes + pagas)
         if (pertenceAoMes) {
           desTotalMes += val
         }

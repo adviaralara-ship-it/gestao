@@ -123,11 +123,22 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
     return b.condominio === selectedCondo || condoMatch(b.condominio, selectedCondo)
   })
 
+  const getAnoMesLancamento = (item) => {
+    if (!item) return ''
+    const d = String(item.data || '').trim()
+    if (/^\d{4}-\d{2}/.test(d)) return d.substring(0, 7)
+    const brMatch = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (brMatch) return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}`
+    
+    // Se não tiver item.data válido, recorre a vencimento ou competência
+    return parseAnoMes(item.vencimento || '', item.competencia)
+  }
+
   // Lançamentos e boletos filtrados pelo mês de competência ativo (ex: 2026-10)
-  // Alinhamento estrito com Contas a Pagar: l.data?.substring(0, 7)
+  // Alinhamento estrito: só entra se pertencer comprovadamente ao mês selecionado
   const lMes = lFiltrados.filter(l => {
     if (!mesFiltro) return true
-    const m = (l.data ? l.data.substring(0, 7) : '') || parseAnoMes(l.vencimento || '', l.competencia)
+    const m = getAnoMesLancamento(l)
     return m === mesFiltro
   })
 
@@ -146,11 +157,12 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
     ? totalReceitasBolPagas
     : (totalReceitasFinPagas + totalReceitasBolPagas)
 
-  // Despesas filtradas estritamente pelo mês alinhado a ContasPagar (t.data?.substring(0, 7))
+  // Despesas filtradas estritamente pelo mês alinhado
   const despesasMes = lFiltrados.filter(l => {
     if (l.tipo !== 'Despesa') return false
-    const m = l.data?.substring(0, 7)
-    return !mesFiltro || m === mesFiltro
+    if (!mesFiltro) return true
+    const m = getAnoMesLancamento(l)
+    return m === mesFiltro
   })
 
   const totalDespesasPagas = despesasMes.filter(l => l.status === 'Pago' || l.status === 'Liquidado' || l.pago).reduce((a, b) => a + Number(b.valor || 0), 0)
@@ -168,25 +180,24 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
   const totalDespesas = totalDespesasCompromisso
   const saldoOperacional = totalReceitas - totalDespesas
 
-  // 1. SEPARAÇÃO: MANUTENÇÃO PREVENTIVA
-  const lancamentosPreventivas = lFiltrados.filter(l => {
+  // 1. SEPARAÇÃO: MANUTENÇÃO PREVENTIVA (Do mês selecionado)
+  const lancamentosPreventivas = despesasMes.filter(l => {
     const cat = (l.categoria || '').toLowerCase()
     const desc = (l.descricao || '').toLowerCase()
     return (cat.includes('preventiv') || desc.includes('preventiv')) && !cat.includes('visita') && !desc.includes('visita')
   })
   const totalPreventivas = lancamentosPreventivas.reduce((a, b) => a + Number(b.valor || 0), 0)
 
-  // 2. SEPARAÇÃO: VISITA TÉCNICA
-  const lancamentosVisitas = lFiltrados.filter(l => {
+  // 2. SEPARAÇÃO: VISITA TÉCNICA (Do mês selecionado)
+  const lancamentosVisitas = despesasMes.filter(l => {
     const cat = (l.categoria || '').toLowerCase()
     const desc = (l.descricao || '').toLowerCase()
     return cat.includes('visita') || desc.includes('visita') || cat.includes('vistoria') || desc.includes('vistoria') || cat.includes('inspe') || desc.includes('inspe')
   })
   const totalVisitas = lancamentosVisitas.reduce((a, b) => a + Number(b.valor || 0), 0)
 
-  // 3. DEMAIS DESPESAS OPERACIONAIS (Sem misturar)
-  const demaisDespesas = lFiltrados.filter(l => {
-    if (l.tipo !== 'Despesa') return false
+  // 3. DEMAIS DESPESAS OPERACIONAIS (Do mês selecionado)
+  const demaisDespesas = despesasMes.filter(l => {
     const cat = (l.categoria || '').toLowerCase()
     const desc = (l.descricao || '').toLowerCase()
     const ehPrev = (cat.includes('preventiv') || desc.includes('preventiv')) && !cat.includes('visita') && !desc.includes('visita')
@@ -200,6 +211,10 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
     if (isTodos) return true
     if (isAlpha) return isAlphaInterno(m.condominio)
     return m.condominio === selectedCondo
+  }).filter(m => {
+    if (!mesFiltro) return true
+    const mData = String(m.data || m.dataAgendada || m.data_agendada || '').substring(0, 7)
+    return !mData || mData === mesFiltro
   })
   const cronogramaPreventivas = manutencoesDoCondo.filter(m => (m.tipo || '').includes('Preventiva') || (!m.tipo && !(m.titulo || '').toLowerCase().includes('visita')))
   const cronogramaVisitas = manutencoesDoCondo.filter(m => (m.tipo || '').includes('Visita') || (m.titulo || '').toLowerCase().includes('visita') || (m.titulo || '').toLowerCase().includes('vistoria'))
