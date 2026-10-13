@@ -975,14 +975,15 @@ export default function Dashboard() {
       }
 
       if (isDespesa) {
+        const mesData = (f.data ? f.data.substring(0, 7) : '') || mesKey
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.pago) {
-          if (!mesFiltro || !mesKey || mesKey <= mesFiltro) {
+          if (!mesFiltro || !mesData || mesData <= mesFiltro) {
             desPagasTotal += val
           }
-          if (mesKey && histMeses[mesKey]) histMeses[mesKey].despesas += val
+          if (mesData && histMeses[mesData]) histMeses[mesData].despesas += val
         } else if (f.status === 'Pendente' || f.status === 'Aguardando Aprovação' || !f.status) {
-          // A Pagar no Mês Selecionado (Exatamente igual ao 'Pendente' de Contas a Pagar)
-          if (!mesFiltro || mesKey === mesFiltro) {
+          // A Pagar no Mês Selecionado (Exatamente idêntico ao totalPendente de Contas a Pagar)
+          if (!mesFiltro || mesData === mesFiltro) {
             desPendentesMes += val
           }
           if (dStr) {
