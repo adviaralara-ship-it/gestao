@@ -141,6 +141,10 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
   })
 
   // 4. Contas a Pagar e a Receber estritamente do mês/período selecionado
+  const pagarTotalMes = lancamentosPeriodo
+    .filter(t => t.tipo === 'Despesa')
+    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
+
   const pagarPendenteMes = lancamentosPeriodo
     .filter(t => t.tipo === 'Despesa' && (t.status === 'Pendente' || t.status === 'Aguardando Aprovação'))
     .reduce((acc, c) => acc + Number(c.valor || 0), 0)
@@ -234,8 +238,10 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
             <div className="p-2 bg-red-100 rounded-lg text-red-600"><TrendingDown size={18} /></div>
             <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">A Pagar (Mês)</p>
           </div>
-          <p className="text-3xl font-black text-red-500">R$ {fmt(pagarPendenteMes)}</p>
-          <p className="text-xs text-gray-400 mt-1">Compromissos pendentes no período</p>
+          <p className="text-3xl font-black text-red-500">R$ {fmt(pagarTotalMes)}</p>
+          <p className="text-xs text-gray-400 mt-1">
+            Total do mês • <span className="font-bold text-amber-600">R$ {fmt(pagarPendenteMes)} pendente</span>
+          </p>
         </div>
       </div>
 

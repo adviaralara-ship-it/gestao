@@ -857,6 +857,8 @@ export default function Financeiro() {
           lancamentos={allLancamentos} 
           condoFilter={condoFilter} 
           condominiosDisponiveis={condominiosDisponiveis} 
+          condominios={condominiosList}
+          boletos={allBoletos}
           setModalLanc={setModalLanc} 
         />
       )}

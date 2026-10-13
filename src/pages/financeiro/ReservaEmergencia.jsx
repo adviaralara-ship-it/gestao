@@ -4,7 +4,7 @@ import { useFirestore } from '../../hooks/useFirestore'
 import { CurrencyInput } from '../../utils/currency'
 import { isAlphaInterno } from '../Financeiro'
 
-export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Todos', condominiosDisponiveis = [], setModalLanc }) {
+export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Todos', condominiosDisponiveis = [], condominios = [], boletos = [], setModalLanc }) {
   const { items: configs, updateItem, addItem } = useFirestore('financeiro_config')
   const { items: allManutencoes } = useFirestore('manutencoes')
   
@@ -22,6 +22,23 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
   const isAlpha = selectedCondo === 'Alpha (Interno)' || selectedCondo.toLowerCase().includes('alpha')
   const isTodos = selectedCondo === 'Todos'
 
+  const normalizarNome = (nome) => {
+    return String(nome || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/^(residencial|condominio|edificio|ed\.)\s+/i, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .trim()
+      .toLowerCase()
+  }
+
+  const condoMatch = (c1, c2) => {
+    if (!c1 || !c2) return false
+    const n1 = normalizarNome(c1)
+    const n2 = normalizarNome(c2)
+    return n1 === n2 || n1.includes(n2) || n2.includes(n1)
+  }
+
   // ID único para salvar o saldo do fundo de caixa por condomínio ou Alpha
   const configId = isAlpha 
     ? 'caixa_alpha' 
@@ -33,9 +50,32 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
     if (configDoc && configDoc.saldo_real !== undefined) {
       setSaldoReal(Number(configDoc.saldo_real))
     } else {
-      setSaldoReal(0)
+      // Fallback 1: procura correspondência no financeiro_config
+      const docAlt = configs.find(c => {
+        const cid = (c.id || '').toLowerCase()
+        const cNome = normalizarNome(selectedCondo)
+        return cid.includes(cNome) || (c.condominio && condoMatch(c.condominio, selectedCondo))
+      })
+      if (docAlt && docAlt.saldo_real !== undefined) {
+        setSaldoReal(Number(docAlt.saldo_real))
+      } else {
+        // Fallback 2: busca no cadastro do condomínio (ex: 1109.98 do Residencial Dália)
+        if (isAlpha) {
+          setSaldoReal(0)
+        } else if (isTodos) {
+          const somaFundos = condominios.reduce((acc, c) => acc + Number(c.fundoReserva || 0), 0)
+          setSaldoReal(somaFundos)
+        } else {
+          const condoObj = condominios.find(c => condoMatch(c.nome, selectedCondo))
+          if (condoObj && condoObj.fundoReserva !== undefined) {
+            setSaldoReal(Number(condoObj.fundoReserva || 0))
+          } else {
+            setSaldoReal(0)
+          }
+        }
+      }
     }
-  }, [configDoc, configId])
+  }, [configDoc, configId, configs, condominios, selectedCondo, isAlpha, isTodos])
 
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -43,11 +83,28 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
   const lFiltrados = lancamentos.filter(l => {
     if (isTodos) return true
     if (isAlpha) return isAlphaInterno(l.condominio)
-    return l.condominio === selectedCondo
+    return l.condominio === selectedCondo || condoMatch(l.condominio, selectedCondo)
+  })
+
+  // Boletos vinculados
+  const bFiltrados = boletos.filter(b => {
+    if (b.status === 'Cancelado' || b.status === 'Excluído' || b.excluido || b.deletado) return false
+    if (isTodos) return true
+    if (isAlpha) return isAlphaInterno(b.condominio)
+    return b.condominio === selectedCondo || condoMatch(b.condominio, selectedCondo)
   })
 
   // Total Geral de Receitas e Despesas do Caixa
-  const totalReceitas = lFiltrados.filter(l => l.tipo === 'Receita').reduce((a, b) => a + Number(b.valor || 0), 0)
+  const totalReceitasFinPagas = lFiltrados.filter(l => l.tipo === 'Receita' && (l.status === 'Pago' || l.status === 'Recebido')).reduce((a, b) => a + Number(b.valor || 0), 0)
+  const totalReceitasBolPagas = bFiltrados.filter(b => b.status === 'Pago').reduce((a, b) => a + Number(b.valor || 0), 0)
+  const totalReceitasLiquidadas = totalReceitasFinPagas + totalReceitasBolPagas
+
+  const totalDespesasPagas = lFiltrados.filter(l => l.tipo === 'Despesa' && (l.status === 'Pago' || l.status === 'Liquidado' || l.pago)).reduce((a, b) => a + Number(b.valor || 0), 0)
+  
+  // Saldo real dinâmico em caixa: base real + entradas pagas - contas pagas
+  const saldoCaixaDinamico = saldoReal + totalReceitasLiquidadas - totalDespesasPagas
+
+  const totalReceitas = lFiltrados.filter(l => l.tipo === 'Receita').reduce((a, b) => a + Number(b.valor || 0), 0) + bFiltrados.reduce((a, b) => a + Number(b.valor || 0), 0)
   const totalDespesas = lFiltrados.filter(l => l.tipo === 'Despesa').reduce((a, b) => a + Number(b.valor || 0), 0)
   const saldoOperacional = totalReceitas - totalDespesas
 
@@ -164,8 +221,17 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
             <button onClick={() => setEditando(false)} className="px-3 py-2 text-xs bg-white/20 text-white rounded-lg hover:bg-white/30">Cancelar</button>
           </div>
         ) : (
-          <div className="flex items-center justify-center gap-3 text-4xl sm:text-5xl font-black text-white relative z-10">
-            R$ {fmt(saldoReal)}
+          <div>
+            <div className="flex items-center justify-center gap-3 text-4xl sm:text-5xl font-black text-white relative z-10">
+              R$ {fmt(saldoCaixaDinamico)}
+            </div>
+            {saldoReal > 0 && (
+              <p className="text-xs text-white/80 mt-1 relative z-10 font-medium">
+                Saldo Base / Reserva Cadastrada: <b>R$ {fmt(saldoReal)}</b>
+                {totalReceitasLiquidadas > 0 ? ` + R$ ${fmt(totalReceitasLiquidadas)} (receitas/boletos pagos)` : ''}
+                {totalDespesasPagas > 0 ? ` - R$ ${fmt(totalDespesasPagas)} (despesas pagas)` : ''}
+              </p>
+            )}
           </div>
         )}
         <p className="text-xs text-brand-200/90 mt-3 relative z-10">

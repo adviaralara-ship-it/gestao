@@ -860,6 +860,7 @@ export default function Dashboard() {
     let desPagasTotal = 0
     let recPendentesMes = 0
     let desPendentesMes = 0
+    let desTotalMes = 0
     let inadimp = 0
     let vencidas = []
 
@@ -1000,14 +1001,17 @@ export default function Dashboard() {
       }
 
       if (isDespesa) {
+        // Alinhamento exato com Contas a Pagar (t.data?.substring(0, 7))
+        const mesDespesa = (f.data ? f.data.substring(0, 7) : '') || parseAnoMes(f.vencimento || '', f.competencia)
+        const pertenceAoMes = !mesFiltro || mesDespesa === mesFiltro
+
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.pago) {
           if (!mesFiltro || !mesData || mesData <= mesFiltro) {
             desPagasTotal += val
           }
           if (mesData && histMeses[mesData]) histMeses[mesData].despesas += val
         } else if (f.status === 'Pendente' || f.status === 'Aguardando Aprovação' || !f.status) {
-          // A Pagar no Mês Selecionado (Exatamente idêntico ao totalPendente de Contas a Pagar)
-          if (!mesFiltro || mesData === mesFiltro) {
+          if (pertenceAoMes) {
             desPendentesMes += val
           }
           if (dStr) {
@@ -1021,6 +1025,11 @@ export default function Dashboard() {
               }
             } catch(e) {}
           }
+        }
+
+        // Soma todas as contas do mês selecionado (total do mês: pendentes + pagas = R$ 867,14)
+        if (pertenceAoMes) {
+          desTotalMes += val
         }
       } else {
         // Receitas Avulsas do financeiro_lancamentos
@@ -1076,7 +1085,8 @@ export default function Dashboard() {
       saldoAtual: saldoEmCaixaAcumulado,
       capitalDeGiro: giroDoMes,
       aReceber: recPendentesMes,
-      aPagar: desPendentesMes,
+      aPagar: desTotalMes,
+      aPagarPendente: desPendentesMes,
       inadimplenciaTotal: inadimp,
       itensInadimplentes: itensInadimp,
       contasVencidas: vencidas,
