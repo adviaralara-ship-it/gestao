@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
-import { Plus, Edit2, Trash2, Search, CheckCircle, AlertTriangle, Building2, Crown } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, CheckCircle, AlertTriangle, Building2, Crown, Loader2 } from 'lucide-react'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 import { isAlphaInterno } from '../Financeiro'
 
-export default function ContasReceber({ lancamentos, boletos = [], condoFilter = 'Todos', setModalLanc, deleteLancamento, updateLancamento }) {
+export default function ContasReceber({ lancamentos, boletos = [], condoFilter = 'Todos', setModalLanc, deleteLancamento, updateLancamento, updateBoleto, deleteBoleto }) {
   const [search, setSearch] = useState('')
   const hoje = new Date()
   const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`
@@ -150,22 +150,30 @@ export default function ContasReceber({ lancamentos, boletos = [], condoFilter =
   const totalRecebido = receitasPeriodo.filter(t => t.status === 'Recebido' || t.status === 'Pago').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
   const totalExibido = contasReceber.reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
 
+  const [loadingId, setLoadingId] = useState(null)
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-  const marcarComoRecebido = async (t) => {
-    const isRecebido = t.status === 'Recebido' || t.status === 'Pago'
-    const novoStatus = isRecebido ? 'Pendente' : 'Recebido'
-    const acao = !isRecebido ? 'Confirmar recebimento' : 'Voltar para Pendente'
-    if (window.confirm(`${acao} de "${t.descricao}"?`)) {
+  const alternarStatusPago = async (t) => {
+    try {
+      setLoadingId(t.id)
+      const isRecebido = t.status === 'Recebido' || t.status === 'Pago'
+      const novoStatus = isRecebido ? 'Pendente' : 'Recebido'
       if (t.isBoletoVirtual) {
         if (updateBoleto) {
           await updateBoleto(t.boletoId, { status: novoStatus === 'Recebido' ? 'Pago' : 'Pendente' })
         }
-      } else {
+      } else if (updateLancamento) {
         await updateLancamento(t.id, { ...t, status: novoStatus })
       }
+    } catch (err) {
+      console.error('Erro ao atualizar status do recebimento:', err)
+      alert('Erro ao atualizar status: ' + (err.message || 'Tente novamente'))
+    } finally {
+      setLoadingId(null)
     }
   }
+
+  const marcarComoRecebido = alternarStatusPago
 
   const handleDeleteItem = async (t) => {
     if (!window.confirm(`Excluir "${t.descricao}"?`)) return
@@ -278,25 +286,46 @@ export default function ContasReceber({ lancamentos, boletos = [], condoFilter =
                       <td className="p-3.5 font-black text-emerald-600 whitespace-nowrap">R$ {fmt(t.valor)}</td>
 
                       <td className="p-3.5 whitespace-nowrap">
-                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
-                          t.status === 'Recebido' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {t.status || 'Pendente'}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => alternarStatusPago(t)}
+                          disabled={loadingId === t.id}
+                          title={t.status === 'Recebido' || t.status === 'Pago' ? 'Clique para marcar como Pendente' : 'Clique para marcar como Pago'}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase transition-all shadow-xs cursor-pointer select-none active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${
+                            (t.status === 'Recebido' || t.status === 'Pago')
+                              ? 'bg-emerald-500 hover:bg-emerald-600 text-white border border-emerald-600 shadow-emerald-200'
+                              : 'bg-amber-100 hover:bg-emerald-100 text-amber-800 hover:text-emerald-800 border border-amber-300 hover:border-emerald-300'
+                          }`}
+                        >
+                          {loadingId === t.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (t.status === 'Recebido' || t.status === 'Pago') ? (
+                            <CheckCircle size={12} className="stroke-[2.5]" />
+                          ) : (
+                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                          )}
+                          {(t.status === 'Recebido' || t.status === 'Pago') ? 'Pago' : 'Pendente'}
+                        </button>
                       </td>
 
                       <td className="p-3.5 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
                           <button 
-                            onClick={() => marcarComoRecebido(t)} 
-                            title={t.status === 'Recebido' ? 'Marcar como Pendente' : 'Confirmar Recebimento'} 
-                            className={`p-1.5 rounded-xl transition-all cursor-pointer border ${
-                              t.status === 'Recebido' 
+                            type="button"
+                            onClick={() => alternarStatusPago(t)} 
+                            disabled={loadingId === t.id}
+                            title={(t.status === 'Recebido' || t.status === 'Pago') ? '1-Clique: Marcar como Pendente' : '1-Clique: Confirmar Recebimento (Pago)'} 
+                            className={`p-1.5 rounded-xl transition-all cursor-pointer border active:scale-90 disabled:opacity-50 ${
+                              (t.status === 'Recebido' || t.status === 'Pago')
                                 ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border-emerald-300 font-bold' 
                                 : 'bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-800 border-slate-300'
                             }`}
                           >
-                            <CheckCircle size={15} className="stroke-[2.2]" />
+                            {loadingId === t.id ? (
+                              <Loader2 size={15} className="animate-spin text-brand-600" />
+                            ) : (
+                              <CheckCircle size={15} className="stroke-[2.2]" />
+                            )}
                           </button>
                           <button onClick={() => setModalLanc(t)} className="p-1.5 rounded-xl bg-slate-100 hover:bg-brand-100 text-slate-700 hover:text-brand-900 border border-slate-300 hover:border-brand-300 transition-all cursor-pointer shadow-xs" title="Editar"><Edit2 size={14} className="stroke-[2.2]" /></button>
                           <button onClick={() => handleDeleteItem(t)} className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 transition-all cursor-pointer shadow-xs" title="Excluir"><Trash2 size={14} className="stroke-[2.2]" /></button>
