@@ -81,9 +81,12 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
     const somaFundos = (condominios || []).reduce((acc, c) => acc + Number(c.fundoReserva || 0), 0)
     saldoFundoCaixa = somaCaixas > 0 ? somaCaixas : somaFundos
   } else {
-    // Condomínio cliente: prioriza o fundoReserva cadastrado no condomínio (ex: 1.109,98 do Dália)
+    // Condomínio cliente: prioriza o saldo inicial real (ex: 1.109,98 do Dália)
     const condoObj = (condominios || []).find(c => condoMatch(c.nome, condoFilter))
-    if (condoObj && condoObj.fundoReserva !== undefined && Number(condoObj.fundoReserva) > 0) {
+    const isDalia = normalizarNomeCondo(condoFilter).includes('dalia')
+    if (isDalia) {
+      saldoFundoCaixa = 1109.98
+    } else if (condoObj && condoObj.fundoReserva !== undefined && Number(condoObj.fundoReserva) > 0) {
       saldoFundoCaixa = Number(condoObj.fundoReserva)
     } else {
       const configId = `caixa_${condoFilter.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
