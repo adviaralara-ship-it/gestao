@@ -20,22 +20,33 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
     setDisparandoAlertas(true)
 
     try {
-      // 1. Tenta acionar via backend cron endpoint
-      const resp = await fetch('/api/cron/alertas-vencimento').catch(() => null)
+      // 1. Tenta acionar via backend cron endpoint passando secret
+      const resp = await fetch('/api/cron/alertas-vencimento', {
+        headers: { 'x-cron-secret': 'Cron_Alpha_Auth_Secret_2026_Secure_Key' }
+      }).catch(() => null)
       if (resp && resp.ok) {
         const data = await resp.json()
-        alert(`✓ Notificação enviada com sucesso no WhatsApp!\nTotal de contas vencendo hoje: ${data.totalVencendoHoje || 0}`)
+        alert(`✅ Notificação enviada com sucesso no WhatsApp!\nTotal de contas vencendo hoje: ${data.totalVencendoHoje || 0}`)
         setDisparandoAlertas(false)
         return
       }
 
-      // 1. Monta o envio direto com dados em tempo real da aplicação
+      // 2. Monta o envio direto com dados em tempo real da aplicação (fallback de alta disponibilidade)
       const hoje = new Date()
       const yyyy = hoje.getFullYear()
       const mm = String(hoje.getMonth() + 1).padStart(2, '0')
       const dd = String(hoje.getDate()).padStart(2, '0')
-      const hojeStr = `${yyyy}-${mm}-${dd}`
-      const dataFmt = `${dd}/${mm}/${yyyy}`
+      const hojeIso = `${yyyy}-${mm}-${dd}`
+      const hojeBr = `${dd}/${mm}/${yyyy}`
+
+      const normalizarParaIso = (val) => {
+        if (!val) return ''
+        const s = String(val).trim()
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10)
+        const brMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+        if (brMatch) return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`
+        return ''
+      }
 
       const contasHoje = lancamentos.filter(item => {
         const isDespesa = item.tipo === 'Despesa' || (item.categoria && String(item.categoria).toLowerCase().includes('despesa'))
@@ -43,11 +54,12 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
         const pago = item.status === 'Pago' || item.status === 'Liquidado' || item.pago === true
         if (pago) return false
         const dtVenc = item.vencimento || item.data || ''
-        return dtVenc.startsWith(hojeStr)
+        const iso = normalizarParaIso(dtVenc)
+        return iso === hojeIso
       })
 
       if (contasHoje.length === 0) {
-        alert(`ℹ️ Nenhuma conta com vencimento para hoje (${dataFmt}) pendente de pagamento.`)
+        alert(`ℹ️ Nenhuma conta com vencimento para hoje (${hojeBr}) pendente de pagamento.`)
         setDisparandoAlertas(false)
         return
       }

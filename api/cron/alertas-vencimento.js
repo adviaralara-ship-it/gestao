@@ -67,6 +67,16 @@ export default async function handler(req, res) {
     const usuarios = usuariosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const tarefas = tarefasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+    // Função auxiliar para normalizar qualquer data para YYYY-MM-DD
+    const normalizarParaIso = (val) => {
+      if (!val) return '';
+      const s = String(val).trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+      const brMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (brMatch) return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`;
+      return '';
+    };
+
     // 3. Filtrar contas a pagar com vencimento HOJE e pendentes
     const contasVencendoHoje = lancamentos.filter(item => {
       const isDespesa = item.tipo === 'Despesa' || (item.categoria && String(item.categoria).toLowerCase().includes('despesa'));
@@ -76,14 +86,14 @@ export default async function handler(req, res) {
       if (pago) return false;
 
       const dtVenc = item.vencimento || item.data || '';
-      return dtVenc.startsWith(hojeStr);
+      return normalizarParaIso(dtVenc) === hojeStr;
     });
 
     // Filtrar tarefas agendadas para HOJE não concluídas
     const tarefasHoje = tarefas.filter(t => {
       const isDone = t.coluna === 'Concluído' || t.coluna === 'concluido' || t.status === 'Concluído';
       const dtVenc = t.vencimento || t.data || '';
-      return dtVenc.startsWith(hojeStr) && !isDone;
+      return normalizarParaIso(dtVenc) === hojeStr && !isDone;
     });
 
     if (contasVencendoHoje.length === 0 && tarefasHoje.length === 0) {

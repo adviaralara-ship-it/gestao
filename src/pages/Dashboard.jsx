@@ -814,43 +814,41 @@ export default function Dashboard() {
 
   // Função utilitária para extrair ano-mês (YYYY-MM) de qualquer string de data ou competência
   const parseAnoMes = (str, competenciaStr) => {
-    if (!str && !competenciaStr) return ''
-    const s = String(str || '').trim()
+    const raw = String(str || competenciaStr || '').trim()
+    if (!raw) return ''
     // Caso 1: YYYY-MM ou YYYY-MM-DD
-    if (/^\d{4}-\d{2}/.test(s)) {
-      return s.substring(0, 7)
+    if (/^\d{4}-\d{2}/.test(raw)) {
+      return raw.substring(0, 7)
     }
     // Caso 2: DD/MM/YYYY
-    const brMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    const brMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
     if (brMatch) {
       return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}`
     }
-    // Caso 3: Tenta via Date parse se não for vazio
-    if (s && !isNaN(Date.parse(s))) {
+    // Caso 3: Competência textual (ex: "set/2026", "setembro/2026", "09/2026")
+    const c = raw.toLowerCase()
+    const mNum = c.match(/(\d{1,2})\/(\d{4})/)
+    if (mNum) {
+      return `${mNum[2]}-${mNum[1].padStart(2, '0')}`
+    }
+    const mesesMap = {
+      jan: '01', fev: '02', mar: '03', abr: '04', mai: '05', jun: '06',
+      jul: '07', ago: '08', set: '09', out: '10', nov: '11', dez: '12'
+    }
+    for (const [prefix, num] of Object.entries(mesesMap)) {
+      if (c.includes(prefix)) {
+        const anoMatch = c.match(/\d{4}/)
+        if (anoMatch) return `${anoMatch[0]}-${num}`
+      }
+    }
+    // Caso 4: Tenta via Date parse se não for vazio
+    if (!isNaN(Date.parse(raw))) {
       try {
-        const d = new Date(s)
+        const d = new Date(raw)
         if (!isNaN(d.getTime())) {
           return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
         }
       } catch (e) {}
-    }
-    // Caso 4: Competência textual (ex: "out/2026", "outubro/2026", "10/2026")
-    if (competenciaStr) {
-      const c = String(competenciaStr).toLowerCase().trim()
-      const mNum = c.match(/(\d{1,2})\/(\d{4})/)
-      if (mNum) {
-        return `${mNum[2]}-${mNum[1].padStart(2, '0')}`
-      }
-      const mesesMap = {
-        jan: '01', fev: '02', mar: '03', abr: '04', mai: '05', jun: '06',
-        jul: '07', ago: '08', set: '09', out: '10', nov: '11', dez: '12'
-      }
-      for (const [prefix, num] of Object.entries(mesesMap)) {
-        if (c.includes(prefix)) {
-          const anoMatch = c.match(/\d{4}/)
-          if (anoMatch) return `${anoMatch[0]}-${num}`
-        }
-      }
     }
     return ''
   }
