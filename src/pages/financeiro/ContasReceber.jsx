@@ -11,6 +11,39 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
   const [mesAte, setMesAte] = useState(mesAtual)
   const [statusFilter, setStatusFilter] = useState('Todas')
 
+  const parseAnoMes = (str, competenciaStr) => {
+    const raw = String(str || competenciaStr || '').trim()
+    if (!raw) return ''
+    if (/^\d{4}-\d{2}/.test(raw)) return raw.substring(0, 7)
+    const brMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (brMatch) return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}`
+    
+    const c = raw.toLowerCase()
+    const mNum = c.match(/(\d{1,2})\/(\d{4})/)
+    if (mNum) return `${mNum[2]}-${mNum[1].padStart(2, '0')}`
+    
+    const mesesMap = {
+      jan: '01', fev: '02', mar: '03', abr: '04', mai: '05', jun: '06',
+      jul: '07', ago: '08', set: '09', out: '10', nov: '11', dez: '12'
+    }
+    for (const [prefix, num] of Object.entries(mesesMap)) {
+      if (c.includes(prefix)) {
+        const anoMatch = c.match(/\d{4}/)
+        if (anoMatch) return `${anoMatch[0]}-${num}`
+      }
+    }
+    return ''
+  }
+
+  const parseDateStr = (str) => {
+    if (!str) return 0
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(str)) {
+      const [d, m, y] = str.split('/')
+      return new Date(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T00:00:00`).getTime()
+    }
+    return new Date(str.includes('T') ? str : `${str}T00:00:00`).getTime() || 0
+  }
+
   let contasReceber = lancamentos.filter(t => t.tipo === 'Receita')
 
   if (statusFilter !== 'Todas') {
@@ -18,13 +51,13 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
   }
   if (mesDe && mesAte) {
     contasReceber = contasReceber.filter(t => {
-      const m = t.data?.substring(0, 7)
+      const m = parseAnoMes(t.data, t.competencia)
       return m >= mesDe && m <= mesAte
     })
   } else if (mesDe) {
-    contasReceber = contasReceber.filter(t => t.data?.substring(0, 7) >= mesDe)
+    contasReceber = contasReceber.filter(t => parseAnoMes(t.data, t.competencia) >= mesDe)
   } else if (mesAte) {
-    contasReceber = contasReceber.filter(t => t.data?.substring(0, 7) <= mesAte)
+    contasReceber = contasReceber.filter(t => parseAnoMes(t.data, t.competencia) <= mesAte)
   }
   if (search) {
     contasReceber = contasReceber.filter(t => 
@@ -34,12 +67,12 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
     )
   }
 
-  contasReceber.sort((a, b) => new Date(b.data) - new Date(a.data))
+  contasReceber.sort((a, b) => parseDateStr(b.data || b.vencimento) - parseDateStr(a.data || a.vencimento))
 
   // Lançamentos de receita filtrados pelo período selecionado para os cards de resumo
   const receitasPeriodo = lancamentos.filter(t => {
     if (t.tipo !== 'Receita') return false
-    const m = t.data?.substring(0, 7)
+    const m = parseAnoMes(t.data, t.competencia)
     if (mesDe && mesAte) return m >= mesDe && m <= mesAte
     if (mesDe) return m >= mesDe
     if (mesAte) return m <= mesAte
@@ -132,7 +165,7 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
                         <div className="flex items-center gap-1.5">
                           {atrasado && <AlertTriangle size={14} className="text-orange-500 shrink-0" title="Atrasado!" />}
                           <span className={atrasado ? 'text-orange-600 font-bold' : 'text-gray-700 font-medium'}>
-                            {t.data ? t.data.split('-').reverse().join('/') : '—'}
+                            {t.data ? (t.data.includes('/') ? t.data : t.data.split('-').reverse().join('/')) : '—'}
                           </span>
                         </div>
                       </td>

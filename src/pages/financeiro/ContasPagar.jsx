@@ -75,7 +75,7 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
         contasPorCondo[nomeCondo].push(c)
       })
 
-      let msg = `🔔 *ALERTAS DE VENCIMENTO DO DIA (${dataFmt})*\n`
+      let msg = `🔔 *ALERTAS DE VENCIMENTO DO DIA (${hojeBr})*\n`
       msg += `Total de contas a pagar hoje: *${contasHoje.length}*\n\n`
 
       // BLOCO A) Alpha Interno
