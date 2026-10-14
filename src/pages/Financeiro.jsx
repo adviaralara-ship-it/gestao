@@ -90,29 +90,42 @@ function ModalLancamento({ data, allLancamentos = [], user, condominiosDisponive
     setUploadingStorage(true)
 
     try {
-      try {
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-        const storageRef = ref(storage, `financeiro/boletos/${Date.now()}_${safeName}`)
-        const snapshot = await uploadBytes(storageRef, file)
-        const downloadUrl = await getDownloadURL(snapshot.ref)
-        set('arquivoUrl', downloadUrl)
-      } catch (stErr) {
-        console.warn("Storage upload falhou:", stErr)
-      }
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const storageRef = ref(storage, `financeiro/boletos/${Date.now()}_${safeName}`)
+      const mime = file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg')
+
+      // Upload assíncrono para o Firebase Storage com timeout de segurança
+      const uploadPromise = uploadBytes(storageRef, file, { contentType: mime })
+        .then(async (snapshot) => {
+          const downloadUrl = await getDownloadURL(snapshot.ref)
+          set('arquivoUrl', downloadUrl)
+          return downloadUrl
+        })
+        .catch((stErr) => {
+          console.warn("Storage upload falhou:", stErr)
+          return null
+        })
+
+      const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 10000))
+      const storageUrl = await Promise.race([uploadPromise, timeoutPromise])
 
       const reader = new FileReader()
       reader.onload = async (ev) => {
         const base64Data = ev.target.result
-        // Fallback imediato: se o upload no storage falhou, salva o Base64 garantindo que o PDF fique anexado
-        setForm(prev => {
-          if (!prev.arquivoUrl) return { ...prev, arquivoUrl: base64Data }
-          return prev
-        })
+
+        // Fallback apenas para arquivos bem pequenos (< 150KB) se o storage falhou
+        if (!storageUrl && file.size < 150000) {
+          setForm(prev => {
+            if (!prev.arquivoUrl) return { ...prev, arquivoUrl: base64Data }
+            return prev
+          })
+        }
+
         try {
           const res = await fetch('/api/extract', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ file: base64Data, mimeType: file.type, type: 'despesa' })
+            body: JSON.stringify({ file: base64Data, mimeType: mime, type: 'despesa' })
           })
           const ocrData = await res.json()
           if (ocrData.success && ocrData.data) {
@@ -138,13 +151,14 @@ function ModalLancamento({ data, allLancamentos = [], user, condominiosDisponive
           }
         } catch(err) {
           console.error("Erro na extração IA:", err)
+        } finally {
+          setIsExtracting(false)
+          setUploadingStorage(false)
         }
-        setIsExtracting(false)
-        setUploadingStorage(false)
       }
       reader.readAsDataURL(file)
     } catch (err) {
-      console.error(err)
+      console.error("Erro geral no upload:", err)
       setIsExtracting(false)
       setUploadingStorage(false)
     }
@@ -483,7 +497,9 @@ function ModalLancamento({ data, allLancamentos = [], user, condominiosDisponive
         <div className="p-5 border-t border-cream-300 flex gap-3 justify-end sticky bottom-0 bg-white z-10">
           <button onClick={onClose} className="btn-secondary">Cancelar</button>
           <button
+            disabled={uploadingStorage || isExtracting}
             onClick={() => { 
+              if (uploadingStorage || isExtracting) return
               if (!form.descricao || !form.valor) {
                 alert('Preencha ao menos a Descrição e o Valor do lançamento.')
                 return;
@@ -494,9 +510,10 @@ function ModalLancamento({ data, allLancamentos = [], user, condominiosDisponive
                 onSave(form)
               }
             }}
-            className="btn-primary"
+            className="btn-primary flex items-center gap-2 cursor-pointer disabled:opacity-50"
           >
-            {data ? 'Atualizar Lançamento' : (loteMultiboletos && loteMultiboletos.length > 1 ? `Salvar Lote (${loteMultiboletos.length})` : 'Salvar Lançamento')}
+            {(uploadingStorage || isExtracting) && <Loader2 size={15} className="animate-spin" />}
+            {uploadingStorage ? 'Enviando anexo...' : isExtracting ? 'Lendo boleto...' : data ? 'Atualizar Lançamento' : (loteMultiboletos && loteMultiboletos.length > 1 ? `Salvar Lote (${loteMultiboletos.length})` : 'Salvar Lançamento')}
           </button>
         </div>
       </div>
@@ -643,23 +660,24 @@ export default function Financeiro() {
           }
           await registrarLogAuditoria(user, 'Edição de Parcelas em Grupo', `Atualizou o parcelamento de ${form.descricao} (escopo: ${escopo})`)
         } else {
-          await updateLancamento(modalLanc.id, form)
+          const { atualizarGrupo, escopoParcelas, loteMultiboletos, id, _createdAt, ...dadosLimpos } = form || {}
+          await updateLancamento(modalLanc.id, dadosLimpos)
           await registrarLogAuditoria(user, 'Edição de Lançamento', `Editou o lançamento ${form.descricao}`)
         }
       } else {
         if (form.loteMultiboletos && form.loteMultiboletos.length > 1) {
           for (let i = 0; i < form.loteMultiboletos.length; i++) {
             const b = form.loteMultiboletos[i];
+            const { atualizarGrupo, escopoParcelas, loteMultiboletos, id, _createdAt, ...dadosLimpos } = form || {}
             await addLancamento({
-              ...form,
+              ...dadosLimpos,
               descricao: b.fornecedor ? `${b.descricao} - ${b.fornecedor}` : (b.descricao || form.descricao),
               valor: b.valor ? String(b.valor) : form.valor,
               data: b.vencimento || form.data,
               linhaDigitavel: b.linhaDigitavel || '',
               pix: b.pix || '',
               recorrente: false,
-              parcelado: false,
-              loteMultiboletos: null
+              parcelado: false
             });
           }
           await registrarLogAuditoria(user, 'Criação em Lote OCR', `Criou ${form.loteMultiboletos.length} lançamentos a partir de PDF (Lote).`);
@@ -672,6 +690,8 @@ export default function Financeiro() {
           const modo = form.modoParcelas || 'dividir'
           const valPorParcela = modo === 'repetir' ? valLimpo : Number((valLimpo / totalParcelas).toFixed(2))
 
+          const { atualizarGrupo, escopoParcelas, loteMultiboletos, id, _createdAt, ...dadosLimpos } = form || {}
+
           for (let i = 0; i < totalParcelas; i++) {
             const dataParcela = new Date(dataBase)
             dataParcela.setMonth(dataBase.getMonth() + i)
@@ -680,7 +700,7 @@ export default function Financeiro() {
             const descLimpa = (form.descricao || '').replace(/\s*\(\d+\/\d+\)$/, '').trim()
 
             await addLancamento({
-              ...form,
+              ...dadosLimpos,
               descricao: `${descLimpa} ${parcelaLabel}`,
               valor: String(valPorParcela.toFixed(2)),
               data: dataStr,
@@ -696,14 +716,15 @@ export default function Financeiro() {
           }
           await registrarLogAuditoria(user, 'Criação de Parcelas', `Criou ${totalParcelas} parcelas de ${form.descricao}`)
         } else {
-          await addLancamento(form)
+          const { atualizarGrupo, escopoParcelas, loteMultiboletos, id, _createdAt, ...dadosLimpos } = form || {}
+          await addLancamento(dadosLimpos)
           await registrarLogAuditoria(user, 'Criação de Lançamento', `Criou o lançamento ${form.descricao}`)
         }
       }
       setModalLanc(null)
     } catch (err) {
-      console.error(err)
-      alert("Erro ao salvar lançamento.")
+      console.error('Erro ao salvar lançamento:', err)
+      alert("Erro ao salvar lançamento: " + (err.message || 'Verifique sua conexão ou tente novamente.'))
     }
   }
 

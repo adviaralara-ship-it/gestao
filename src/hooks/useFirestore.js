@@ -142,12 +142,33 @@ export function useFirestore(colName) {
     // Disabled aggressive throttling to prevent user errors
   }
 
+const cleanFirestorePayload = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj
+  const res = Array.isArray(obj) ? [] : {}
+  for (const key of Object.keys(obj)) {
+    const val = obj[key]
+    if (val === undefined) continue
+    // Se for string base64 maior que 200KB, não salva no doc Firestore para não estourar o limite rígido de 1MB
+    if (typeof val === 'string' && val.startsWith('data:') && val.length > 200000) {
+      console.warn(`[Firestore] Campo "${key}" com Base64 muito grande (${val.length} bytes) ignorado para evitar estouro de 1MB.`)
+      continue
+    }
+    if (val && typeof val === 'object' && !(val instanceof Date) && typeof val.toDate !== 'function' && !val._seconds) {
+      res[key] = cleanFirestorePayload(val)
+    } else {
+      res[key] = val
+    }
+  }
+  return res
+}
+
   const addItem = async (data, skipThrottle = false) => {
     try {
       checkThrottle(skipThrottle)
       const { id: _ignore, ...clean } = data
+      const sanitized = cleanFirestorePayload(processOutgoingData(clean))
       const docRef = await addDoc(collection(db, colName), {
-        ...processOutgoingData(clean),
+        ...sanitized,
         _createdAt: serverTimestamp()
       })
       await logAudit('CREATE', docRef.id)
@@ -167,7 +188,8 @@ export function useFirestore(colName) {
     try {
       checkThrottle(skipThrottle)
       const { id: _ignore, _createdAt: _ts, ...clean } = data
-      await updateDoc(doc(db, colName, id), processOutgoingData(clean))
+      const sanitized = cleanFirestorePayload(processOutgoingData(clean))
+      await updateDoc(doc(db, colName, id), sanitized)
       await logAudit('UPDATE', id)
     } catch (err) {
       console.error(`[Firestore] Erro ao atualizar "${colName}/${id}":`, err)
