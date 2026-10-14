@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
-import { Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Eye, Download, Copy, Check, ExternalLink, Sparkles, Building2, Crown, Send, Loader2, Square, CheckSquare, DollarSign, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { Plus, Edit2, Trash2, Search, CheckCircle, AlertCircle, Eye, Download, Copy, Check, ExternalLink, Sparkles, Building2, Crown, Send, Loader2, Square, CheckSquare, DollarSign, ArrowUpDown, ArrowUp, ArrowDown, Paperclip, Upload, X, FileText, CheckCircle2 } from 'lucide-react'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 import { isAlphaInterno } from '../Financeiro'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { storage } from '../../firebase'
 
 export default function ContasPagar({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
   const [search, setSearch] = useState('')
@@ -285,13 +287,60 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
   const contasSelecionadas = contasPagar.filter(t => selectedIds.includes(t.id))
   const totalSelecionado = contasSelecionadas.reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
 
-  const marcarComoPago = async (t) => {
-    const novoStatus = t.status === 'Pago' ? 'Pendente' : 'Pago'
-    const acao = novoStatus === 'Pago' ? 'Confirmar pagamento' : 'Voltar para Pendente'
-    if (window.confirm(`${acao} de "${t.descricao}"?`)) {
-      await updateLancamento(t.id, { ...t, status: novoStatus })
+  const [modalComprovante, setModalComprovante] = useState(null)
+  const [uploadingComprovante, setUploadingComprovante] = useState(false)
+  const [loadingPagarId, setLoadingPagarId] = useState(null)
+
+  const handleUploadComprovante = async (lancamentoId, file) => {
+    if (!file) return
+    setUploadingComprovante(true)
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const storageRef = ref(storage, `financeiro/comprovantes/${Date.now()}_${safeName}`)
+      const mime = file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg')
+
+      const snapshot = await uploadBytes(storageRef, file, { contentType: mime })
+      const downloadUrl = await getDownloadURL(snapshot.ref)
+
+      const itemAlvo = lancamentos.find(l => l.id === lancamentoId)
+      if (itemAlvo) {
+        await updateLancamento(lancamentoId, {
+          ...itemAlvo,
+          status: 'Pago',
+          comprovanteUrl: downloadUrl,
+          dataPagamento: new Date().toISOString().split('T')[0]
+        })
+      }
+      setModalComprovante(null)
+      alert('✓ Comprovante anexado com sucesso e conta marcada como PAGA!')
+    } catch (err) {
+      console.error('Erro ao enviar comprovante:', err)
+      alert('Erro ao anexar comprovante: ' + (err.message || 'Tente novamente.'))
+    } finally {
+      setUploadingComprovante(false)
     }
   }
+
+  const alternarStatusPago = async (t) => {
+    try {
+      setLoadingPagarId(t.id)
+      const isPago = t.status === 'Pago'
+      if (!isPago) {
+        // Ao marcar como pago, abre o modal facilitador para anexar o comprovante (ou confirmar direto)
+        setModalComprovante(t)
+      } else {
+        // Se já estava pago, volta para pendente com 1 clique direto
+        await updateLancamento(t.id, { ...t, status: 'Pendente' })
+      }
+    } catch (err) {
+      console.error('Erro ao alternar status da conta a pagar:', err)
+      alert('Erro ao atualizar status: ' + (err.message || 'Tente novamente'))
+    } finally {
+      setLoadingPagarId(null)
+    }
+  }
+
+  const marcarComoPago = alternarStatusPago
 
   return (
     <div className="flex flex-col gap-4 animate-fade-in">
@@ -498,14 +547,25 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                           )}
 
                           <div className="flex items-center gap-1 flex-wrap">
-                            {/* Botão abrir PDF (corrigido para não abrir em branco) */}
+                            {/* Botão abrir PDF Boleto */}
                             {t.arquivoUrl && (
                               <button
                                 onClick={() => abrirArquivo(t.arquivoUrl)}
                                 className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold flex items-center gap-1 text-[10px] cursor-pointer"
-                                title="Visualizar Boleto / Comprovante"
+                                title="Visualizar Boleto / Fatura"
                               >
                                 <Eye size={12} /> Boleto
+                              </button>
+                            )}
+
+                            {/* Botão abrir Comprovante de Pagamento */}
+                            {t.comprovanteUrl && (
+                              <button
+                                onClick={() => abrirArquivo(t.comprovanteUrl)}
+                                className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold flex items-center gap-1 text-[10px] cursor-pointer shadow-xs"
+                                title="Visualizar Comprovante de Pagamento"
+                              >
+                                <CheckCircle2 size={12} className="text-emerald-600" /> Comprovante
                               </button>
                             )}
 
@@ -513,7 +573,7 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                             {temCodigo && (
                               <button
                                 onClick={() => handleCopiarCodigo(t.id, t.linhaDigitavel || t.pix)}
-                                className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold flex items-center gap-1 text-[10px] cursor-pointer"
+                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold flex items-center gap-1 text-[10px] cursor-pointer"
                                 title="Copiar Linha Digitável / PIX"
                               >
                                 {copiadoId === t.id ? (
@@ -524,29 +584,48 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                               </button>
                             )}
 
-                            {/* Sem código e sem arquivo */}
-                            {!temCodigo && !t.arquivoUrl && (
-                              <span className="text-[10px] text-gray-300">—</span>
-                            )}
+                            {/* Anexar Comprovante Diretamente */}
+                            <button
+                              onClick={() => setModalComprovante(t)}
+                              className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold flex items-center gap-1 text-[10px] cursor-pointer"
+                              title="Anexar ou Alterar Comprovante de Pagamento"
+                            >
+                              <Paperclip size={12} className="text-amber-700" /> {t.comprovanteUrl ? 'Alterar' : 'Anexar'}
+                            </button>
                           </div>
                         </div>
                       </td>
 
                       <td className="p-3.5 whitespace-nowrap">
-                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
-                          t.status === 'Pago' ? 'bg-emerald-100 text-emerald-800' :
-                          t.status === 'Aguardando Aprovação' ? 'bg-amber-100 text-amber-800' :
-                          'bg-rose-100 text-rose-800'
-                        }`}>
+                        <button
+                          type="button"
+                          onClick={() => alternarStatusPago(t)}
+                          disabled={loadingPagarId === t.id}
+                          title={t.status === 'Pago' ? 'Clique para voltar para Pendente' : 'Clique para Marcar como Pago (permite anexar comprovante)'}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase transition-all shadow-xs cursor-pointer select-none active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${
+                            t.status === 'Pago'
+                              ? 'bg-emerald-500 hover:bg-emerald-600 text-white border border-emerald-600 shadow-emerald-200'
+                              : t.status === 'Aguardando Aprovação'
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                              : 'bg-rose-100 hover:bg-emerald-100 text-rose-800 hover:text-emerald-800 border border-rose-300 hover:border-emerald-300'
+                          }`}
+                        >
+                          {loadingPagarId === t.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : t.status === 'Pago' ? (
+                            <CheckCircle size={12} className="stroke-[2.5]" />
+                          ) : (
+                            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                          )}
                           {t.status || 'Pendente'}
-                        </span>
+                        </button>
                       </td>
 
                       <td className="p-3.5 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
                           <button 
                             onClick={() => marcarComoPago(t)} 
-                            title={t.status === 'Pago' ? 'Marcar como Pendente' : 'Confirmar Pagamento'} 
+                            title={t.status === 'Pago' ? 'Marcar como Pendente' : 'Confirmar Pagamento e Anexar Comprovante'} 
                             className={`p-1.5 rounded-xl transition-all cursor-pointer border ${
                               t.status === 'Pago' 
                                 ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border-emerald-300 font-bold' 
@@ -583,6 +662,125 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
           </table>
         </div>
       </div>
+
+      {/* Modal Facilitador para Anexar Comprovante ao Marcar Pago */}
+      {modalComprovante && (
+        <div className="modal-overlay" onClick={() => !uploadingComprovante && setModalComprovante(null)}>
+          <div className="modal-content max-w-md p-6 bg-white rounded-3xl shadow-2xl border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                  <CheckCircle2 size={22} />
+                </div>
+                <div>
+                  <h3 className="font-black text-gray-900 text-base">Comprovante de Pagamento</h3>
+                  <p className="text-xs text-gray-500 truncate max-w-[240px]">{modalComprovante.descricao}</p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setModalComprovante(null)} 
+                disabled={uploadingComprovante} 
+                className="p-1.5 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-slate-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4 text-xs">
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-gray-500 font-medium">Valor:</span>
+                  <span className="font-black text-rose-600 text-sm">R$ {fmt(modalComprovante.valor)}</span>
+                </div>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-gray-500 font-medium">Condomínio:</span>
+                  <span className="font-bold text-gray-800">{modalComprovante.condominio || 'Geral'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 font-medium">Vencimento:</span>
+                  <span className="font-bold text-gray-800">{modalComprovante.data ? modalComprovante.data.split('-').reverse().join('/') : '—'}</span>
+                </div>
+              </div>
+
+              {modalComprovante.comprovanteUrl && (
+                <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-center justify-between">
+                  <span className="text-emerald-800 font-bold flex items-center gap-1.5">
+                    <CheckCircle2 size={14} className="text-emerald-600" /> Comprovante já cadastrado
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => abrirArquivo(modalComprovante.comprovanteUrl)}
+                    className="text-xs font-black text-emerald-700 underline hover:text-emerald-900 cursor-pointer"
+                  >
+                    Visualizar Atual
+                  </button>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-black text-gray-800 mb-2 uppercase text-[11px] tracking-wider">
+                  Selecione o Comprovante (PDF ou Imagem)
+                </label>
+                <div className="relative border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/40 rounded-2xl p-6 text-center transition-colors">
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp"
+                    disabled={uploadingComprovante}
+                    onChange={(e) => {
+                      const f = e.target.files[0]
+                      if (f) handleUploadComprovante(modalComprovante.id, f)
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                  />
+                  {uploadingComprovante ? (
+                    <div className="flex flex-col items-center gap-2 text-emerald-700">
+                      <Loader2 size={28} className="animate-spin" />
+                      <span className="font-bold">Enviando comprovante para nuvem...</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-emerald-800 pointer-events-none">
+                      <div className="w-12 h-12 rounded-2xl bg-white shadow-xs border border-emerald-200 flex items-center justify-center text-emerald-600">
+                        <Upload size={20} />
+                      </div>
+                      <span className="font-bold text-xs">Clique aqui ou arraste o comprovante</span>
+                      <span className="text-[10px] text-gray-400">Suporta PDF, PNG, JPG, JPEG</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-between gap-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    // Marca como pago mesmo sem comprovante se o usuário preferir
+                    await updateLancamento(modalComprovante.id, {
+                      ...modalComprovante,
+                      status: 'Pago',
+                      dataPagamento: new Date().toISOString().split('T')[0]
+                    })
+                    setModalComprovante(null)
+                  }}
+                  disabled={uploadingComprovante}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 hover:underline py-2 cursor-pointer"
+                >
+                  Marcar Pago sem anexo
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalComprovante(null)}
+                  disabled={uploadingComprovante}
+                  className="btn-secondary py-2 px-4 text-xs font-bold"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
