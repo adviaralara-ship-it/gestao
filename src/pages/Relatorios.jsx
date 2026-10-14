@@ -103,7 +103,17 @@ export default function Relatorios() {
 
       // Separar Receitas e Despesas
       const despesas = lancamentos.filter(l => l.tipo === 'Despesa')
-      const receitasLancadas = lancamentos.filter(l => l.tipo === 'Receita')
+      // Previne duplicação de receitas: se já houver boletos pagos, não soma lançamentos espelho de cota/taxa condominial do financeiro
+      const receitasLancadas = lancamentos.filter(l => {
+        if (l.tipo !== 'Receita') return false
+        const cat = (l.categoria || '').toLowerCase()
+        const desc = (l.descricao || '').toLowerCase()
+        const isTaxaCota = cat.includes('condomin') || desc.includes('cota') || desc.includes('recebimento cota') || l.boletoId
+        if (isTaxaCota && boletos.some(b => b.status === 'Pago')) {
+          return false
+        }
+        return true
+      })
 
       // Total de Boletos Pagos vs Pendentes
       const boletosPagos = boletos.filter(b => b.status === 'Pago')
@@ -246,7 +256,7 @@ export default function Relatorios() {
         } else {
           receitasLinhas.push([
             dataBoleto,
-            'Taxa Condominial',
+            'Cota Condominial',
             `Unidade ${b.unidade || b.apt || '-'} - ${b.moradorNome || 'Morador'}`,
             'Recebido',
             `R$ ${valTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
