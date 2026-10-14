@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 
-export default function Historico({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
+export default function Historico({ lancamentos, boletos = [], condoFilter = 'Todos', setModalLanc, deleteLancamento, updateLancamento }) {
   const { user } = useAuth()
   const isMorador = user?.role === 'Morador'
   const searchParams = new URLSearchParams(window.location.search)
@@ -14,14 +14,101 @@ export default function Historico({ lancamentos, setModalLanc, deleteLancamento,
   const [mesDe, setMesDe] = useState(searchParams.get('mes') || '')
   const [mesAte, setMesAte] = useState('')
 
+  const normalizarNomeCondo = (nome) => {
+    return String(nome || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/^(residencial|condominio|edificio|ed\.)\s+/i, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .trim()
+      .toLowerCase()
+  }
+
+  const condoMatch = (c1, c2) => {
+    if (!c1 || !c2) return false
+    const n1 = normalizarNomeCondo(c1)
+    const n2 = normalizarNomeCondo(c2)
+    return n1 === n2 || n1.includes(n2) || n2.includes(n1)
+  }
+
+  const parseAnoMes = (str, competenciaStr) => {
+    const raw = String(str || competenciaStr || '').trim()
+    if (!raw) return ''
+    if (/^\d{4}-\d{2}/.test(raw)) return raw.substring(0, 7)
+    const brMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (brMatch) return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}`
+    
+    const c = raw.toLowerCase()
+    const mNum = c.match(/(\d{1,2})\/(\d{4})/)
+    if (mNum) return `${mNum[2]}-${mNum[1].padStart(2, '0')}`
+    
+    const mesesMap = {
+      jan: '01', fev: '02', mar: '03', abr: '04', mai: '05', jun: '06',
+      jul: '07', ago: '08', set: '09', out: '10', nov: '11', dez: '12'
+    }
+    for (const [prefix, num] of Object.entries(mesesMap)) {
+      if (c.includes(prefix)) {
+        const anoMatch = c.match(/\d{4}/)
+        if (anoMatch) return `${anoMatch[0]}-${num}`
+      }
+    }
+    return ''
+  }
+
+  const parseDateStr = (str) => {
+    if (!str) return 0
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(str)) {
+      const [d, m, y] = str.split('/')
+      return new Date(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T00:00:00`).getTime()
+    }
+    return new Date(str.includes('T') ? str : `${str}T00:00:00`).getTime() || 0
+  }
+
+  const isAlpha = condoFilter === 'Alpha (Interno)' || condoFilter?.toLowerCase()?.includes('alpha')
+  const isTodos = !condoFilter || condoFilter === 'Todos'
+
+  // Filtrar boletos compatíveis com o condomínio selecionado
+  const boletosDoCondo = (boletos || []).filter(b => {
+    if (b.status === 'Cancelado' || b.status === 'Excluído' || b.status === 'Excluido' || b.excluido || b.deletado) return false
+    if (isTodos) return true
+    if (isAlpha) return false
+    return condoMatch(b.condominio, condoFilter)
+  })
+
+  // Transforma boletos em lançamentos de receita se não houver lançamento espelho já criado
+  const boletoIdsExistentes = new Set((lancamentos || []).map(l => l.boletoId).filter(Boolean))
+
+  const boletosComoLancamento = boletosDoCondo
+    .filter(b => !boletoIdsExistentes.has(b.id))
+    .map(b => {
+      const dtVenc = b.vencimento || b.data || ''
+      return {
+        id: `boleto_${b.id}`,
+        boletoId: b.id,
+        isBoletoVirtual: true,
+        tipo: 'Receita',
+        descricao: `Recebimento Cota: ${b.morador || 'Morador'} - Apt ${b.apt || ''}`,
+        categoria: 'Cota Condominial',
+        condominio: b.condominio || 'Residencial',
+        valor: Number(b.valor || 0),
+        data: dtVenc,
+        competencia: b.competencia,
+        status: b.status === 'Pago' ? 'Recebido' : (b.status || 'Pendente')
+      }
+    })
+
+  const todosLancamentos = [...(lancamentos || []), ...boletosComoLancamento]
+
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const statusBadge = (s) => ({ Recebido: 'badge-green', Pago: 'badge-blue', Pendente: 'badge-yellow', 'Aguardando Aprovação': 'bg-orange-100 text-orange-800 px-2 py-0.5 rounded text-[10px] font-bold border border-orange-200' }[s] || 'badge-blue')
 
-  const filtered = lancamentos.filter(t => {
-    const matchSearch = (t.descricao || '').toLowerCase().includes(search.toLowerCase()) || (t.categoria || '').toLowerCase().includes(search.toLowerCase())
+  const filtered = todosLancamentos.filter(t => {
+    const matchSearch = (t.descricao || '').toLowerCase().includes(search.toLowerCase()) || 
+      (t.categoria || '').toLowerCase().includes(search.toLowerCase()) ||
+      (t.condominio || '').toLowerCase().includes(search.toLowerCase())
     const matchFilter = filter === 'Todos' || t.tipo === filter
     let matchPeriodo = true
-    const mes = t.data?.substring(0, 7)
+    const mes = parseAnoMes(t.competencia, t.data) || parseAnoMes(t.data, t.competencia)
     if (mesDe && mesAte) {
       matchPeriodo = mes >= mesDe && mes <= mesAte
     } else if (mesDe) {
@@ -30,7 +117,7 @@ export default function Historico({ lancamentos, setModalLanc, deleteLancamento,
       matchPeriodo = mes <= mesAte
     }
     return matchSearch && matchFilter && matchPeriodo
-  }).sort((a, b) => new Date(b.data) - new Date(a.data)) // Ordenar do mais recente para o mais antigo
+  }).sort((a, b) => parseDateStr(b.data || b.vencimento) - parseDateStr(a.data || a.vencimento))
 
   const totalReceitas = filtered.filter(t => t.tipo === 'Receita').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
   const totalDespesas = filtered.filter(t => t.tipo === 'Despesa').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
@@ -134,7 +221,7 @@ export default function Historico({ lancamentos, setModalLanc, deleteLancamento,
                 : filtered.map(t => (
                   <tr key={t.id} className="table-row">
                     <td className="table-cell text-gray-500 font-medium">
-                      {t.data ? t.data.split('-').reverse().join('/') : '-'}
+                      {t.data ? (t.data.includes('/') ? t.data : t.data.split('-').reverse().join('/')) : '-'}
                     </td>
                     <td className="table-cell">
                       <p className="font-medium text-gray-800">{t.descricao}</p>

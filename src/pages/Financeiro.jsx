@@ -874,7 +874,16 @@ export default function Financeiro() {
         />
       )}
       {activeTab === 'DRE' && <DRE lancamentos={lancamentos} condoFilter={condoFilter} />}
-      {activeTab === 'Historico' && <Historico lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
+      {activeTab === 'Historico' && (
+        <Historico 
+          lancamentos={lancamentos} 
+          boletos={allBoletos}
+          condoFilter={condoFilter}
+          setModalLanc={setModalLanc} 
+          deleteLancamento={deleteLancamento} 
+          updateLancamento={updateLancamento} 
+        />
+      )}
 
       {/* Modais */}
       {modalLanc && (
