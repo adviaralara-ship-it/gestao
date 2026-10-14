@@ -903,6 +903,8 @@ export default function Financeiro() {
           setModalLanc={setModalLanc} 
           deleteLancamento={deleteLancamento} 
           updateLancamento={updateLancamento} 
+          updateBoleto={updateBoleto}
+          deleteBoleto={deleteBoleto}
         />
       )}
 

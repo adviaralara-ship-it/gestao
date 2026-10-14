@@ -1,11 +1,11 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { Search, Edit2, Trash2, Download } from 'lucide-react'
+import { Search, Edit2, Trash2, Download, CheckCircle2, Loader2 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 
-export default function Historico({ lancamentos, boletos = [], condoFilter = 'Todos', setModalLanc, deleteLancamento, updateLancamento }) {
+export default function Historico({ lancamentos, boletos = [], condoFilter = 'Todos', setModalLanc, deleteLancamento, updateLancamento, updateBoleto, deleteBoleto }) {
   const { user } = useAuth()
   const isMorador = user?.role === 'Morador'
   const searchParams = new URLSearchParams(window.location.search)
@@ -120,8 +120,39 @@ export default function Historico({ lancamentos, boletos = [], condoFilter = 'To
   }).sort((a, b) => parseDateStr(b.data || b.vencimento) - parseDateStr(a.data || a.vencimento))
 
   const totalReceitas = filtered.filter(t => t.tipo === 'Receita').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
-  const totalDespesas = filtered.filter(t => t.tipo === 'Despesa').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
-  const saldoTotal = totalReceitas - totalDespesas
+  const [loadingHistId, setLoadingHistId] = useState(null)
+
+  const alternarStatusPago = async (t) => {
+    try {
+      setLoadingHistId(t.id)
+      const isPago = t.status === 'Recebido' || t.status === 'Pago' || t.status === 'Liquidado'
+      const novoStatus = isPago ? 'Pendente' : (t.tipo === 'Receita' ? 'Recebido' : 'Pago')
+      
+      if (t.isBoletoVirtual) {
+        if (updateBoleto) {
+          await updateBoleto(t.boletoId, { status: novoStatus === 'Recebido' ? 'Pago' : 'Pendente' })
+        }
+      } else if (updateLancamento) {
+        await updateLancamento(t.id, { ...t, status: novoStatus })
+      }
+    } catch (err) {
+      console.error('Erro ao alternar status no histórico:', err)
+      alert('Erro ao atualizar status: ' + (err.message || 'Tente novamente'))
+    } finally {
+      setLoadingHistId(null)
+    }
+  }
+
+  const handleDeleteItem = async (t) => {
+    if (!window.confirm(`Excluir "${t.descricao}"?`)) return
+    if (t.isBoletoVirtual) {
+      if (deleteBoleto) {
+        await deleteBoleto(t.boletoId)
+      }
+    } else if (deleteLancamento) {
+      await deleteLancamento(t.id)
+    }
+  }
 
   const gerarBalancete = () => {
     const doc = new jsPDF()
@@ -237,20 +268,50 @@ export default function Historico({ lancamentos, boletos = [], condoFilter = 'To
                       </span>
                     </td>
                     <td className="table-cell">
-                      <span className={statusBadge(t.status)}>{t.status}</span>
+                      <button
+                        type="button"
+                        onClick={() => alternarStatusPago(t)}
+                        disabled={loadingHistId === t.id}
+                        title={isPago ? '1-Clique: Marcar como Pendente' : '1-Clique: Marcar como Pago/Recebido'}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase transition-all shadow-xs cursor-pointer select-none active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${
+                          isPago
+                            ? 'bg-emerald-500 hover:bg-emerald-600 text-white border border-emerald-600 shadow-emerald-200'
+                            : 'bg-amber-100 hover:bg-emerald-100 text-amber-800 hover:text-emerald-800 border border-amber-300 hover:border-emerald-300'
+                        }`}
+                      >
+                        {loadingHistId === t.id ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : isPago ? (
+                          <CheckCircle2 size={12} className="stroke-[2.5]" />
+                        ) : (
+                          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                        )}
+                        {isPago ? (t.tipo === 'Receita' ? 'Recebido' : 'Pago') : 'Pendente'}
+                      </button>
                     </td>
                     <td className="table-cell">
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center">
                         {t.arquivoUrl && <a href={t.arquivoUrl} target="_blank" rel="noreferrer" title="Ver Anexo" className="p-1.5 rounded-lg bg-cream-100 hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-all">📄</a>}
                         {!isMorador && (
                           <>
-                            {t.status === 'Aguardando Aprovação' && (user?.role === 'Síndico' || user?.role === 'Administrador') && (
-                              <button onClick={() => { if(window.confirm('Confirma a aprovação desta despesa? O status mudará para Pendente.')) updateLancamento(t.id, { ...t, status: 'Pendente' }) }} title="Aprovar Despesa" className="p-1.5 rounded-lg bg-orange-100 hover:bg-emerald-100 text-orange-600 hover:text-emerald-600 border border-transparent hover:border-emerald-200 transition-all">
+                            <button 
+                              onClick={() => alternarStatusPago(t)} 
+                              disabled={loadingHistId === t.id}
+                              title={isPago ? '1-Clique: Marcar como Pendente' : '1-Clique: Confirmar Pagamento/Recebimento'} 
+                              className={`p-1.5 rounded-lg border transition-all cursor-pointer active:scale-90 ${
+                                isPago 
+                                  ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border-emerald-300 font-bold' 
+                                  : 'bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-800 border-slate-300'
+                              }`}
+                            >
+                              {loadingHistId === t.id ? (
+                                <Loader2 size={14} className="animate-spin text-brand-600" />
+                              ) : (
                                 <CheckCircle2 size={14} />
-                              </button>
-                            )}
+                              )}
+                            </button>
                             <button onClick={() => setModalLanc(t)} title="Editar" className="p-1.5 rounded-lg bg-slate-100 hover:bg-brand-100 text-slate-700 hover:text-brand-900 border border-slate-300 hover:border-brand-300 transition-all shadow-xs"><Edit2 size={14} className="stroke-[2.2]" /></button>
-                            <button onClick={() => deleteLancamento(t.id)} title="Excluir" className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-700 hover:text-red-700 border border-slate-300 hover:border-red-300 transition-all shadow-xs"><Trash2 size={14} className="stroke-[2.2]" /></button>
+                            <button onClick={() => handleDeleteItem(t)} title="Excluir" className="p-1.5 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-700 hover:text-red-700 border border-slate-300 hover:border-red-300 transition-all shadow-xs"><Trash2 size={14} className="stroke-[2.2]" /></button>
                           </>
                         )}
                       </div>

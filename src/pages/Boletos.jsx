@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { FileText, Plus, Download, DollarSign, Printer, CheckCircle2, Clock, AlertCircle, Trash2, Edit2, X, MessageSquare, Sparkles, Check, TrendingUp, Bell, Building, Upload, Copy, Share2, QrCode, Package, Send, Users } from 'lucide-react'
+import { FileText, Plus, Download, DollarSign, Printer, CheckCircle2, Clock, AlertCircle, Trash2, Edit2, X, MessageSquare, Sparkles, Check, TrendingUp, Bell, Building, Upload, Copy, Share2, QrCode, Package, Send, Users, Loader2 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
@@ -2749,32 +2749,42 @@ export default function Boletos() {
     }
   }
 
-  const marcarPago = async b => {
-    const novoStatus = b.status === 'Pago' ? 'Pendente' : 'Pago'
-    await updateItem(b.id, { ...b, status: novoStatus })
+  const [loadingBoletoId, setLoadingBoletoId] = useState(null)
 
-    // Sincronização automática com financeiro_lancamentos (Zero digitação manual)
-    if (novoStatus === 'Pago') {
-      const jaExiste = (allLancamentos || []).find(l => l.boletoId === b.id || (l.fitid && l.fitid === b.id))
-      if (!jaExiste) {
-        await addFinanceiroLancamento({
-          descricao: `Recebimento Cota: ${b.morador || 'Morador'} - Apt ${b.apt || ''}`,
-          tipo: 'Receita',
-          categoria: 'Taxa Condominial',
-          valor: Number(b.valor || 0),
-          data: new Date().toISOString().split('T')[0],
-          status: 'Recebido',
-          condominio: b.condominio || 'Alpha Condomínios',
-          boletoId: b.id
-        })
+  const marcarPago = async b => {
+    try {
+      setLoadingBoletoId(b.id)
+      const novoStatus = b.status === 'Pago' ? 'Pendente' : 'Pago'
+      await updateItem(b.id, { ...b, status: novoStatus })
+
+      // Sincronização automática com financeiro_lancamentos (Zero digitação manual)
+      if (novoStatus === 'Pago') {
+        const jaExiste = (allLancamentos || []).find(l => l.boletoId === b.id || (l.fitid && l.fitid === b.id))
+        if (!jaExiste) {
+          await addFinanceiroLancamento({
+            descricao: `Recebimento Cota: ${b.morador || 'Morador'} - Apt ${b.apt || ''}`,
+            tipo: 'Receita',
+            categoria: 'Taxa Condominial',
+            valor: Number(b.valor || 0),
+            data: new Date().toISOString().split('T')[0],
+            status: 'Recebido',
+            condominio: b.condominio || 'Alpha Condomínios',
+            boletoId: b.id
+          })
+        } else {
+          await updateFinanceiroLancamento(jaExiste.id, { ...jaExiste, status: 'Recebido' })
+        }
       } else {
-        await updateFinanceiroLancamento(jaExiste.id, { ...jaExiste, status: 'Recebido' })
+        const jaExiste = (allLancamentos || []).find(l => l.boletoId === b.id)
+        if (jaExiste) {
+          await updateFinanceiroLancamento(jaExiste.id, { ...jaExiste, status: 'Pendente' })
+        }
       }
-    } else {
-      const jaExiste = (allLancamentos || []).find(l => l.boletoId === b.id)
-      if (jaExiste) {
-        await updateFinanceiroLancamento(jaExiste.id, { ...jaExiste, status: 'Pendente' })
-      }
+    } catch (err) {
+      console.error('Erro ao alternar status do boleto:', err)
+      alert('Erro ao alternar status: ' + (err.message || 'Tente novamente'))
+    } finally {
+      setLoadingBoletoId(null)
     }
   }
   const handleSaveBoleto = async form => {
@@ -3385,7 +3395,28 @@ export default function Boletos() {
                         </td>
                         <td className="table-cell text-gray-500">{b.vencimento}</td>
                         <td className="table-cell font-bold text-gray-800">R$ {fmt(b.valor)}</td>
-                        <td className="table-cell"><span className={`${statusBadge(b.status)} flex items-center gap-1 w-fit`}>{statusIcon(b.status)}{b.status}</span></td>
+                        <td className="table-cell">
+                          <button
+                            type="button"
+                            onClick={() => marcarPago(b)}
+                            disabled={loadingBoletoId === b.id}
+                            title={b.status === 'Pago' ? '1-Clique: Marcar como Pendente' : '1-Clique: Marcar como Pago'}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase transition-all shadow-xs cursor-pointer select-none active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${
+                              b.status === 'Pago'
+                                ? 'bg-emerald-500 hover:bg-emerald-600 text-white border border-emerald-600 shadow-emerald-200'
+                                : 'bg-amber-100 hover:bg-emerald-100 text-amber-800 hover:text-emerald-800 border border-amber-300 hover:border-emerald-300'
+                            }`}
+                          >
+                            {loadingBoletoId === b.id ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : b.status === 'Pago' ? (
+                              <CheckCircle2 size={12} className="stroke-[2.5]" />
+                            ) : (
+                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                            )}
+                            {b.status || 'Pendente'}
+                          </button>
+                        </td>
                         <td className="table-cell">{b.emitido?<span className="badge-green flex items-center gap-1 w-fit"><CheckCircle2 size={11}/>Sim</span>:<span className="badge-yellow">Não</span>}</td>
                         <td className="table-cell">
                           <div className="flex gap-1.5 flex-wrap items-center">
@@ -3413,7 +3444,23 @@ export default function Boletos() {
                             {(user?.role === 'Administrador' || user?.role === 'Financeiro' || user?.role === 'Síndico') && (
                               <>
                                 <button onClick={()=>enviarWhats(b)} className="btn-secondary py-1 px-2 text-xs text-green-700 bg-green-50 border-green-200 hover:bg-green-100 flex items-center gap-1"><MessageSquare size={11}/>Whats</button>
-                                {b.status !== 'Pago' && <button onClick={()=>marcarPago(b)} className="btn-success py-1 px-2 text-xs flex items-center gap-1"><CheckCircle2 size={11}/>Pago</button>}
+                                <button 
+                                  onClick={()=>marcarPago(b)} 
+                                  disabled={loadingBoletoId === b.id}
+                                  title={b.status === 'Pago' ? 'Marcar como Pendente' : 'Marcar como Pago'} 
+                                  className={`py-1 px-2.5 text-xs rounded-xl flex items-center gap-1 font-bold transition-all cursor-pointer border active:scale-95 disabled:opacity-50 ${
+                                    b.status === 'Pago'
+                                      ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border-emerald-300'
+                                      : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-700 shadow-xs'
+                                  }`}
+                                >
+                                  {loadingBoletoId === b.id ? (
+                                    <Loader2 size={12} className="animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 size={12}/>
+                                  )}
+                                  {b.status === 'Pago' ? 'Pago' : 'Marcar Pago'}
+                                </button>
                                 <button onClick={()=>setModal(b)} title="Editar Boleto" className="p-1.5 rounded-lg bg-slate-100 hover:bg-brand-100 text-slate-700 hover:text-brand-900 border border-slate-300 hover:border-brand-300 transition-all shadow-xs"><Edit2 size={13} className="stroke-[2.2]"/></button>
                                 <button 
                                   onClick={async () => {
