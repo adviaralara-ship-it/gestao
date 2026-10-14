@@ -108,15 +108,30 @@ export default async function handler(req, res) {
       };
     }
 
-    const response = await fetch(endpoint, {
+    let response = await fetch(endpoint, {
       method: 'POST',
       headers: evolutionHeaders,
       body: JSON.stringify(payload)
     });
 
-    const data = await response.json();
+    let data = await response.json();
     if (!response.ok) {
-      console.error('Erro retornado pela Evolution API:', data);
+      console.warn('Falha no envio pela instância primária:', instance, data, 'Tentando InstanciaCentral2...');
+      const fallbackInstance = instance === 'InstanciaAlpha' ? 'InstanciaCentral2' : 'InstanciaAlpha';
+      const fallbackEndpoint = endpoint.replace(`/${instance}`, `/${fallbackInstance}`);
+      try {
+        const respFb = await fetch(fallbackEndpoint, {
+          method: 'POST',
+          headers: evolutionHeaders,
+          body: JSON.stringify(payload)
+        });
+        if (respFb.ok) {
+          data = await respFb.json();
+          return res.status(200).json({ success: true, data, fallbackUsed: fallbackInstance });
+        }
+      } catch (errFb) {
+        console.warn('Fallback também falhou:', errFb);
+      }
       return res.status(response.status).json({ success: false, error: data?.response?.message || data?.message || 'Erro no envio pela Evolution API' });
     }
 

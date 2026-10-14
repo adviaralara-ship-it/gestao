@@ -187,7 +187,7 @@ export default async function handler(req, res) {
 
     // 7. Disparar via WhatsApp para Administradores / Financeiro
     const telefonesDestino = new Set();
-    telefonesDestino.add('558396885931'); // WhatsApp administrativo
+    telefonesDestino.add('5583996885931'); // WhatsApp administrativo
     telefonesDestino.add('5583996806325'); // 83 99680-6325
     telefonesDestino.add('5583999797285'); // 83 99979-7285
     telefonesDestino.add('5583998350321'); // 83 99835-0321
@@ -206,11 +206,19 @@ export default async function handler(req, res) {
 
     for (const numero of telefonesDestino) {
       try {
-        await fetch(`${EVOLUTION_URL}/message/sendText/InstanciaAlpha`, {
+        let respSend = await fetch(`${EVOLUTION_URL}/message/sendText/InstanciaAlpha`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', apikey: API_KEY },
           body: JSON.stringify({ number: numero, text: msgTexto })
         });
+        if (!respSend.ok) {
+          // Fallback automático para InstanciaCentral2
+          await fetch(`${EVOLUTION_URL}/message/sendText/InstanciaCentral2`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: API_KEY },
+            body: JSON.stringify({ number: numero, text: msgTexto })
+          });
+        }
       } catch (errSend) {
         console.warn('Erro ao enviar WhatsApp para', numero, errSend.message);
       }

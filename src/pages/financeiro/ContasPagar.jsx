@@ -113,7 +113,7 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
       msg += `🔗 *Acesse o módulo Financeiro:* https://alpha-solucoes-condominiais.vercel.app/financeiro`
 
       const telefones = [
-        '558396885931',
+        '5583996885931',
         '5583996806325',
         '5583999797285',
         '5583998350321',
@@ -123,12 +123,17 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
       let enviados = 0
       for (const num of telefones) {
         try {
-          await fetch('/api/whatsapp-send', {
+          const res = await fetch('/api/whatsapp-send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ number: num, text: msg, instance: 'InstanciaAlpha' })
           })
-          enviados++
+          const resData = await res.json().catch(() => null)
+          if (res.ok && resData?.success) {
+            enviados++
+          } else {
+            console.warn('Falha no envio para', num, resData?.error)
+          }
         } catch (e) {
           console.warn('Falha no envio WhatsApp:', num, e)
         }

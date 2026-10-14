@@ -549,7 +549,7 @@ export default function Financeiro() {
   const { items: contas, addItem: addConta, updateItem: updateConta, deleteItem: deleteConta } = useFirestore('financeiro_contas')
   const { items: financeiroConfigs } = useFirestore('financeiro_config')
   const { items: condominiosList } = useFirestore('condominios')
-  const { items: allBoletos } = useFirestore('boletos')
+  const { items: allBoletos, updateItem: updateBoleto, deleteItem: deleteBoleto } = useFirestore('boletos')
 
   const searchParams = new URLSearchParams(window.location.search)
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || (isMorador ? 'Historico' : 'Dashboard'))
@@ -848,7 +848,18 @@ export default function Financeiro() {
         />
       )}
       {activeTab === 'ContasPagar' && <ContasPagar lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
-      {activeTab === 'ContasReceber' && <ContasReceber lancamentos={lancamentos} setModalLanc={setModalLanc} deleteLancamento={deleteLancamento} updateLancamento={updateLancamento} />}
+      {activeTab === 'ContasReceber' && (
+        <ContasReceber 
+          lancamentos={lancamentos} 
+          boletos={allBoletos}
+          condoFilter={condoFilter}
+          setModalLanc={setModalLanc} 
+          deleteLancamento={deleteLancamento} 
+          updateLancamento={updateLancamento} 
+          updateBoleto={updateBoleto}
+          deleteBoleto={deleteBoleto}
+        />
+      )}
       {activeTab === 'RateioAgua' && <RateioAgua lancamentos={lancamentos} condoFilter={condoFilter} condominiosDisponiveis={condominiosDisponiveis} />}
       {activeTab === 'FluxoCaixa' && <FluxoCaixa lancamentos={lancamentos} contas={contas} />}
       {activeTab === 'Conciliacao' && <Conciliacao lancamentos={lancamentos} setModalLanc={setModalLanc} updateLancamento={updateLancamento} />}

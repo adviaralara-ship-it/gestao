@@ -3,13 +3,30 @@ import { Plus, Edit2, Trash2, Search, CheckCircle, AlertTriangle, Building2, Cro
 import MonthRangeFilter from '../../components/MonthRangeFilter'
 import { isAlphaInterno } from '../Financeiro'
 
-export default function ContasReceber({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
+export default function ContasReceber({ lancamentos, boletos = [], condoFilter = 'Todos', setModalLanc, deleteLancamento, updateLancamento }) {
   const [search, setSearch] = useState('')
   const hoje = new Date()
   const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`
   const [mesDe, setMesDe] = useState(mesAtual)
   const [mesAte, setMesAte] = useState(mesAtual)
   const [statusFilter, setStatusFilter] = useState('Todas')
+
+  const normalizarNomeCondo = (nome) => {
+    return String(nome || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/^(residencial|condominio|edificio|ed\.)\s+/i, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .trim()
+      .toLowerCase()
+  }
+
+  const condoMatch = (c1, c2) => {
+    if (!c1 || !c2) return false
+    const n1 = normalizarNomeCondo(c1)
+    const n2 = normalizarNomeCondo(c2)
+    return n1 === n2 || n1.includes(n2) || n2.includes(n1)
+  }
 
   const parseAnoMes = (str, competenciaStr) => {
     const raw = String(str || competenciaStr || '').trim()
@@ -44,35 +61,85 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
     return new Date(str.includes('T') ? str : `${str}T00:00:00`).getTime() || 0
   }
 
-  let contasReceber = lancamentos.filter(t => t.tipo === 'Receita')
+  // Filtrar boletos válidos pelo condomínio selecionado
+  const isAlpha = condoFilter === 'Alpha (Interno)' || condoFilter?.toLowerCase()?.includes('alpha')
+  const isTodos = !condoFilter || condoFilter === 'Todos'
+
+  const boletosDoCondo = (boletos || []).filter(b => {
+    if (b.status === 'Cancelado' || b.status === 'Excluído' || b.status === 'Excluido' || b.excluido || b.deletado) return false
+    if (isTodos) return true
+    if (isAlpha) return false
+    return condoMatch(b.condominio, condoFilter)
+  })
+
+  // Transforma boletos em formato compatível com receitas se não houver lançamento correspondente
+  const receitasLancamentos = (lancamentos || []).filter(t => t.tipo === 'Receita')
+  const boletoIdsExistentes = new Set(receitasLancamentos.map(l => l.boletoId).filter(Boolean))
+
+  const boletosComoReceita = boletosDoCondo
+    .filter(b => !boletoIdsExistentes.has(b.id))
+    .map(b => {
+      const dtVenc = b.vencimento || b.data || ''
+      return {
+        id: `boleto_${b.id}`,
+        boletoId: b.id,
+        isBoletoVirtual: true,
+        tipo: 'Receita',
+        descricao: `Recebimento Cota: ${b.morador || 'Morador'} - Apt ${b.apt || ''}`,
+        categoria: 'Cota Condominial',
+        condominio: b.condominio || 'Residencial',
+        valor: Number(b.valor || 0),
+        data: dtVenc,
+        competencia: b.competencia,
+        status: b.status === 'Pago' ? 'Recebido' : (b.status || 'Pendente')
+      }
+    })
+
+  // Unifica tudo em uma única listagem de contas a receber
+  const todasReceitas = [...receitasLancamentos, ...boletosComoReceita]
+
+  let contasReceber = todasReceitas
 
   if (statusFilter !== 'Todas') {
-    contasReceber = contasReceber.filter(t => t.status === statusFilter)
+    if (statusFilter === 'Recebido') {
+      contasReceber = contasReceber.filter(t => t.status === 'Recebido' || t.status === 'Pago')
+    } else if (statusFilter === 'Pendente') {
+      contasReceber = contasReceber.filter(t => t.status === 'Pendente' || t.status === 'Vencido')
+    } else {
+      contasReceber = contasReceber.filter(t => t.status === statusFilter)
+    }
   }
+
   if (mesDe && mesAte) {
     contasReceber = contasReceber.filter(t => {
-      const m = parseAnoMes(t.data, t.competencia)
+      const m = parseAnoMes(t.competencia, t.data) || parseAnoMes(t.data, t.competencia)
       return m >= mesDe && m <= mesAte
     })
   } else if (mesDe) {
-    contasReceber = contasReceber.filter(t => parseAnoMes(t.data, t.competencia) >= mesDe)
+    contasReceber = contasReceber.filter(t => {
+      const m = parseAnoMes(t.competencia, t.data) || parseAnoMes(t.data, t.competencia)
+      return m >= mesDe
+    })
   } else if (mesAte) {
-    contasReceber = contasReceber.filter(t => parseAnoMes(t.data, t.competencia) <= mesAte)
+    contasReceber = contasReceber.filter(t => {
+      const m = parseAnoMes(t.competencia, t.data) || parseAnoMes(t.data, t.competencia)
+      return m <= mesAte
+    })
   }
   if (search) {
+    const s = search.toLowerCase()
     contasReceber = contasReceber.filter(t => 
-      (t.descricao || '').toLowerCase().includes(search.toLowerCase()) || 
-      (t.categoria || '').toLowerCase().includes(search.toLowerCase()) ||
-      (t.condominio || '').toLowerCase().includes(search.toLowerCase())
+      (t.descricao || '').toLowerCase().includes(s) || 
+      (t.categoria || '').toLowerCase().includes(s) ||
+      (t.condominio || '').toLowerCase().includes(s)
     )
   }
 
   contasReceber.sort((a, b) => parseDateStr(b.data || b.vencimento) - parseDateStr(a.data || a.vencimento))
 
   // Lançamentos de receita filtrados pelo período selecionado para os cards de resumo
-  const receitasPeriodo = lancamentos.filter(t => {
-    if (t.tipo !== 'Receita') return false
-    const m = parseAnoMes(t.data, t.competencia)
+  const receitasPeriodo = todasReceitas.filter(t => {
+    const m = parseAnoMes(t.competencia, t.data) || parseAnoMes(t.data, t.competencia)
     if (mesDe && mesAte) return m >= mesDe && m <= mesAte
     if (mesDe) return m >= mesDe
     if (mesAte) return m <= mesAte
@@ -86,10 +153,28 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
   const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   const marcarComoRecebido = async (t) => {
-    const novoStatus = t.status === 'Recebido' ? 'Pendente' : 'Recebido'
-    const acao = novoStatus === 'Recebido' ? 'Confirmar recebimento' : 'Voltar para Pendente'
+    const isRecebido = t.status === 'Recebido' || t.status === 'Pago'
+    const novoStatus = isRecebido ? 'Pendente' : 'Recebido'
+    const acao = !isRecebido ? 'Confirmar recebimento' : 'Voltar para Pendente'
     if (window.confirm(`${acao} de "${t.descricao}"?`)) {
-      await updateLancamento(t.id, { ...t, status: novoStatus })
+      if (t.isBoletoVirtual) {
+        if (updateBoleto) {
+          await updateBoleto(t.boletoId, { status: novoStatus === 'Recebido' ? 'Pago' : 'Pendente' })
+        }
+      } else {
+        await updateLancamento(t.id, { ...t, status: novoStatus })
+      }
+    }
+  }
+
+  const handleDeleteItem = async (t) => {
+    if (!window.confirm(`Excluir "${t.descricao}"?`)) return
+    if (t.isBoletoVirtual) {
+      if (deleteBoleto) {
+        await deleteBoleto(t.boletoId)
+      }
+    } else {
+      await deleteLancamento(t.id)
     }
   }
 
@@ -214,7 +299,7 @@ export default function ContasReceber({ lancamentos, setModalLanc, deleteLancame
                             <CheckCircle size={15} className="stroke-[2.2]" />
                           </button>
                           <button onClick={() => setModalLanc(t)} className="p-1.5 rounded-xl bg-slate-100 hover:bg-brand-100 text-slate-700 hover:text-brand-900 border border-slate-300 hover:border-brand-300 transition-all cursor-pointer shadow-xs" title="Editar"><Edit2 size={14} className="stroke-[2.2]" /></button>
-                          <button onClick={() => { if (window.confirm(`Excluir "${t.descricao}"?`)) deleteLancamento(t.id) }} className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 transition-all cursor-pointer shadow-xs" title="Excluir"><Trash2 size={14} className="stroke-[2.2]" /></button>
+                          <button onClick={() => handleDeleteItem(t)} className="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 transition-all cursor-pointer shadow-xs" title="Excluir"><Trash2 size={14} className="stroke-[2.2]" /></button>
                         </div>
                       </td>
                     </tr>
