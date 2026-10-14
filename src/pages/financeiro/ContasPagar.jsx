@@ -299,15 +299,36 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
       const storageRef = ref(storage, `financeiro/comprovantes/${Date.now()}_${safeName}`)
       const mime = file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg')
 
-      const snapshot = await uploadBytes(storageRef, file, { contentType: mime })
-      const downloadUrl = await getDownloadURL(snapshot.ref)
+      // Upload assíncrono para o Firebase Storage com timeout de segurança de 12 segundos
+      const uploadPromise = uploadBytes(storageRef, file, { contentType: mime })
+        .then(async (snapshot) => {
+          return await getDownloadURL(snapshot.ref)
+        })
+        .catch((err) => {
+          console.warn('[Storage] Upload direto do comprovante falhou:', err)
+          return null
+        })
 
-      const itemAlvo = lancamentos.find(l => l.id === lancamentoId)
-      if (itemAlvo) {
+      const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 12000))
+      let downloadUrl = await Promise.race([uploadPromise, timeoutPromise])
+
+      // Fallback em Base64 caso a conexão com o Storage demore ou falhe e o arquivo seja leve
+      if (!downloadUrl && file.size < 150000) {
+        downloadUrl = await new Promise((resolve) => {
+          const reader = new FileReader()
+          reader.onload = (e) => resolve(e.target.result)
+          reader.onerror = () => resolve(null)
+          reader.readAsDataURL(file)
+        })
+      }
+
+      const itemAlvo = lancamentos.find(l => l.id === lancamentoId) || modalComprovante
+      if (itemAlvo && updateLancamento) {
+        const { id, _createdAt, ...dadosItem } = itemAlvo
         await updateLancamento(lancamentoId, {
-          ...itemAlvo,
+          ...dadosItem,
           status: 'Pago',
-          comprovanteUrl: downloadUrl,
+          comprovanteUrl: downloadUrl || itemAlvo.comprovanteUrl || '',
           dataPagamento: new Date().toISOString().split('T')[0]
         })
       }
