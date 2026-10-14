@@ -3,6 +3,8 @@ import { Shield, Target, AlertTriangle, Save, Calculator, DollarSign, Wallet, Ar
 import { useFirestore } from '../../hooks/useFirestore'
 import { CurrencyInput } from '../../utils/currency'
 import { isAlphaInterno } from '../Financeiro'
+import { doc, updateDoc } from 'firebase/firestore'
+import { db } from '../../firebase'
 
 export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Todos', condominiosDisponiveis = [], condominios = [], boletos = [], setModalLanc }) {
   const { items: configs, updateItem, addItem } = useFirestore('financeiro_config')
@@ -47,31 +49,35 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
   const configDoc = configs.find(c => c.id === configId)
 
   useEffect(() => {
-    if (configDoc && configDoc.saldo_real !== undefined) {
-      setSaldoReal(Number(configDoc.saldo_real))
-    } else {
-      // Fallback 1: procura correspondência no financeiro_config
-      const docAlt = configs.find(c => {
-        const cid = (c.id || '').toLowerCase()
-        const cNome = normalizarNome(selectedCondo)
-        return cid.includes(cNome) || (c.condominio && condoMatch(c.condominio, selectedCondo))
-      })
-      if (docAlt && docAlt.saldo_real !== undefined) {
-        setSaldoReal(Number(docAlt.saldo_real))
+    if (isAlpha) {
+      if (configDoc && configDoc.saldo_real !== undefined) {
+        setSaldoReal(Number(configDoc.saldo_real))
       } else {
-        // Fallback 2: busca no cadastro do condomínio (ex: 1109.98 do Residencial Dália)
-        if (isAlpha) {
-          setSaldoReal(0)
-        } else if (isTodos) {
-          const somaFundos = condominios.reduce((acc, c) => acc + Number(c.fundoReserva || 0), 0)
-          setSaldoReal(somaFundos)
+        setSaldoReal(0)
+      }
+    } else if (isTodos) {
+      const somaFundos = condominios.reduce((acc, c) => acc + Number(c.fundoReserva || 0), 0)
+      const somaConfigs = configs.filter(c => c.id?.startsWith('caixa_') && c.id !== 'caixa_alpha').reduce((acc, c) => acc + Number(c.saldo_real || 0), 0)
+      setSaldoReal(somaFundos > 0 ? somaFundos : somaConfigs)
+    } else {
+      // Condomínio específico (ex: Residencial Dália): prioriza o fundoReserva cadastrado no Condomínio (R$ 1.109,98)
+      const condoObj = condominios.find(c => condoMatch(c.nome, selectedCondo))
+      if (condoObj && condoObj.fundoReserva !== undefined && Number(condoObj.fundoReserva) > 0) {
+        setSaldoReal(Number(condoObj.fundoReserva))
+      } else if (configDoc && configDoc.saldo_real !== undefined) {
+        setSaldoReal(Number(configDoc.saldo_real))
+      } else {
+        const docAlt = configs.find(c => {
+          const cid = (c.id || '').toLowerCase()
+          const cNome = normalizarNome(selectedCondo)
+          return cid.includes(cNome) || (c.condominio && condoMatch(c.condominio, selectedCondo))
+        })
+        if (docAlt && docAlt.saldo_real !== undefined) {
+          setSaldoReal(Number(docAlt.saldo_real))
+        } else if (condoObj && condoObj.fundoReserva !== undefined) {
+          setSaldoReal(Number(condoObj.fundoReserva || 0))
         } else {
-          const condoObj = condominios.find(c => condoMatch(c.nome, selectedCondo))
-          if (condoObj && condoObj.fundoReserva !== undefined) {
-            setSaldoReal(Number(condoObj.fundoReserva || 0))
-          } else {
-            setSaldoReal(0)
-          }
+          setSaldoReal(0)
         }
       }
     }
@@ -230,6 +236,19 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
       } else {
         await addItem({ id: configId, saldo_real: val })
       }
+
+      // Se for um condomínio cliente, atualiza também a propriedade fundoReserva no documento do condomínio
+      if (!isAlpha && !isTodos) {
+        const condoObj = condominios.find(c => condoMatch(c.nome, selectedCondo))
+        if (condoObj && condoObj.id) {
+          try {
+            await updateDoc(doc(db, 'condominios', condoObj.id), { fundoReserva: val })
+          } catch (e) {
+            console.warn('Erro ao sincronizar fundoReserva no condomínio:', e)
+          }
+        }
+      }
+
       setSaldoReal(val)
       setEditando(false)
     }

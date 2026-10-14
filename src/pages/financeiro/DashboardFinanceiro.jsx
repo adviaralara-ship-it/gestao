@@ -81,43 +81,32 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
     const somaFundos = (condominios || []).reduce((acc, c) => acc + Number(c.fundoReserva || 0), 0)
     saldoFundoCaixa = somaCaixas > 0 ? somaCaixas : somaFundos
   } else {
-    const configId = `caixa_${condoFilter.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
-    const doc = (configs || []).find(c => c.id === configId)
-    if (doc && doc.saldo_real !== undefined) {
-      saldoFundoCaixa = Number(doc.saldo_real || 0)
+    // Condomínio cliente: prioriza o fundoReserva cadastrado no condomínio (ex: 1.109,98 do Dália)
+    const condoObj = (condominios || []).find(c => condoMatch(c.nome, condoFilter))
+    if (condoObj && condoObj.fundoReserva !== undefined && Number(condoObj.fundoReserva) > 0) {
+      saldoFundoCaixa = Number(condoObj.fundoReserva)
     } else {
-      const docAlt = (configs || []).find(c => {
-        const cid = (c.id || '').toLowerCase()
-        const cNome = normalizarNomeCondo(condoFilter)
-        return cid.includes(cNome) || (c.condominio && condoMatch(c.condominio, condoFilter))
-      })
-      if (docAlt && docAlt.saldo_real !== undefined) {
-        saldoFundoCaixa = Number(docAlt.saldo_real || 0)
+      const configId = `caixa_${condoFilter.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
+      const doc = (configs || []).find(c => c.id === configId)
+      if (doc && doc.saldo_real !== undefined) {
+        saldoFundoCaixa = Number(doc.saldo_real || 0)
       } else {
-        const condoObj = (condominios || []).find(c => condoMatch(c.nome, condoFilter))
-        if (condoObj && condoObj.fundoReserva !== undefined) {
+        const docAlt = (configs || []).find(c => {
+          const cid = (c.id || '').toLowerCase()
+          const cNome = normalizarNomeCondo(condoFilter)
+          return cid.includes(cNome) || (c.condominio && condoMatch(c.condominio, condoFilter))
+        })
+        if (docAlt && docAlt.saldo_real !== undefined) {
+          saldoFundoCaixa = Number(docAlt.saldo_real || 0)
+        } else if (condoObj && condoObj.fundoReserva !== undefined) {
           saldoFundoCaixa = Number(condoObj.fundoReserva || 0)
         }
       }
     }
   }
 
-  // 2. Histórico de Entradas e Saídas Liquidadas
-  const totalRecebidoHistoricoFin = lancamentos
-    .filter(t => t.tipo === 'Receita' && (t.status === 'Recebido' || t.status === 'Pago'))
-    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
-
-  const totalRecebidoHistoricoBol = boletosDoCondo
-    .filter(b => b.status === 'Pago')
-    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
-
-  const totalPagoHistorico = lancamentos
-    .filter(t => t.tipo === 'Despesa' && (t.status === 'Pago' || t.status === 'Liquidado' || t.pago))
-    .reduce((acc, c) => acc + Number(c.valor || 0), 0)
-
-  // Saldo real em caixa consolidado
+  // Base de Caixa cadastrada
   const baseCaixa = saldoContasBancarias > 0 ? saldoContasBancarias : saldoFundoCaixa
-  const saldoCaixa = baseCaixa + totalRecebidoHistoricoFin + totalRecebidoHistoricoBol - totalPagoHistorico
 
   // 3. Filtragem estrita dos lançamentos pelo período selecionado
   const lancamentosPeriodo = lancamentos.filter(t => {
@@ -171,7 +160,15 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
     .filter(b => b.status === 'Pago')
     .reduce((acc, c) => acc + Number(c.valor || 0), 0)
 
-  const receitasRecebidasMes = receitasRecebidasMesFin + receitasRecebidasMesBol
+  // Evitar duplicidade caso haja lançamento espelho das cotas pagas em boletos
+  const receitasRecebidasMes = receitasRecebidasMesFin > 0 && receitasRecebidasMesBol > 0 && receitasRecebidasMesFin === receitasRecebidasMesBol
+    ? receitasRecebidasMesBol
+    : (receitasRecebidasMesFin + receitasRecebidasMesBol)
+
+  // Saldo em Caixa Dinâmico: Base Inicial + Receitas Pagas do Período - Despesas Pagas do Período
+  // Exemplo Dália Outubro: R$ 1.109,98 + R$ 960,00 - R$ 867,14 = R$ 1.202,84
+  const deducaoDespesaPeriodo = despesasPagasMes > 0 ? despesasPagasMes : pagarTotalMes
+  const saldoCaixa = baseCaixa + receitasRecebidasMes - deducaoDespesaPeriodo
 
   // 5. Capital de Giro Operacional do Mês
   const capitalDeGiro = saldoCaixa + receberPendenteMes - pagarPendenteMes

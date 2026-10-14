@@ -891,23 +891,25 @@ export default function Dashboard() {
       const somaFundos = (condominios || []).reduce((acc, c) => acc + Number(c.fundoReserva || 0), 0)
       saldoFundoCaixa = somaCaixas > 0 ? somaCaixas : somaFundos
     } else {
-      const configId = `caixa_${condoFiltro.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
-      const doc = (financeiroConfigs || []).find(c => c.id === configId)
-      if (doc && doc.saldo_real !== undefined) {
-        saldoFundoCaixa = Number(doc.saldo_real || 0)
+      // Prioriza o fundoReserva cadastrado no condomínio (ex: 1.109,98 do Residencial Dália)
+      const condoObj = (condominios || []).find(c => condoMatch(c.nome, condoFiltro))
+      if (condoObj && condoObj.fundoReserva !== undefined && Number(condoObj.fundoReserva) > 0) {
+        saldoFundoCaixa = Number(condoObj.fundoReserva)
       } else {
-        // Fallback 1: procura por correspondência no nome da chave do financeiro_config
-        const docAlt = (financeiroConfigs || []).find(c => {
-          const cid = (c.id || '').toLowerCase()
-          const cNome = normalizarNomeCondo(condoFiltro)
-          return cid.includes(cNome) || (c.condominio && condoMatch(c.condominio, condoFiltro))
-        })
-        if (docAlt && docAlt.saldo_real !== undefined) {
-          saldoFundoCaixa = Number(docAlt.saldo_real || 0)
+        const configId = `caixa_${condoFiltro.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
+        const doc = (financeiroConfigs || []).find(c => c.id === configId)
+        if (doc && doc.saldo_real !== undefined) {
+          saldoFundoCaixa = Number(doc.saldo_real || 0)
         } else {
-          // Fallback 2: busca no cadastro do condomínio (tabela condominios -> fundoReserva)
-          const condoObj = (condominios || []).find(c => condoMatch(c.nome, condoFiltro))
-          if (condoObj && condoObj.fundoReserva !== undefined) {
+          // Fallback 1: procura por correspondência no nome da chave do financeiro_config
+          const docAlt = (financeiroConfigs || []).find(c => {
+            const cid = (c.id || '').toLowerCase()
+            const cNome = normalizarNomeCondo(condoFiltro)
+            return cid.includes(cNome) || (c.condominio && condoMatch(c.condominio, condoFiltro))
+          })
+          if (docAlt && docAlt.saldo_real !== undefined) {
+            saldoFundoCaixa = Number(docAlt.saldo_real || 0)
+          } else if (condoObj && condoObj.fundoReserva !== undefined) {
             saldoFundoCaixa = Number(condoObj.fundoReserva || 0)
           }
         }
