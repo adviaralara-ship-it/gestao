@@ -768,18 +768,19 @@ export default function Dashboard() {
     return n1 === n2 || n1.includes(n2) || n2.includes(n1)
   }
 
+  // Helper para extrair condomínio do item (incluindo busca do morador para boletos)
+  const getItemCondo = (it, isBoleto = false) => {
+    if (!it) return ''
+    if (it.condominio) return it.condominio
+    if (isBoleto && it.morador) {
+      const mor = (moradores || []).find(m => m?.nome && String(m.nome).trim().toLowerCase() === String(it.morador).trim().toLowerCase())
+      if (mor?.condominio) return mor.condominio
+    }
+    return ''
+  }
+
   const filterByCondo = (items, isBoleto = false) => {
     if (!items || !Array.isArray(items)) return []
-
-    // Helper para extrair condomínio do item (incluindo busca do morador para boletos)
-    const getItemCondo = (it) => {
-      if (it.condominio) return it.condominio
-      if (isBoleto && it.morador) {
-        const mor = (moradores || []).find(m => m?.nome && String(m.nome).trim().toLowerCase() === String(it.morador).trim().toLowerCase())
-        if (mor?.condominio) return mor.condominio
-      }
-      return ''
-    }
 
     // Para usuários não-administradores (Síndico, Subsíndico, Conselho):
     // Jamais exibe dados de Alpha Interno nem lançamentos sem condomínio definido
