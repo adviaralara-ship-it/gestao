@@ -462,47 +462,52 @@ export default function Manutencoes() {
           })
         } catch(e) {}
 
-        // 2. Disparo imediato para os números de WhatsApp dos Administradores e Síndico
-        const telefonesDestino = new Set()
-        telefonesDestino.add('558396885931') // Número oficial padrão da Alpha
-        telefonesDestino.add('5583996806325') // 83 99680-6325
-        telefonesDestino.add('5583999797285') // 83 99979-7285
-        telefonesDestino.add('5583998350321') // 83 99835-0321
-        telefonesDestino.add('5583998468997') // 83 99846-8997
+        // 2. Disparo para os números de WhatsApp dos Administradores e Síndico APENAS se for agendamento para HOJE
+        const hojeIso = new Date().toISOString().split('T')[0]
+        const ehParaHoje = form.dataPrevista && form.dataPrevista.startsWith(hojeIso)
 
-        if (allUsuarios && allUsuarios.length > 0) {
-          allUsuarios.forEach(u => {
-            const isAdm = u.role === 'Administrador' || u.role === 'Financeiro'
-            const isSindicoDesteCondo = u.role === 'Síndico' && (!form.condominio || u.condominio === form.condominio)
-            
-            if (isAdm || isSindicoDesteCondo) {
-              const rawTel = u.tel || u.telefone || u.whatsapp || u.celular || ''
-              const cleanTel = String(rawTel).replace(/\D/g, '')
-              if (cleanTel.length >= 8) {
-                telefonesDestino.add(cleanTel.length <= 11 ? `55${cleanTel}` : cleanTel)
+        if (ehParaHoje) {
+          const telefonesDestino = new Set()
+          telefonesDestino.add('558396885931') // Número oficial padrão da Alpha
+          telefonesDestino.add('5583996806325') // 83 99680-6325
+          telefonesDestino.add('5583999797285') // 83 99979-7285
+          telefonesDestino.add('5583998350321') // 83 99835-0321
+          telefonesDestino.add('5583998468997') // 83 99846-8997
+
+          if (allUsuarios && allUsuarios.length > 0) {
+            allUsuarios.forEach(u => {
+              const isAdm = u.role === 'Administrador' || u.role === 'Financeiro'
+              const isSindicoDesteCondo = u.role === 'Síndico' && (!form.condominio || u.condominio === form.condominio)
+              
+              if (isAdm || isSindicoDesteCondo) {
+                const rawTel = u.tel || u.telefone || u.whatsapp || u.celular || ''
+                const cleanTel = String(rawTel).replace(/\D/g, '')
+                if (cleanTel.length >= 8) {
+                  telefonesDestino.add(cleanTel.length <= 11 ? `55${cleanTel}` : cleanTel)
+                }
               }
-            }
-          })
+            })
+          }
+
+          const custoFmt = form.custoEstimado ? Number(form.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'
+          const msgWhats = `🚨 *${tipoLabel.toUpperCase()} HOJE - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${form.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${form.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${form.fornecedor || 'Não informado'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n🔄 *Recorrência:* ${form.recorrencia || 'Nenhuma'}\n📌 *Status:* ${form.status || 'Agendada'}${form.descricao ? `\n📝 *Observações:* ${form.descricao}` : ''}\n\n🔗 *Acesse o cronograma completo:*\nhttps://alpha-solucoes-condominiais.vercel.app/manutencoes`
+
+          for (const numero of telefonesDestino) {
+            try {
+              fetch('/api/whatsapp-send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  number: numero,
+                  text: msgWhats,
+                  instance: 'InstanciaAlpha'
+                })
+              }).catch(e => console.warn('Erro envio WhatsApp manutenção:', e))
+            } catch(e) {}
+          }
         }
 
-        const custoFmt = form.custoEstimado ? Number(form.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'
-        const msgWhats = `🔔 *NOVA ${tipoLabel.toUpperCase()} AGENDADA - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${form.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${form.titulo}\n📅 *Data Prevista:* ${dataFmt}\n👷 *Prestador / Empresa:* ${form.fornecedor || 'Não informado'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n🔄 *Recorrência:* ${form.recorrencia || 'Nenhuma'}\n📌 *Status:* ${form.status || 'Agendada'}${form.descricao ? `\n📝 *Observações:* ${form.descricao}` : ''}\n\n🔗 *Acesse o cronograma completo:*\nhttps://alpha-solucoes-condominiais.vercel.app/manutencoes`
-
-        for (const numero of telefonesDestino) {
-          try {
-            fetch('/api/whatsapp-send', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                number: numero,
-                text: msgWhats,
-                instance: 'InstanciaAlpha'
-              })
-            }).catch(e => console.warn('Erro envio WhatsApp manutenção:', e))
-          } catch(e) {}
-        }
-
-        alert(`🎉 Agendamento salvo com sucesso!\n\n🔔 Notificação adicionada no sininho.\n📲 Disparo de WhatsApp enviado aos administradores.\n⏰ Lembretes automáticos agendados para a véspera e o dia.`)
+        alert(`🎉 Agendamento salvo com sucesso!\n\n🔔 Notificação adicionada no sininho.${ehParaHoje ? '\n📲 Disparo de WhatsApp enviado (agendado para hoje).' : '\n⏰ Notificação de WhatsApp programada para o dia da execução.'}`)
       } else {
         alert('🎉 Agendamento atualizado com sucesso!')
       }

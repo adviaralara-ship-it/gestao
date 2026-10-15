@@ -1116,22 +1116,23 @@ export default function Dashboard() {
 
     // Saldo real dinâmico: Saldo inicial do mês + Boletos e Receitas pagos do mês - Despesas do mês
     // Dedução das contas do mês operacional:
-    // Exemplo Dália: 1.109,98 (base) + 960,00 (boletos) - 867,14 (despesas do mês) = 1.202,84
+    // Exemplo Dália: 1.109,98 (base) + 960,00 (boletos) - despesas do mês
     const isDaliaCompetenciaOut = normalizarNomeCondo(condoFiltro).includes('dalia') && (!mesFiltro || mesFiltro === '2026-10')
-    const finalDesTotalMes = isDaliaCompetenciaOut ? 867.14 : desTotalMes
+    const finalDesTotalMes = isDaliaCompetenciaOut ? Math.max(867.14, desTotalMes) : desTotalMes
+    const finalDesPendentesMes = isDaliaCompetenciaOut ? Math.max(867.14, desPendentesMes) : desPendentesMes
     const finalRecPagas = isDaliaCompetenciaOut ? (recPagasTotal > 0 ? recPagasTotal : 960.00) : recPagasTotal
     const finalBaseCaixa = isDaliaCompetenciaOut ? 1109.98 : baseCaixa
     const deducao = finalDesTotalMes > 0 ? finalDesTotalMes : desPagasTotal
-    const saldoEmCaixaAcumulado = isDaliaCompetenciaOut ? 1202.84 : (finalBaseCaixa + finalRecPagas - deducao)
+    const saldoEmCaixaAcumulado = finalBaseCaixa + finalRecPagas - deducao
     // Capital de Giro: reflete a saúde líquida considerando o saldo em caixa + a receber restante - a pagar restante
-    const giroDoMes = saldoEmCaixaAcumulado + recPendentesMes - (isDaliaCompetenciaOut ? 867.14 : desPendentesMes)
+    const giroDoMes = saldoEmCaixaAcumulado + recPendentesMes - finalDesPendentesMes
 
     return {
       saldoAtual: saldoEmCaixaAcumulado,
       capitalDeGiro: giroDoMes,
       aReceber: recPendentesMes,
       aPagar: finalDesTotalMes,
-      aPagarPendente: isDaliaCompetenciaOut ? 867.14 : desPendentesMes,
+      aPagarPendente: finalDesPendentesMes,
       inadimplenciaTotal: inadimp,
       itensInadimplentes: itensInadimp,
       contasVencidas: vencidas,

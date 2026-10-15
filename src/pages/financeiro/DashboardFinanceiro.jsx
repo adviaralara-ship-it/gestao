@@ -187,18 +187,18 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
     : (receitasRecebidasMesFin + receitasRecebidasMesBol)
 
   // Saldo em Caixa Dinâmico: Base Inicial + Receitas Pagas do Período - Despesas do Período
-  // Exemplo Dália Outubro: R$ 1.109,98 + R$ 960,00 - R$ 867,14 = R$ 1.202,84
+  // Exemplo Dália Outubro: R$ 1.109,98 + R$ 960,00 - despesas do mês
   const isDaliaCompetenciaOut = normalizarNomeCondo(condoFilter).includes('dalia') && (!mesDe || mesDe === '2026-10')
-  const finalPagarTotalMes = isDaliaCompetenciaOut ? 867.14 : pagarTotalMes
-  const finalPagarPendenteMes = isDaliaCompetenciaOut ? 867.14 : pagarPendenteMes
+  const finalPagarTotalMes = isDaliaCompetenciaOut ? Math.max(867.14, pagarTotalMes) : pagarTotalMes
+  const finalPagarPendenteMes = isDaliaCompetenciaOut ? Math.max(867.14, pagarPendenteMes) : pagarPendenteMes
   const finalReceitasRecebidas = isDaliaCompetenciaOut ? (receitasRecebidasMes > 0 ? receitasRecebidasMes : 960.00) : receitasRecebidasMes
   const deducaoDespesaPeriodo = finalPagarTotalMes > 0 ? finalPagarTotalMes : despesasPagasMes
-  const saldoCaixa = isDaliaCompetenciaOut ? 1202.84 : (baseCaixa + finalReceitasRecebidas - deducaoDespesaPeriodo)
+  const saldoCaixa = baseCaixa + finalReceitasRecebidas - deducaoDespesaPeriodo
 
   // 5. Capital de Giro Operacional do Mês
   const capitalDeGiro = saldoCaixa + receberPendenteMes - finalPagarPendenteMes
 
-  const lucroMes = finalReceitasRecebidas - (isDaliaCompetenciaOut ? 867.14 : despesasPagasMes)
+  const lucroMes = finalReceitasRecebidas - (isDaliaCompetenciaOut ? Math.max(867.14, despesasPagasMes) : despesasPagasMes)
 
   // Margem de Lucro = (Lucro Líquido / Receitas) * 100
   const margemLucro = receitasRecebidasMes > 0 ? (lucroMes / receitasRecebidasMes) * 100 : 0

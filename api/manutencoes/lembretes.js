@@ -76,7 +76,7 @@ export default async function handler(req, res) {
         }
       });
 
-      // CASO 1: Lembrete de Véspera (1 dia antes / D-1)
+      // CASO 1: Lembrete de Véspera (1 dia antes / D-1) - Apenas Sininho do sistema
       if (diffDays === 1 && manu.notifD1 !== hojeStr) {
         // Grava no Sininho
         await db.collection('notificacoes').add({
@@ -90,25 +90,10 @@ export default async function handler(req, res) {
           _createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        // WhatsApp D-1
-        const msgWhats = `⚠️ *LEMBRETE PREVENTIVO - MANUTENÇÃO AMANHÃ!*\n\n🏢 *Condomínio:* ${manu.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${manu.titulo}\n📅 *Data Prevista:* Amanhã (${dataFmt})\n👷 *Prestador / Empresa:* ${manu.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${manu.status || 'Agendada'}${manu.descricao ? `\n📝 *Observações:* ${manu.descricao}` : ''}\n\n🔔 *Lembrete automático enviado 1 dia antes pela Alpha Gestão.*\n🔗 *Acesse o painel:* https://alpha-solucoes-condominiais.vercel.app/manutencoes`;
-
-        for (const numero of telefonesDestino) {
-          try {
-            await fetch(`${EVOLUTION_URL}/message/sendText/InstanciaAlpha`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'apikey': API_KEY },
-              body: JSON.stringify({ number: numero, text: msgWhats })
-            });
-          } catch(e) {}
-        }
-
         await db.collection('manutencoes').doc(manu.id).update({
           notifD1: hojeStr,
           lembreteVesperaEnviadoEm: hojeStr
         });
-
-        disparos++;
       }
 
       // CASO 2: Lembrete do Dia (Hoje / D-0)

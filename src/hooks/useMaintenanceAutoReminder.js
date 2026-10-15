@@ -70,10 +70,10 @@ export async function verificarEDispararLembretesManutencao(isManual = false) {
         }
       })
 
-      // CASO 1: Lembrete de Véspera (1 dia antes / D-1)
+      // CASO 1: Lembrete de Véspera (1 dia antes / D-1) - Apenas Sininho do sistema (WhatsApp apenas no dia do vencimento)
       const jaEnviouD1 = m.notifD1 === hojeStr || m.lembreteVesperaEnviadoEm === hojeStr
       if (diffDays === 1 && !jaEnviouD1) {
-        // 1. Atualiza flag no Firestore ANTES do envio para evitar disparos duplicados em concorrência
+        // 1. Atualiza flag no Firestore
         try {
           await updateDoc(doc(db, 'manutencoes', m.id), {
             notifD1: hojeStr,
@@ -81,7 +81,7 @@ export async function verificarEDispararLembretesManutencao(isManual = false) {
           })
         } catch (errUpd) {
           console.warn('Permissão insuficiente ou falha ao atualizar flag notifD1:', errUpd)
-          continue // Se não conseguiu marcar no banco, não dispara o WhatsApp para evitar repetição
+          continue
         }
 
         // 2. Grava no Sininho
@@ -97,22 +97,6 @@ export async function verificarEDispararLembretesManutencao(isManual = false) {
             _createdAt: serverTimestamp()
           })
         } catch(e) {}
-
-        // 3. Mensagem de WhatsApp D-1
-        const tipoLabel = m.tipo || 'Manutenção Preventiva'
-        const msgWhats = `⚠️ *LEMBRETE - ${tipoLabel.toUpperCase()} AMANHÃ!*\n\n🏢 *Condomínio:* ${m.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${m.titulo}\n📅 *Data Prevista:* Amanhã (${dataFmt})\n👷 *Prestador / Empresa:* ${m.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${m.status || 'Agendada'}${m.descricao ? `\n📝 *Observações:* ${m.descricao}` : ''}\n\n🔔 *Lembrete automático enviado 1 dia antes pela Alpha Gestão.*\n🔗 *Acesse o painel:* https://alpha-solucoes-condominiais.vercel.app/manutencoes`
-
-        for (const numero of telefonesDestino) {
-          try {
-            fetch('/api/whatsapp-send', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ number: numero, text: msgWhats, instance: 'InstanciaAlpha' })
-            }).catch(e => console.warn('Erro envio WhatsApp lembrete D-1:', e))
-          } catch(e) {}
-        }
-
-        disparosRealizados++
       }
 
       // CASO 2: Lembrete do Dia (Hoje / D-0)
