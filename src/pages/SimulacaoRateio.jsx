@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { 
   Calculator, DollarSign, Building2, Calendar, FileText, Download, 
   Plus, Trash2, Edit2, CheckCircle2, AlertTriangle, ArrowRight, 
-  TrendingDown, Percent, Sparkles, Share2, HelpCircle, Eye, Info
+  TrendingDown, Percent, Sparkles, Share2, HelpCircle, Eye, Info,
+  Check, X
 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -39,7 +40,7 @@ export default function SimulacaoRateio({ condominios = [], condoFiltro = 'Todos
   const [unidades, setUnidades] = useState(42)
   const [dataPrevista, setDataPrevista] = useState('')
   const [observacao, setObservacao] = useState('')
-  const [orcamentoVinculadoId, setOrcamentoVinculadoId] = useState('')
+  const [orcamentosVinculadosIds, setOrcamentosVinculadosIds] = useState([])
 
   // Origem do recurso: 'caixa', 'fundo_reserva', 'rateio_puro', 'caixa_rateio'
   const [origemRecurso, setOrigemRecurso] = useState('caixa_rateio')
@@ -55,7 +56,7 @@ export default function SimulacaoRateio({ condominios = [], condoFiltro = 'Todos
     }
   }, [condoObj])
 
-  // Vincula valor de orçamento caso o usuário selecione um orçamento cadastrado
+  // Vincula valor de orçamento caso o usuário selecione um ou mais orçamentos cadastrados
   const orcamentosDoCondo = useMemo(() => {
     return (orcamentos || []).filter(o => {
       if (!condoSelecionado) return true
@@ -65,25 +66,35 @@ export default function SimulacaoRateio({ condominios = [], condoFiltro = 'Todos
     })
   }, [orcamentos, condoSelecionado])
 
-  const handleSelectOrcamento = (e) => {
-    const id = e.target.value
-    setOrcamentoVinculadoId(id)
-    if (id) {
-      const orc = orcamentos.find(o => o.id === id)
-      if (orc) {
-        if (orc.empresa && orc.tipoServico) {
-          setNomeObra(`${orc.tipoServico} (${orc.empresa})`)
-        } else if (orc.tipoServico) {
-          setNomeObra(orc.tipoServico)
-        }
-        if (orc.valor) {
-          setValorTotal(Number(orc.valor))
-        }
-        if (orc.condominio) {
-          setCondoSelecionado(orc.condominio)
+  // Atualizar múltiplos orçamentos selecionados
+  const handleToggleOrcamento = (id) => {
+    setOrcamentosVinculadosIds(prev => {
+      const exists = prev.includes(id)
+      const next = exists ? prev.filter(item => item !== id) : [...prev, id]
+
+      // Recalcular soma dos orçamentos selecionados e sugerir nome da obra
+      const selecionados = (orcamentos || []).filter(o => next.includes(o.id))
+      if (selecionados.length > 0) {
+        const total = selecionados.reduce((acc, curr) => acc + (Number(curr.valor) || 0), 0)
+        setValorTotal(total)
+
+        const nomes = selecionados.map(s => {
+          if (s.empresa && s.tipoServico) return `${s.tipoServico} (${s.empresa})`
+          return s.tipoServico || s.empresa || s.grupo || 'Serviço'
+        })
+        setNomeObra(nomes.join(' + '))
+
+        const primeiroCondo = selecionados.find(s => s.condominio)?.condominio
+        if (primeiroCondo && !condoSelecionado) {
+          setCondoSelecionado(primeiroCondo)
         }
       }
-    }
+      return next
+    })
+  }
+
+  const handleLimparOrcamentos = () => {
+    setOrcamentosVinculadosIds([])
   }
 
   // Cálculos dinâmicos matemáticos
@@ -165,7 +176,8 @@ export default function SimulacaoRateio({ condominios = [], condoFiltro = 'Todos
         valorPorUnidade: calculos.valorPorUnidade,
         parcelasProposta: calculos.nParcelasProp,
         valorParcelaProposta: calculos.valorParcelaEscolhida,
-        orcamentoVinculadoId,
+        orcamentosVinculadosIds,
+        orcamentoVinculadoId: orcamentosVinculadosIds[0] || '',
         criadoPor: user?.nome || 'Usuário',
         criadoEm: new Date().toISOString()
       })
@@ -493,24 +505,89 @@ export default function SimulacaoRateio({ condominios = [], condoFiltro = 'Todos
                 )}
               </div>
 
-              {/* Orçamentos Anexados (Importação Rápida) */}
+              {/* Orçamentos Anexados (Importação Rápida / Múltipla Seleção) */}
               {orcamentosDoCondo.length > 0 && (
-                <div className="sm:col-span-2 bg-emerald-50/60 border border-emerald-200 p-3 rounded-2xl">
-                  <label className="label text-xs font-black text-emerald-900 flex items-center gap-1">
-                    <Sparkles size={13} className="text-emerald-600" /> Importar de um Orçamento já Cadastrado (Opcional)
-                  </label>
-                  <select
-                    className="input text-xs font-bold bg-white border-emerald-300 text-gray-900 mt-1"
-                    value={orcamentoVinculadoId}
-                    onChange={handleSelectOrcamento}
-                  >
-                    <option value="">Selecione um orçamento para puxar os valores...</option>
-                    {orcamentosDoCondo.map(o => (
-                      <option key={o.id} value={o.id}>
-                        {o.empresa} — R$ {Number(o.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} ({o.tipoServico || o.grupo})
-                      </option>
-                    ))}
-                  </select>
+                <div className="sm:col-span-2 bg-gradient-to-r from-emerald-50/80 to-teal-50/50 border border-emerald-200 p-3.5 rounded-2xl shadow-xs">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <label className="label text-xs font-black text-emerald-950 flex items-center gap-1.5 m-0">
+                      <Sparkles size={14} className="text-emerald-600" /> 
+                      Importar de Orçamento(s) Cadastrado(s)
+                      {orcamentosVinculadosIds.length > 0 && (
+                        <span className="bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full ml-1">
+                          {orcamentosVinculadosIds.length} selecionado{orcamentosVinculadosIds.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </label>
+
+                    {orcamentosVinculadosIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleLimparOrcamentos}
+                        className="text-[11px] font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1 cursor-pointer"
+                      >
+                        <X size={12} /> Limpar seleção
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-emerald-800 mb-2.5">
+                    Marque um ou mais orçamentos abaixo para <b>somar os valores automaticamente</b> e ratear entre as unidades:
+                  </p>
+
+                  <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-1">
+                    {orcamentosDoCondo.map(o => {
+                      const isChecked = orcamentosVinculadosIds.includes(o.id)
+                      const valFormatado = Number(o.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+                      return (
+                        <div
+                          key={o.id}
+                          onClick={() => handleToggleOrcamento(o.id)}
+                          className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 text-xs ${
+                            isChecked
+                              ? 'bg-emerald-100/80 border-emerald-400 text-emerald-950 shadow-xs'
+                              : 'bg-white hover:bg-slate-50 border-gray-200 text-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {}} // tratado no wrapper onClick
+                              className="w-4 h-4 rounded text-emerald-600 accent-emerald-600 cursor-pointer"
+                            />
+                            <div className="min-w-0">
+                              <span className="font-black text-gray-900 block truncate">
+                                {o.empresa || 'Empresa'}
+                              </span>
+                              <span className="text-[11px] text-gray-500 truncate block">
+                                {o.tipoServico || o.grupo || 'Serviço'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="font-mono font-black text-xs text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200">
+                              R$ {valFormatado}
+                            </span>
+                            {isChecked && (
+                              <span className="text-emerald-700">
+                                <Check size={14} className="stroke-[3]" />
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {orcamentosVinculadosIds.length > 1 && (
+                    <div className="mt-2.5 pt-2 border-t border-emerald-200/80 flex items-center justify-between text-xs text-emerald-900">
+                      <span className="font-medium">Total somado dos {orcamentosVinculadosIds.length} orçamentos:</span>
+                      <span className="font-mono font-black text-emerald-800 text-sm">
+                        R$ {Number(valorTotal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -882,6 +959,7 @@ export default function SimulacaoRateio({ condominios = [], condoFiltro = 'Todos
                       setValorCaixaUtilizado(Number(sim.valorCaixaUtilizado || 0))
                       setParcelasProposta(Number(sim.parcelasProposta || 1))
                       setObservacao(sim.observacao || '')
+                      setOrcamentosVinculadosIds(sim.orcamentosVinculadosIds || (sim.orcamentoVinculadoId ? [sim.orcamentoVinculadoId] : []))
                       window.scrollTo({ top: 0, behavior: 'smooth' })
                     }}
                     className="text-brand-600 hover:text-brand-800 font-bold flex items-center gap-1 cursor-pointer"
