@@ -38,6 +38,18 @@ export default function Email() {
         headers,
         body: JSON.stringify({ action: 'listar-emails' })
       })
+
+      if (!res.ok) {
+        const errorText = await res.text()
+        try {
+          const errJson = JSON.parse(errorText)
+          setErrorMsg(errJson.error || `Erro do servidor HTTP ${res.status}`)
+        } catch {
+          setErrorMsg(`Erro no servidor (${res.status}): ${errorText.slice(0, 150)}`)
+        }
+        return
+      }
+
       const data = await res.json()
 
       if (data.success && Array.isArray(data.emails)) {

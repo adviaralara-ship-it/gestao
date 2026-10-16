@@ -310,7 +310,7 @@ export default async function handler(req, res) {
         connection = await imaps.connect(config);
         await connection.openBox('INBOX');
 
-        const delay = 30 * 24 * 3600 * 1000;
+        const delay = 7 * 24 * 3600 * 1000;
         const sinceDate = new Date(Date.now() - delay);
         const searchCriteria = [
           ['SINCE', sinceDate.toISOString().slice(0, 10)]
@@ -330,14 +330,20 @@ export default async function handler(req, res) {
           return dateB - dateA;
         });
 
-        const recentMessages = messages.slice(0, 35);
+        // Limita a 15 mensagens mais recentes para não estourar o limite de 10s da Vercel
+        const recentMessages = messages.slice(0, 15);
         const emailList = [];
 
         for (const item of recentMessages) {
           const all = item.parts.find(part => part.which === '');
           if (!all || !all.body) continue;
 
-          const parsed = await simpleParser(all.body);
+          let parsed;
+          try {
+            parsed = await simpleParser(all.body);
+          } catch {
+            continue;
+          }
 
           const attachmentsInfo = (parsed.attachments || []).map(att => ({
             filename: att.filename || 'anexo',
