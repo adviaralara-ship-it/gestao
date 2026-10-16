@@ -46,7 +46,7 @@ export default function Email() {
       }
     } catch (err) {
       console.error('Erro ao buscar e-mails:', err)
-      setErrorMsg('Falha de conexão com o servidor de e-mail.')
+      setErrorMsg('Falha de conexão com o servidor de e-mail: ' + err.message)
     } finally {
       setLoading(false)
     }

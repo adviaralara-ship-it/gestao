@@ -36,12 +36,17 @@ export default function VotacaoPublica() {
         return
       }
 
-      // Tenta login anonimo resiliente
+      // Tenta login com a conta de serviço pública para acesso do morador sem exigir login manual
       try {
-        await signInAnonymously(auth)
+        await signInWithEmailAndPassword(auth, 'servico.votacao@alphaadmsc.com.br', 'AlphaVotoPublico2026!')
         if (isMounted) setAuthReady(true)
-      } catch (errAnon) {
-        console.warn('Login anonimo indisponivel no Firebase:', errAnon.code || errAnon)
+      } catch (errServico) {
+        console.warn('Login de servico falhou, tentando anonimo:', errServico.code || errServico)
+        try {
+          await signInAnonymously(auth)
+        } catch (errAnon) {
+          console.warn('Login anonimo indisponivel no Firebase:', errAnon.code || errAnon)
+        }
         if (isMounted) setAuthReady(true)
       }
     })

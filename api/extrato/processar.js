@@ -188,7 +188,7 @@ export default async function handler(req, res) {
   const user = await verifyUserAuth(req, res);
   if (!user) return;
 
-  const rawPass = process.env.GMAIL_APP_PASSWORD || '';
+  const rawPass = process.env.GMAIL_APP_PASSWORD || 'pognicpypmgbxmrw';
   const effectivePass = rawPass.replace(/[^a-zA-Z0-9]/g, '');
 
   // 1. MÉTODO GET: Listar e Ler E-mails da Caixa de Entrada (Webmail Alpha)
