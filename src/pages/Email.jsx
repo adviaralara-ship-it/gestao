@@ -33,7 +33,7 @@ export default function Email() {
       const headers = { 'Content-Type': 'application/json' }
       if (token) headers['Authorization'] = `Bearer ${token}`
 
-      const res = await fetch('/api/email/inbox', { headers })
+      const res = await fetch('/api/email', { headers })
       const data = await res.json()
 
       if (data.success && Array.isArray(data.emails)) {
@@ -74,7 +74,7 @@ export default function Email() {
       const headers = { 'Content-Type': 'application/json' }
       if (token) headers['Authorization'] = `Bearer ${token}`
 
-      const res = await fetch('/api/email/send', {
+      const res = await fetch('/api/email', {
         method: 'POST',
         headers,
         body: JSON.stringify({
