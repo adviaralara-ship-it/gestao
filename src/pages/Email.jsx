@@ -33,7 +33,11 @@ export default function Email() {
       const headers = { 'Content-Type': 'application/json' }
       if (token) headers['Authorization'] = `Bearer ${token}`
 
-      const res = await fetch('/api/extrato/processar', { headers })
+      const res = await fetch('/api/extrato/processar', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action: 'listar-emails' })
+      })
       const data = await res.json()
 
       if (data.success && Array.isArray(data.emails)) {

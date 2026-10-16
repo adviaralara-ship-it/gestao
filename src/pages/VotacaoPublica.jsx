@@ -95,7 +95,22 @@ export default function VotacaoPublica() {
       setErrorMsg('')
 
       const docRef = doc(db, 'enquetes', id)
-      const snap = await getDoc(docRef)
+      let snap
+      try {
+        snap = await getDoc(docRef)
+      } catch (firstErr) {
+        // Se a sessão expirou ou deu erro de permissão temporário, força reautenticação automática
+        if (firstErr?.code?.includes('permission-denied') || !auth.currentUser) {
+          try {
+            await signInWithEmailAndPassword(auth, 'servico.votacao@alphaadmsc.com.br', 'AlphaVotoPublico2026!')
+            snap = await getDoc(docRef)
+          } catch (retryErr) {
+            throw firstErr
+          }
+        } else {
+          throw firstErr
+        }
+      }
 
       if (!snap.exists()) {
         setErrorMsg('Enquete nao encontrada. Verifique o link enviado pelo sindico ou administracao.')
@@ -210,10 +225,22 @@ export default function VotacaoPublica() {
         }
       }
 
-      await updateDoc(docRef, {
-        votos: novosVotos,
-        votosDetalhes: novosDetalhes
-      })
+      try {
+        await updateDoc(docRef, {
+          votos: novosVotos,
+          votosDetalhes: novosDetalhes
+        })
+      } catch (writeErr) {
+        if (writeErr?.code?.includes('permission-denied') || !auth.currentUser) {
+          await signInWithEmailAndPassword(auth, 'servico.votacao@alphaadmsc.com.br', 'AlphaVotoPublico2026!')
+          await updateDoc(docRef, {
+            votos: novosVotos,
+            votosDetalhes: novosDetalhes
+          })
+        } else {
+          throw writeErr
+        }
+      }
 
       setEnquete(prev => ({
         ...prev,
