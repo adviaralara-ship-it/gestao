@@ -3,8 +3,10 @@ import {
   UploadCloud, CheckCircle, ArrowRightCircle, Check, Search, 
   Sparkles, Mail, RefreshCw, AlertCircle, FileText, CheckCheck, Landmark
 } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 
 export default function Conciliacao({ lancamentos, setModalLanc, updateLancamento }) {
+  const { user } = useAuth()
   const [ofxItems, setOfxItems] = useState([])
   const [conciliadosIds, setConciliadosIds] = useState([])
   const [matchModal, setMatchModal] = useState(null)
@@ -88,9 +90,17 @@ export default function Conciliacao({ lancamentos, setModalLanc, updateLancament
   const handleSincronizarGmail = async () => {
     setIsSyncingGmail(true)
     try {
+      let token = ''
+      if (user && typeof user.getIdToken === 'function') {
+        token = await user.getIdToken()
+      }
+
+      const headers = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
+
       const res = await fetch('/api/extrato/processar', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ action: 'sincronizar-gmail' })
       })
       const data = await res.json()
