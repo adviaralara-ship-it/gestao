@@ -5,6 +5,15 @@ import { simpleParser } from 'mailparser';
 import nodemailer from 'nodemailer';
 import { applyCors, verifyUserAuth } from '../_middleware/auth.js';
 
+export const config = {
+  maxDuration: 60,
+  api: {
+    bodyParser: {
+      sizeLimit: '15mb',
+    },
+  },
+};
+
 function getDb() {
   if (!admin.apps.length) {
     try {
@@ -182,14 +191,15 @@ async function conciliarTransacoes(transactions, origem = 'OFX', condominio = 'T
 }
 
 export default async function handler(req, res) {
-  if (applyCors(req, res, 'GET, POST, OPTIONS')) return;
+  try {
+    if (applyCors(req, res, 'GET, POST, OPTIONS')) return;
 
-  // Autenticação obrigatória
-  const user = await verifyUserAuth(req, res);
-  if (!user) return;
+    // Autenticação obrigatória
+    const user = await verifyUserAuth(req, res);
+    if (!user) return;
 
-  const rawPass = process.env.GMAIL_APP_PASSWORD || 'pognicpypmgbxmrw';
-  const effectivePass = rawPass.replace(/[^a-zA-Z0-9]/g, '');
+    const rawPass = process.env.GMAIL_APP_PASSWORD || 'pognicpypmgbxmrw';
+    const effectivePass = rawPass.replace(/[^a-zA-Z0-9]/g, '');
 
   // 1. MÉTODO GET: Listar e Ler E-mails da Caixa de Entrada (Webmail Alpha)
   if (req.method === 'GET') {
@@ -584,7 +594,7 @@ export default async function handler(req, res) {
       resultados
     });
   } catch (error) {
-    console.error('Erro ao processar extrato OFX:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('Erro global no endpoint de extrato/email:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Erro interno no processamento.' });
   }
 }
