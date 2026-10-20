@@ -862,6 +862,8 @@ export default function Dashboard() {
     let desTotalMes = 0
     let inadimp = 0
     let vencidas = []
+    let recPagasAnterior = 0
+    let desPagasAnterior = 0
 
     const refHoje = new Date()
     refHoje.setHours(0, 0, 0, 0)
@@ -881,42 +883,25 @@ export default function Dashboard() {
     })
     const saldoContasBancarias = contasFiltradas.reduce((acc, c) => acc + Number(c.saldo || 0), 0)
 
-    // Fundo de Caixa cadastrado na Reserva de Emergência (financeiro_config) ou no Cadastro do Condomínio (fundoReserva)
     let saldoFundoCaixa = 0
     if (isAlpha) {
-      const doc = (financeiroConfigs || []).find(c => c.id === 'caixa_alpha')
+      const doc = (financeiroConfigs || []).find(c => c.id === 'caixa_alpha' || (c.condominio && isAlphaInterno(c.condominio)))
       if (doc && doc.saldo_real !== undefined) saldoFundoCaixa = Number(doc.saldo_real || 0)
     } else if (isTodos) {
-      // No consolidado 'Todos', soma os saldos reais de todos os caixas cadastrados e fundos de reserva
-      const somaCaixas = (financeiroConfigs || []).reduce((acc, c) => acc + Number(c.saldo_real || 0), 0)
+      // No consolidado 'Todos', soma os fundos de reserva dos condomínios ou configs identificadas
       const somaFundos = (condominios || []).reduce((acc, c) => acc + Number(c.fundoReserva || 0), 0)
-      saldoFundoCaixa = somaCaixas > 0 ? somaCaixas : somaFundos
+      const somaConfigs = (financeiroConfigs || [])
+        .filter(c => c.id && (c.id.startsWith('caixa_') || c.condominio))
+        .reduce((acc, c) => acc + Number(c.saldo_real || 0), 0)
+      saldoFundoCaixa = somaFundos > 0 ? somaFundos : somaConfigs
     } else {
-      // Prioriza o saldo inicial real (ex: 1.109,98 do Residencial Dália)
       const condoObj = (condominios || []).find(c => condoMatch(c.nome, condoFiltro))
-      const isDalia = normalizarNomeCondo(condoFiltro).includes('dalia')
-      if (isDalia) {
-        saldoFundoCaixa = 1109.98
+      const configId = `caixa_${condoFiltro.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
+      const doc = (financeiroConfigs || []).find(c => c.id === configId || (c.condominio && condoMatch(c.condominio, condoFiltro)))
+      if (doc && doc.saldo_real !== undefined) {
+        saldoFundoCaixa = Number(doc.saldo_real || 0)
       } else if (condoObj && condoObj.fundoReserva !== undefined && Number(condoObj.fundoReserva) > 0) {
         saldoFundoCaixa = Number(condoObj.fundoReserva)
-      } else {
-        const configId = `caixa_${condoFiltro.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
-        const doc = (financeiroConfigs || []).find(c => c.id === configId)
-        if (doc && doc.saldo_real !== undefined) {
-          saldoFundoCaixa = Number(doc.saldo_real || 0)
-        } else {
-          // Fallback 1: procura por correspondência no nome da chave do financeiro_config
-          const docAlt = (financeiroConfigs || []).find(c => {
-            const cid = (c.id || '').toLowerCase()
-            const cNome = normalizarNomeCondo(condoFiltro)
-            return cid.includes(cNome) || (c.condominio && condoMatch(c.condominio, condoFiltro))
-          })
-          if (docAlt && docAlt.saldo_real !== undefined) {
-            saldoFundoCaixa = Number(docAlt.saldo_real || 0)
-          } else if (condoObj && condoObj.fundoReserva !== undefined) {
-            saldoFundoCaixa = Number(condoObj.fundoReserva || 0)
-          }
-        }
       }
     }
 
@@ -946,9 +931,10 @@ export default function Dashboard() {
       }
 
       if (b.status === 'Pago') {
-        // Se houver filtro de mês, considera os boletos pagos do mês selecionado
         if (!mesFiltro || mesKey === mesFiltro) {
           recPagasTotal += val
+        } else if (mesFiltro && mesKey && mesKey < mesFiltro) {
+          recPagasAnterior += val
         }
         if (mesKey && histMeses[mesKey]) histMeses[mesKey].receitas += val
       } else {
@@ -990,26 +976,14 @@ export default function Dashboard() {
       
       // Alinhamento estrito: extrai o mês da competência prioritariamente, vencimento ou data
       const getMesItem = (item) => {
-        // Regra específica para o condomínio Residencial Dália: a despesa de ~452,08 pertence estritamente a Setembro/2026 e já foi paga em setembro
-        const cNome = normalizarNomeCondo(getItemCondo(item) || condoFiltro)
-        const valItem = parseFloat(item.valor) || 0
-        if (cNome.includes('dalia') && Math.abs(valItem - 452.08) < 1.0) {
-          return '2026-09'
-        }
-
-        // Prioridade 1: Competência formal informada (ex: "09/2026", "set/2026", "2026-09")
         if (item.competencia) {
           const comp = parseAnoMes(item.competencia)
           if (comp) return comp
         }
-
-        // Prioridade 2: Vencimento da conta
         if (item.vencimento) {
           const venc = parseAnoMes(item.vencimento)
           if (venc) return venc
         }
-
-        // Prioridade 3: Data de registro/lançamento
         const d = String(item.data || '').trim()
         if (/^\d{4}-\d{2}/.test(d)) return d.substring(0, 7)
         const brMatch = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
@@ -1035,11 +1009,14 @@ export default function Dashboard() {
 
       if (isDespesa) {
         const pertenceAoMes = !mesFiltro || mesData === mesFiltro
+        const anteriorAoMes = mesFiltro && mesData && mesData < mesFiltro
 
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.pago) {
           // Despesas pagas computadas no saldo do mês
           if (pertenceAoMes) {
             desPagasTotal += val
+          } else if (anteriorAoMes) {
+            desPagasAnterior += val
           }
           if (mesData && histMeses[mesData]) histMeses[mesData].despesas += val
         } else if (f.status === 'Pendente' || f.status === 'Aguardando Aprovação' || !f.status) {
@@ -1073,14 +1050,18 @@ export default function Dashboard() {
         }
 
         const mesRec = parseAnoMes(f.competencia) || mesData
+        const pertenceAoMes = !mesFiltro || mesRec === mesFiltro
+        const anteriorAoMes = mesFiltro && mesRec && mesRec < mesFiltro
 
         if (f.status === 'Pago' || f.status === 'Liquidado' || f.status === 'Recebido' || f.pago) {
-          if (!mesFiltro || mesRec === mesFiltro) {
+          if (pertenceAoMes) {
             recPagasTotal += val
+          } else if (anteriorAoMes) {
+            recPagasAnterior += val
           }
           if (mesRec && histMeses[mesRec]) histMeses[mesRec].receitas += val
         } else {
-          if (!mesFiltro || mesRec === mesFiltro) {
+          if (pertenceAoMes) {
             recPendentesMes += val
           }
           // Se for receita avulsa marcada como atrasada ou vencida
@@ -1106,33 +1087,29 @@ export default function Dashboard() {
       .sort((a, b) => a.order - b.order)
       .slice(-6)
 
-    // Base de Caixa:
-    // Se selecionado condomínio específico ou Alpha: utiliza a reserva cadastrada / fundo de caixa real
-    // (ex: R$ 1.109,98 do Residencial Dália).
-    // Se "Todos", consolida a soma das reservas cadastradas de todos os condomínios (+ Alpha se houver).
-    const baseCaixa = isTodos
-      ? (saldoFundoCaixa > 0 ? saldoFundoCaixa : saldoContasBancarias)
-      : (saldoFundoCaixa > 0 ? saldoFundoCaixa : saldoContasBancarias)
+    // Base de Caixa / Saldo Inicial Anterior ao Mês:
+    const saldoOperacionalAnterior = recPagasAnterior - desPagasAnterior
+    let baseCaixa = 0
+    if (saldoContasBancarias > 0) {
+      baseCaixa = saldoContasBancarias
+    } else if (saldoFundoCaixa > 0) {
+      baseCaixa = saldoFundoCaixa
+    } else if (saldoOperacionalAnterior !== 0) {
+      baseCaixa = saldoOperacionalAnterior
+    }
 
-    // Saldo real dinâmico: Saldo inicial do mês + Boletos e Receitas pagos do mês - Despesas do mês
-    // Dedução das contas do mês operacional:
-    // Exemplo Dália: 1.109,98 (base) + 960,00 (boletos) - despesas do mês
-    const isDaliaCompetenciaOut = normalizarNomeCondo(condoFiltro).includes('dalia') && (!mesFiltro || mesFiltro === '2026-10')
-    const finalDesTotalMes = isDaliaCompetenciaOut ? Math.max(867.14, desTotalMes) : desTotalMes
-    const finalDesPendentesMes = isDaliaCompetenciaOut ? Math.max(867.14, desPendentesMes) : desPendentesMes
-    const finalRecPagas = isDaliaCompetenciaOut ? (recPagasTotal > 0 ? recPagasTotal : 960.00) : recPagasTotal
-    const finalBaseCaixa = isDaliaCompetenciaOut ? 1109.98 : baseCaixa
-    const deducao = finalDesTotalMes > 0 ? finalDesTotalMes : desPagasTotal
-    const saldoEmCaixaAcumulado = finalBaseCaixa + finalRecPagas - deducao
-    // Capital de Giro: reflete a saúde líquida considerando o saldo em caixa + a receber restante - a pagar restante
-    const giroDoMes = saldoEmCaixaAcumulado + recPendentesMes - finalDesPendentesMes
+    // Saldo Atual em Caixa Real: Saldo Anterior + Receitas Pagas no Mês - Despesas Pagas no Mês
+    const saldoEmCaixaAcumulado = baseCaixa + recPagasTotal - desPagasTotal
+
+    // Capital de Giro Real: Saldo em Caixa + A Receber Pendente - A Pagar Pendente
+    const giroDoMes = saldoEmCaixaAcumulado + recPendentesMes - desPendentesMes
 
     return {
       saldoAtual: saldoEmCaixaAcumulado,
       capitalDeGiro: giroDoMes,
       aReceber: recPendentesMes,
-      aPagar: finalDesTotalMes,
-      aPagarPendente: finalDesPendentesMes,
+      aPagar: desTotalMes,
+      aPagarPendente: desPendentesMes,
       inadimplenciaTotal: inadimp,
       itensInadimplentes: itensInadimp,
       contasVencidas: vencidas,

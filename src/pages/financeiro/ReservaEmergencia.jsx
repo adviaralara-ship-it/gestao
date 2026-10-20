@@ -3,7 +3,7 @@ import { Shield, Target, AlertTriangle, Save, Calculator, DollarSign, Wallet, Ar
 import { useFirestore } from '../../hooks/useFirestore'
 import { CurrencyInput } from '../../utils/currency'
 import { isAlphaInterno } from '../Financeiro'
-import { doc, updateDoc } from 'firebase/firestore'
+import { doc, updateDoc, setDoc } from 'firebase/firestore'
 import { db } from '../../firebase'
 
 export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Todos', condominiosDisponiveis = [], condominios = [], boletos = [], setModalLanc }) {
@@ -62,14 +62,10 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
     } else {
       // Condomínio específico (ex: Residencial Dália): prioriza o saldo inicial real (R$ 1.109,98)
       const condoObj = condominios.find(c => condoMatch(c.nome, selectedCondo))
-      const isDalia = normalizarNome(selectedCondo).includes('dalia')
-      
-      if (isDalia) {
-        setSaldoReal(1109.98)
+      if (configDoc && configDoc.saldo_real !== undefined) {
+        setSaldoReal(Number(configDoc.saldo_real))
       } else if (condoObj && condoObj.fundoReserva !== undefined && Number(condoObj.fundoReserva) > 0) {
         setSaldoReal(Number(condoObj.fundoReserva))
-      } else if (configDoc && configDoc.saldo_real !== undefined) {
-        setSaldoReal(Number(configDoc.saldo_real))
       } else {
         const docAlt = configs.find(c => {
           const cid = (c.id || '').toLowerCase()
@@ -135,12 +131,6 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
 
   const getAnoMesLancamento = (item) => {
     if (!item) return ''
-    // Regra específica para o condomínio Residencial Dália: despesa de ~452,08 pertence estritamente a Setembro/2026 e já foi paga em setembro
-    const isDalia = normalizarNome(item.condominio || selectedCondo).includes('dalia')
-    const valItem = parseFloat(item.valor) || 0
-    if (isDalia && Math.abs(valItem - 452.08) < 1.0) {
-      return '2026-09'
-    }
 
     // Prioridade 1: Competência estrita da conta
     if (item.competencia) {
@@ -197,18 +187,14 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
   const totalDespesasCompromisso = despesasMes.reduce((a, b) => a + Number(b.valor || 0), 0)
   
   // Saldo real dinâmico em caixa:
-  // Saldo base anterior + Boletos e receitas pagos do mês - Despesas do mês
-  // Exemplo Dália: R$ 1.109,98 + R$ 960,00 - despesas do mês
-  const isDaliaCompetenciaOut = normalizarNome(selectedCondo).includes('dalia') && (!mesFiltro || mesFiltro === '2026-10')
-  const finalDespesasCompromisso = isDaliaCompetenciaOut ? Math.max(867.14, totalDespesasCompromisso) : totalDespesasCompromisso
-  const deducaoDespesa = finalDespesasCompromisso > 0 ? finalDespesasCompromisso : totalDespesasPagas
-  const saldoCaixaDinamico = saldoReal + totalReceitasLiquidadas - deducaoDespesa
+  // Saldo real dinâmico em caixa: Saldo base anterior + Boletos e receitas pagos do mês - Despesas pagas do mês
+  const saldoCaixaDinamico = saldoReal + totalReceitasLiquidadas - totalDespesasPagas
 
   const totalReceitas = totalReceitasFinPagas > 0 && totalReceitasBolPagas > 0 && totalReceitasFinPagas === totalReceitasBolPagas
     ? totalReceitasBolPagas
     : (lMes.filter(l => l.tipo === 'Receita').reduce((a, b) => a + Number(b.valor || 0), 0) + bMes.reduce((a, b) => a + Number(b.valor || 0), 0))
   // Despesas do mês para o balanço operacional: exibe as contas do mês
-  const totalDespesas = isDaliaCompetenciaOut ? Math.max(867.14, (totalDespesasCompromisso > 0 ? totalDespesasCompromisso : totalDespesasPagas)) : (totalDespesasCompromisso > 0 ? totalDespesasCompromisso : totalDespesasPagas)
+  const totalDespesas = totalDespesasCompromisso > 0 ? totalDespesasCompromisso : totalDespesasPagas
   const saldoOperacional = totalReceitas - totalDespesas
 
   // 1. SEPARAÇÃO: MANUTENÇÃO PREVENTIVA (Do mês selecionado)
@@ -256,11 +242,12 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
   const salvarSaldo = async () => {
     const val = typeof inputSaldo === 'number' ? inputSaldo : (Number(String(inputSaldo).replace(/\./g, '').replace(',', '.')) || 0)
     if (val >= 0) {
-      if (configDoc) {
-        await updateItem(configId, { saldo_real: val })
-      } else {
-        await addItem({ id: configId, saldo_real: val })
-      }
+      await setDoc(doc(db, 'financeiro_config', configId), {
+        id: configId,
+        saldo_real: val,
+        condominio: selectedCondo,
+        atualizadoEm: new Date().toISOString()
+      }, { merge: true })
 
       // Se for um condomínio cliente, atualiza também a propriedade fundoReserva no documento do condomínio
       if (!isAlpha && !isTodos) {

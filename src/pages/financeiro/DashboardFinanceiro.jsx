@@ -76,35 +76,20 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
   if (isAlpha) {
     const doc = (configs || []).find(c => c.id === 'caixa_alpha')
     if (doc && doc.saldo_real !== undefined) saldoFundoCaixa = Number(doc.saldo_real || 0)
-  } else if (isTodos) {
-    const somaCaixas = (configs || []).reduce((acc, c) => acc + Number(c.saldo_real || 0), 0)
+  } else  if (isTodos) {
     const somaFundos = (condominios || []).reduce((acc, c) => acc + Number(c.fundoReserva || 0), 0)
-    saldoFundoCaixa = somaCaixas > 0 ? somaCaixas : somaFundos
+    const somaConfigs = (configs || [])
+      .filter(c => c.id && (c.id.startsWith('caixa_') || c.condominio))
+      .reduce((acc, c) => acc + Number(c.saldo_real || 0), 0)
+    saldoFundoCaixa = somaFundos > 0 ? somaFundos : somaConfigs
   } else {
-    // Condomínio cliente: prioriza o saldo inicial real (ex: 1.109,98 do Dália)
     const condoObj = (condominios || []).find(c => condoMatch(c.nome, condoFilter))
-    const isDalia = normalizarNomeCondo(condoFilter).includes('dalia')
-    if (isDalia) {
-      saldoFundoCaixa = 1109.98
+    const configId = `caixa_${condoFilter.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
+    const doc = (configs || []).find(c => c.id === configId || (c.condominio && condoMatch(c.condominio, condoFilter)))
+    if (doc && doc.saldo_real !== undefined) {
+      saldoFundoCaixa = Number(doc.saldo_real || 0)
     } else if (condoObj && condoObj.fundoReserva !== undefined && Number(condoObj.fundoReserva) > 0) {
       saldoFundoCaixa = Number(condoObj.fundoReserva)
-    } else {
-      const configId = `caixa_${condoFilter.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
-      const doc = (configs || []).find(c => c.id === configId)
-      if (doc && doc.saldo_real !== undefined) {
-        saldoFundoCaixa = Number(doc.saldo_real || 0)
-      } else {
-        const docAlt = (configs || []).find(c => {
-          const cid = (c.id || '').toLowerCase()
-          const cNome = normalizarNomeCondo(condoFilter)
-          return cid.includes(cNome) || (c.condominio && condoMatch(c.condominio, condoFilter))
-        })
-        if (docAlt && docAlt.saldo_real !== undefined) {
-          saldoFundoCaixa = Number(docAlt.saldo_real || 0)
-        } else if (condoObj && condoObj.fundoReserva !== undefined) {
-          saldoFundoCaixa = Number(condoObj.fundoReserva || 0)
-        }
-      }
     }
   }
 
@@ -113,11 +98,6 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
 
   // 3. Filtragem estrita dos lançamentos pelo período selecionado com prioridade de competência
   const getMesLancamentoPeriodo = (t) => {
-    const isDalia = normalizarNomeCondo(t.condominio || condoFilter).includes('dalia')
-    const valItem = parseFloat(t.valor) || 0
-    if (isDalia && Math.abs(valItem - 452.08) < 1.0) {
-      return '2026-09'
-    }
 
     if (t.competencia) {
       const comp = parseAnoMes(t.competencia)
@@ -186,19 +166,13 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
     ? receitasRecebidasMesBol
     : (receitasRecebidasMesFin + receitasRecebidasMesBol)
 
-  // Saldo em Caixa Dinâmico: Base Inicial + Receitas Pagas do Período - Despesas do Período
-  // Exemplo Dália Outubro: R$ 1.109,98 + R$ 960,00 - despesas do mês
-  const isDaliaCompetenciaOut = normalizarNomeCondo(condoFilter).includes('dalia') && (!mesDe || mesDe === '2026-10')
-  const finalPagarTotalMes = isDaliaCompetenciaOut ? Math.max(867.14, pagarTotalMes) : pagarTotalMes
-  const finalPagarPendenteMes = isDaliaCompetenciaOut ? Math.max(867.14, pagarPendenteMes) : pagarPendenteMes
-  const finalReceitasRecebidas = isDaliaCompetenciaOut ? (receitasRecebidasMes > 0 ? receitasRecebidasMes : 960.00) : receitasRecebidasMes
-  const deducaoDespesaPeriodo = finalPagarTotalMes > 0 ? finalPagarTotalMes : despesasPagasMes
-  const saldoCaixa = baseCaixa + finalReceitasRecebidas - deducaoDespesaPeriodo
+  // Saldo em Caixa Dinâmico: Base Inicial + Receitas Pagas do Período - Despesas Pagas do Período
+  const saldoCaixa = baseCaixa + receitasRecebidasMes - despesasPagasMes
 
-  // 5. Capital de Giro Operacional do Mês
-  const capitalDeGiro = saldoCaixa + receberPendenteMes - finalPagarPendenteMes
+  // 5. Capital de Giro Operacional do Mês: Saldo em Caixa + A Receber Pendente - A Pagar Pendente
+  const capitalDeGiro = saldoCaixa + receberPendenteMes - pagarPendenteMes
 
-  const lucroMes = finalReceitasRecebidas - (isDaliaCompetenciaOut ? Math.max(867.14, despesasPagasMes) : despesasPagasMes)
+  const lucroMes = receitasRecebidasMes - despesasPagasMes
 
   // Margem de Lucro = (Lucro Líquido / Receitas) * 100
   const margemLucro = receitasRecebidasMes > 0 ? (lucroMes / receitasRecebidasMes) * 100 : 0

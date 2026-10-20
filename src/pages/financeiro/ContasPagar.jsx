@@ -180,11 +180,6 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
     contasPagar = contasPagar.filter(t => t.status === statusFilter)
   }
   const getMesLancamentoContasPagar = (t) => {
-    const isDalia = (t.condominio || '').toLowerCase().includes('dalia')
-    const valItem = parseFloat(t.valor) || 0
-    if (isDalia && Math.abs(valItem - 452.08) < 1.0) {
-      return '2026-09'
-    }
 
     if (t.competencia) {
       const c = String(t.competencia).toLowerCase().trim()
