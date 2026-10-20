@@ -62,8 +62,8 @@ export async function enviarBoletoWhatsAppAuto(boleto, morador, condoDoc, custom
     // Fallback direto Evolution API (caso a serverless na Vercel não tenha credencial ou dê 401/500)
     if (!data || !data.success) {
       try {
-        const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live'
-        const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb'
+        const EVOLUTION_URL = 'https://runningfly-evolution.cloudfy.live'
+        const API_KEY = 'WHNRTDYyTpv4ze45wUUU5qN9ri3da1Oy'
         const rawMedia = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data
 
         const resDirect = await fetch(`${EVOLUTION_URL}/message/sendMedia/InstanciaAlpha`, {
@@ -115,8 +115,8 @@ export async function enviarMensagemWhatsApp({ number, text, mediaBase64, fileNa
     return { success: false, error: 'Número de WhatsApp inválido.' }
   }
 
-  const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live'
-  const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb'
+  const EVOLUTION_URL = 'https://runningfly-evolution.cloudfy.live'
+  const API_KEY = 'WHNRTDYyTpv4ze45wUUU5qN9ri3da1Oy'
 
   // 1. Tenta rota do backend serverless
   try {
@@ -246,8 +246,8 @@ export async function buscarGruposWhatsApp(instance = 'InstanciaAlpha') {
 
   // 2. Fallback direto para Evolution API
   try {
-    const EVOLUTION_URL = 'https://spiritualmacaw-evolution.cloudfy.live'
-    const API_KEY = 'Q1CguwvCa34nqB1936dHekPICikeSCHb'
+    const EVOLUTION_URL = 'https://runningfly-evolution.cloudfy.live'
+    const API_KEY = 'WHNRTDYyTpv4ze45wUUU5qN9ri3da1Oy'
     const resDirect = await fetch(`${EVOLUTION_URL}/group/fetchAllGroups/${instance}?getParticipants=false`, {
       method: 'GET',
       headers: { 'apikey': API_KEY }

@@ -29,8 +29,8 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://spiritualmacaw-evolution.cloudfy.live';
-const API_KEY = process.env.EVOLUTION_API_KEY || 'Q1CguwvCa34nqB1936dHekPICikeSCHb';
+const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://runningfly-evolution.cloudfy.live';
+const API_KEY = process.env.EVOLUTION_API_KEY || 'WHNRTDYyTpv4ze45wUUU5qN9ri3da1Oy';
 
 const isAlphaInterno = (condo) => {
   if (!condo) return true;

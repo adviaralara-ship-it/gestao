@@ -53,8 +53,8 @@ export default async function handler(req, res) {
   const cleanNumber = isGroupJid ? rawNumber : rawNumber.replace(/\D/g, '');
   const finalNumber = isGroupJid ? cleanNumber : (cleanNumber.startsWith('55') ? cleanNumber : `55${cleanNumber}`);
 
-  const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://spiritualmacaw-evolution.cloudfy.live';
-  const API_KEY = process.env.EVOLUTION_API_KEY || 'Q1CguwvCa34nqB1936dHekPICikeSCHb';
+  const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://runningfly-evolution.cloudfy.live';
+  const API_KEY = process.env.EVOLUTION_API_KEY || 'WHNRTDYyTpv4ze45wUUU5qN9ri3da1Oy';
 
   if (!API_KEY) {
     return res.status(500).json({ error: 'Chave da Evolution API (EVOLUTION_API_KEY) não configurada no servidor.' });
