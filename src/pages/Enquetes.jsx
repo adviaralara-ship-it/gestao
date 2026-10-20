@@ -1,13 +1,64 @@
 import React, { useState } from 'react'
 import {
   PieChart, ListChecks, Plus, Trash2, CheckCircle2, AlertCircle,
-  BarChart3, Clock, X, ExternalLink, Share2, MessageCircle, Users, ChevronDown, ChevronUp
+  BarChart3, Clock, X, ExternalLink, Share2, MessageCircle, Users, ChevronDown, ChevronUp, Calendar
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { enviarEnqueteWhatsAppGrupo } from '../utils/whatsappAutomacao'
 
 const statusBadge = s => ({ 'Aberta': 'badge-green', 'Encerrada': 'badge-red' }[s] || 'badge-blue')
+
+const MESES_NOMES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+]
+
+const getMesAno = (item) => {
+  if (!item) return ''
+  const iso = item._createdAt || item.createdAt || item.dataCriacao || item.criadoEm
+  if (iso) {
+    try {
+      const d = typeof iso === 'object' && iso.toDate ? iso.toDate() : new Date(iso)
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        return `${y}-${m}`
+      }
+    } catch {}
+  }
+  if (item.dataFim && typeof item.dataFim === 'string') {
+    return item.dataFim.substring(0, 7)
+  }
+  return ''
+}
+
+const getTime = (item) => {
+  if (!item) return 0
+  const raw = item._createdAt || item.createdAt || item.dataCriacao || item.criadoEm || item.dataInicio
+  if (raw) {
+    if (typeof raw === 'object' && raw.toDate) return raw.toDate().getTime()
+    const t = new Date(raw).getTime()
+    if (!isNaN(t)) return t
+  }
+  if (item.dataFim) {
+    const t = new Date(item.dataFim + 'T23:59:59').getTime()
+    if (!isNaN(t)) return t
+  }
+  return 0
+}
+
+const formatarMesAno = (mesAnoStr) => {
+  if (!mesAnoStr || mesAnoStr === 'Todos') return 'Todos os Meses'
+  const [ano, mes] = mesAnoStr.split('-')
+  const idx = parseInt(mes, 10) - 1
+  return `${MESES_NOMES[idx] || mes} de ${ano}`
+}
+
+const mesAtualPadrao = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
 
 export default function Enquetes() {
   const { user } = useAuth()
@@ -18,21 +69,46 @@ export default function Enquetes() {
   const [modal, setModal] = useState(false)
   const [verDetalhesId, setVerDetalhesId] = useState(null)
   const [condoFiltro, setCondoFiltro] = useState(user?.condominio || 'Todos')
+  const [mesFiltro, setMesFiltro] = useState(mesAtualPadrao())
 
-  // Auto encerra votações cuja data limite já passou e filtra por condomínio
+  // Coleta os últimos 12 meses + quaisquer meses com registros existentes
+  const opcoesMeses = React.useMemo(() => {
+    const set = new Set()
+    const now = new Date()
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      set.add(val)
+    }
+    enquetes.forEach(e => {
+      const m = getMesAno(e)
+      if (m) set.add(m)
+    })
+    return Array.from(set).sort().reverse().map(valor => ({
+      valor,
+      label: formatarMesAno(valor)
+    }))
+  }, [enquetes])
+
+  // Auto encerra votações cuja data limite já passou, filtra por condomínio e mês, e coloca as mais novas no topo
   const viewEnquetes = enquetes
     .filter(e => {
       if (condoFiltro && condoFiltro !== 'Todos') {
         const cEnquete = String(e.condominio || '').trim().toLowerCase()
         const cAlvo = String(condoFiltro).trim().toLowerCase()
-        return cEnquete === cAlvo || cEnquete === 'todos' || !cEnquete
+        if (cEnquete !== cAlvo && cEnquete !== 'todos' && cEnquete !== '') return false
+      }
+      if (mesFiltro && mesFiltro !== 'Todos') {
+        const mesE = getMesAno(e)
+        if (mesE && mesE !== mesFiltro) return false
       }
       return true
     })
     .map(e => ({
       ...e,
       status: new Date(e.dataFim + 'T23:59:59') < new Date() ? 'Encerrada' : e.status
-    })).sort((a,b) => new Date(b._createdAt) - new Date(a._createdAt))
+    }))
+    .sort((a, b) => getTime(b) - getTime(a))
 
   const handleSave = async (form) => {
     if (form.id) {
@@ -45,7 +121,8 @@ export default function Enquetes() {
         status: 'Aberta',
         votos: {}, // mapa de userId -> opcaoIndex
         votosDetalhes: {},
-        _createdAt: new Date().toISOString()
+        _createdAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
       })
       const novoId = docCriado?.id || ''
       const enqueteCompleta = { ...form, id: novoId }
@@ -133,23 +210,42 @@ export default function Enquetes() {
         )}
       </div>
 
-      {/* Barra de Filtro de Condomínio */}
+      {/* Barra de Filtro de Condomínio e Mês */}
       <div className="card p-3.5 flex flex-wrap gap-4 items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Filtrar por Condomínio:</label>
-          <select 
-            value={condoFiltro} 
-            onChange={e => setCondoFiltro(e.target.value)}
-            className="input py-1.5 px-3 text-sm font-semibold w-auto min-w-[220px]"
-          >
-            <option value="Todos">Todos os Condomínios (Geral)</option>
-            {condominios.map(c => (
-              <option key={c.id} value={c.nome}>{c.nome}</option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2.5">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Filtrar por Condomínio:</label>
+            <select 
+              value={condoFiltro} 
+              onChange={e => setCondoFiltro(e.target.value)}
+              className="input py-1.5 px-3 text-sm font-semibold w-auto min-w-[200px]"
+            >
+              <option value="Todos">Todos os Condomínios (Geral)</option>
+              {condominios.map(c => (
+                <option key={c.id} value={c.nome}>{c.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+              <Calendar size={13} className="text-gray-400" /> Mês de Referência:
+            </label>
+            <select
+              value={mesFiltro}
+              onChange={e => setMesFiltro(e.target.value)}
+              className="input py-1.5 px-3 text-sm font-semibold w-auto min-w-[170px]"
+            >
+              <option value="Todos">Todos os Meses</option>
+              {opcoesMeses.map(m => (
+                <option key={m.valor} value={m.valor}>{m.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
+
         <span className="text-xs text-gray-400 font-medium">
-          Exibindo {viewEnquetes.length} enquete(s) {condoFiltro !== 'Todos' ? `em ${condoFiltro}` : ''}
+          Exibindo {viewEnquetes.length} enquete(s) {mesFiltro !== 'Todos' ? `em ${formatarMesAno(mesFiltro)}` : ''} {condoFiltro !== 'Todos' ? `• ${condoFiltro}` : ''}
         </span>
       </div>
 

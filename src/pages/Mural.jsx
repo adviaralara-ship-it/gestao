@@ -24,6 +24,64 @@ const tipoIcone = t => ({
 // Função auxiliar para normalizar nomes de condomínio
 const normalizar = str => (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 
+const MESES_NOMES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+]
+
+const getMesAno = (item) => {
+  if (!item) return ''
+  const iso = item._createdAt || item.createdAt || item.criadoEm || item.time
+  if (iso) {
+    try {
+      const d = typeof iso === 'object' && iso.toDate ? iso.toDate() : new Date(iso)
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        return `${y}-${m}`
+      }
+    } catch {}
+  }
+  if (item.data && typeof item.data === 'string' && item.data.includes('/')) {
+    const parts = item.data.split('/')
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}`
+    }
+  }
+  return ''
+}
+
+const getTime = (item) => {
+  if (!item) return 0
+  const raw = item._createdAt || item.createdAt || item.criadoEm || item.time
+  if (raw) {
+    if (typeof raw === 'object' && raw.toDate) return raw.toDate().getTime()
+    const t = new Date(raw).getTime()
+    if (!isNaN(t)) return t
+  }
+  if (item.data && typeof item.data === 'string' && item.data.includes('/')) {
+    const parts = item.data.split('/')
+    if (parts.length === 3) {
+      const horaStr = item.hora || '00:00'
+      const t = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T${horaStr}:00`).getTime()
+      if (!isNaN(t)) return t
+    }
+  }
+  return 0
+}
+
+const formatarMesAno = (mesAnoStr) => {
+  if (!mesAnoStr || mesAnoStr === 'Todos') return 'Todos os Meses'
+  const [ano, mes] = mesAnoStr.split('-')
+  const idx = parseInt(mes, 10) - 1
+  return `${MESES_NOMES[idx] || mes} de ${ano}`
+}
+
+const mesAtualPadrao = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 export default function Mural() {
   const { user } = useAuth()
   const { items: avisos, add: addAviso, remove: removeAviso } = useFirestore('avisos')
@@ -32,9 +90,29 @@ export default function Mural() {
   const { items: moradores } = useFirestore('moradores')
 
   const [search, setSearch] = useState('')
+  const [condoFiltro, setCondoFiltro] = useState(user?.condominio || 'Todos')
+  const [mesFiltro, setMesFiltro] = useState(mesAtualPadrao())
   const [curtidas, setCurtidas] = useState({})
   const [modalNovoAberto, setModalNovoAberto] = useState(false)
   const [modalDisparoAberto, setModalDisparoAberto] = useState(false)
+
+  const opcoesMeses = React.useMemo(() => {
+    const set = new Set()
+    const now = new Date()
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      set.add(val)
+    }
+    avisos.forEach(a => {
+      const m = getMesAno(a)
+      if (m) set.add(m)
+    })
+    return Array.from(set).sort().reverse().map(valor => ({
+      valor,
+      label: formatarMesAno(valor)
+    }))
+  }, [avisos])
 
   // Formulário de Novo Recado
   const [form, setForm] = useState({
@@ -158,19 +236,32 @@ export default function Mural() {
     }
   }, [audioObj])
 
-  // Filtragem de avisos por permissão e condomínio
+  // Filtragem de avisos por permissão, condomínio e mês
   const avisosVisiveis = avisos.filter(a => {
-    if (['Administrador', 'Síndico'].includes(user?.role)) return true
-    if (a.condominio && a.condominio !== 'Todos' && user?.condominio) {
-      const aCondo = normalizar(a.condominio)
-      const uCondo = normalizar(user.condominio)
-      if (aCondo !== uCondo && !aCondo.includes(uCondo) && !uCondo.includes(aCondo)) return false
+    if (user?.role !== 'Administrador') {
+      if (a.condominio && a.condominio !== 'Todos' && user?.condominio) {
+        const aCondo = normalizar(a.condominio)
+        const uCondo = normalizar(user.condominio)
+        if (aCondo !== uCondo && !aCondo.includes(uCondo) && !uCondo.includes(aCondo)) return false
+      }
+      if (user?.role === 'Morador' && a.destino === 'Colaboradores') return false
     }
-    if (user?.role === 'Morador' && a.destino === 'Colaboradores') return false
+    // Filtro visual de condomínio selecionado
+    if (condoFiltro && condoFiltro !== 'Todos') {
+      const aCondo = normalizar(a.condominio)
+      const alvo = normalizar(condoFiltro)
+      if (aCondo !== 'todos' && aCondo !== alvo && !aCondo.includes(alvo) && !alvo.includes(aCondo)) return false
+    }
+    // Filtro visual de mês
+    if (mesFiltro && mesFiltro !== 'Todos') {
+      const mesA = getMesAno(a)
+      if (mesA && mesA !== mesFiltro) return false
+    }
     return true
-  }).sort((a, b) => new Date(b._createdAt || 0) - new Date(a._createdAt || 0))
+  }).sort((a, b) => getTime(b) - getTime(a))
 
   const feedFiltrado = avisosVisiveis.filter(a =>
+    !search.trim() ||
     a.titulo?.toLowerCase().includes(search.toLowerCase()) ||
     a.texto?.toLowerCase().includes(search.toLowerCase())
   )
@@ -195,7 +286,8 @@ export default function Mural() {
         texto: form.texto,
         autor: user?.nome || 'Administração',
         data: format(new Date(), 'dd/MM/yyyy'),
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        _createdAt: new Date().toISOString()
       })
 
       // 1. Notificação geral / administrativa no sistema
@@ -384,15 +476,58 @@ export default function Mural() {
         </div>
       </div>
 
-      {/* Busca */}
-      <div className="relative">
-        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"/>
-        <input
-          className="input pl-10 rounded-xl bg-white border border-pale-300 shadow-sm text-sm"
-          placeholder="Buscar no mural por assunto, aviso ou palavra-chave..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+      {/* Barra de Filtro de Condomínio e Mês */}
+      <div className="bg-white rounded-2xl shadow-sm border border-pale-300 p-4 flex flex-col gap-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                <Building2 size={13} className="text-gray-400" /> Condomínio:
+              </label>
+              <select
+                value={condoFiltro}
+                onChange={e => setCondoFiltro(e.target.value)}
+                className="input py-1.5 px-3 text-sm font-semibold w-auto min-w-[200px]"
+              >
+                <option value="Todos">Todos os Condomínios (Geral)</option>
+                {condominios.map(c => (
+                  <option key={c.id} value={c.nome}>{c.nome}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                <Calendar size={13} className="text-gray-400" /> Mês:
+              </label>
+              <select
+                value={mesFiltro}
+                onChange={e => setMesFiltro(e.target.value)}
+                className="input py-1.5 px-3 text-sm font-semibold w-auto min-w-[170px]"
+              >
+                <option value="Todos">Todos os Meses</option>
+                {opcoesMeses.map(m => (
+                  <option key={m.valor} value={m.valor}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <span className="text-xs text-gray-400 font-medium">
+            Exibindo {feedFiltrado.length} comunicado(s) {mesFiltro !== 'Todos' ? `em ${formatarMesAno(mesFiltro)}` : ''} {condoFiltro !== 'Todos' ? `• ${condoFiltro}` : ''}
+          </span>
+        </div>
+
+        {/* Busca */}
+        <div className="relative">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+          <input
+            className="input pl-10 rounded-xl bg-pale-50 border border-pale-200 shadow-xs text-sm"
+            placeholder="Buscar no mural por assunto, aviso ou palavra-chave..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
       </div>
 
       {/* Lista de Recados */}

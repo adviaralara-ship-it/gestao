@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { MessageSquare, Plus, Send, Megaphone, Trash2, Search, User, Smartphone, CheckSquare, Square, ExternalLink, Sparkles, Loader2, Bot } from 'lucide-react'
+import { MessageSquare, Plus, Send, Megaphone, Trash2, Search, User, Smartphone, CheckSquare, Square, ExternalLink, Sparkles, Loader2, Bot, Calendar } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
@@ -40,6 +40,64 @@ async function gerarTextoComunicado(prompt) {
 }
 
 const tipoBadge = t=>({Aviso:'badge-blue',Comunicado:'badge-green',Convocação:'badge-purple',Urgente:'badge-red'}[t]||'badge-blue')
+
+const MESES_NOMES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+]
+
+const getMesAno = (item) => {
+  if (!item) return ''
+  const iso = item._createdAt || item.createdAt || item.criadoEm || item.time
+  if (iso) {
+    try {
+      const d = typeof iso === 'object' && iso.toDate ? iso.toDate() : new Date(iso)
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        return `${y}-${m}`
+      }
+    } catch {}
+  }
+  if (item.data && typeof item.data === 'string' && item.data.includes('/')) {
+    const parts = item.data.split('/')
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}`
+    }
+  }
+  return ''
+}
+
+const getTime = (item) => {
+  if (!item) return 0
+  const raw = item._createdAt || item.createdAt || item.criadoEm || item.time
+  if (raw) {
+    if (typeof raw === 'object' && raw.toDate) return raw.toDate().getTime()
+    const t = new Date(raw).getTime()
+    if (!isNaN(t)) return t
+  }
+  if (item.data && typeof item.data === 'string' && item.data.includes('/')) {
+    const parts = item.data.split('/')
+    if (parts.length === 3) {
+      const horaStr = item.hora || '00:00'
+      const t = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T${horaStr}:00`).getTime()
+      if (!isNaN(t)) return t
+    }
+  }
+  return 0
+}
+
+const formatarMesAno = (mesAnoStr) => {
+  if (!mesAnoStr || mesAnoStr === 'Todos') return 'Todos os Meses'
+  const [ano, mes] = mesAnoStr.split('-')
+  const idx = parseInt(mes, 10) - 1
+  return `${MESES_NOMES[idx] || mes} de ${ano}`
+}
+
+const mesAtualPadrao = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
 
 function ModalComunicado({ onClose, onSave, moradores, condominios }) {
   const [form, setForm] = useState({ titulo:'', texto:'', tipo:'Aviso', destino:'Todos', moradorEspecifico:'', condominio: 'Todos' })
@@ -213,12 +271,37 @@ export default function Comunicacao() {
   const [tab,    setTab]    = useState('comunicados')
   const [modal,  setModal]  = useState(null)
   const [search, setSearch] = useState('')
+  const [condoFiltro, setCondoFiltro] = useState(user?.condominio || 'Todos')
+  const [mesFiltro, setMesFiltro] = useState(mesAtualPadrao())
   const [respostas, setRespostas] = useState({})
   const [msgWpp, setMsgWpp] = useState('')
   const [selecionadosWpp, setSelecionadosWpp] = useState([])
   const [statusWpp, setStatusWpp] = useState('')
 
   const isMorador = user?.role === 'Morador'
+
+  // Coleta opções de meses dinamicamente
+  const opcoesMeses = React.useMemo(() => {
+    const set = new Set()
+    const now = new Date()
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      set.add(val)
+    }
+    avisos.forEach(a => {
+      const m = getMesAno(a)
+      if (m) set.add(m)
+    })
+    mensagens.forEach(msg => {
+      const m = getMesAno(msg)
+      if (m) set.add(m)
+    })
+    return Array.from(set).sort().reverse().map(valor => ({
+      valor,
+      label: formatarMesAno(valor)
+    }))
+  }, [avisos, mensagens])
 
   const toggleWpp    = id  => setSelecionadosWpp(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])
   const toggleTodos  = ()  => setSelecionadosWpp(selecionadosWpp.length===moradores.length?[]:moradores.map(m=>m.id))
@@ -252,9 +335,24 @@ export default function Comunicacao() {
         }
       }
     }
-    const matchSearch = a.titulo?.toLowerCase().includes(search.toLowerCase()) || a.texto?.toLowerCase().includes(search.toLowerCase())
+    // Filtro visual de Condomínio selecionado
+    if (condoFiltro && condoFiltro !== 'Todos') {
+      const aCondo = (a.condominio || '').trim().toLowerCase()
+      const alvo = condoFiltro.trim().toLowerCase()
+      if (aCondo !== 'todos' && aCondo !== alvo && !aCondo.includes(alvo) && !alvo.includes(aCondo)) {
+        return false
+      }
+    }
+    // Filtro visual de Mês de Referência
+    if (mesFiltro && mesFiltro !== 'Todos') {
+      const mesA = getMesAno(a)
+      if (mesA && mesA !== mesFiltro) {
+        return false
+      }
+    }
+    const matchSearch = !search.trim() || a.titulo?.toLowerCase().includes(search.toLowerCase()) || a.texto?.toLowerCase().includes(search.toLowerCase())
     return matchSearch
-  })
+  }).sort((a, b) => getTime(b) - getTime(a))
 
   // Filtragem de mensagens: moradores só veem mensagens pertinentes à sua unidade/nome/email; não-administradores só do seu condomínio
   const mensagensFiltradas = mensagens.filter(m => {
@@ -274,9 +372,24 @@ export default function Comunicacao() {
       const match = (uEmail && mEmail === uEmail) || (uNome && mDe.includes(uNome)) || (uApt && mApt === uApt)
       if (!match) return false
     }
-    const matchSearch = m.de?.toLowerCase().includes(search.toLowerCase()) || m.texto?.toLowerCase().includes(search.toLowerCase())
+    // Filtro visual de Condomínio selecionado
+    if (condoFiltro && condoFiltro !== 'Todos') {
+      const mCondo = (m.condominio || '').trim().toLowerCase()
+      const alvo = condoFiltro.trim().toLowerCase()
+      if (mCondo && mCondo !== 'todos' && mCondo !== alvo && !mCondo.includes(alvo) && !alvo.includes(mCondo)) {
+        return false
+      }
+    }
+    // Filtro visual de Mês de Referência
+    if (mesFiltro && mesFiltro !== 'Todos') {
+      const mesM = getMesAno(m)
+      if (mesM && mesM !== mesFiltro) {
+        return false
+      }
+    }
+    const matchSearch = !search.trim() || m.de?.toLowerCase().includes(search.toLowerCase()) || m.texto?.toLowerCase().includes(search.toLowerCase())
     return matchSearch
-  })
+  }).sort((a, b) => getTime(b) - getTime(a))
   const naoLidas           = mensagensFiltradas.filter(m=>!m.lida).length
 
   const handleResponder = async id => {
@@ -320,10 +433,50 @@ export default function Comunicacao() {
         ))}
       </div>
 
-      {tab!=='whatsapp' && (
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-          <input className="input pl-9" placeholder={tab==='comunicados'?'Buscar comunicados...':'Buscar mensagens...'} value={search} onChange={e=>setSearch(e.target.value)}/>
+      {tab !== 'whatsapp' && (
+        <div className="card p-3.5 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Condomínio:</label>
+                <select
+                  value={condoFiltro}
+                  onChange={e => setCondoFiltro(e.target.value)}
+                  className="input py-1.5 px-3 text-sm font-semibold w-auto min-w-[200px]"
+                >
+                  <option value="Todos">Todos os Condomínios (Geral)</option>
+                  {condominios.map(c => (
+                    <option key={c.id} value={c.nome}>{c.nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                  <Calendar size={13} className="text-gray-400" /> Mês de Referência:
+                </label>
+                <select
+                  value={mesFiltro}
+                  onChange={e => setMesFiltro(e.target.value)}
+                  className="input py-1.5 px-3 text-sm font-semibold w-auto min-w-[170px]"
+                >
+                  <option value="Todos">Todos os Meses</option>
+                  {opcoesMeses.map(m => (
+                    <option key={m.valor} value={m.valor}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <span className="text-xs text-gray-400 font-medium">
+              Exibindo {tab === 'comunicados' ? avisosFiltrados.length : mensagensFiltradas.length} {tab === 'comunicados' ? 'comunicado(s)' : 'mensagem(ns)'} {mesFiltro !== 'Todos' ? `em ${formatarMesAno(mesFiltro)}` : ''} {condoFiltro !== 'Todos' ? `• ${condoFiltro}` : ''}
+            </span>
+          </div>
+
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+            <input className="input pl-9 text-sm" placeholder={tab==='comunicados'?'Buscar comunicados por título ou conteúdo...':'Buscar mensagens por remetente ou texto...'} value={search} onChange={e=>setSearch(e.target.value)}/>
+          </div>
         </div>
       )}
 
