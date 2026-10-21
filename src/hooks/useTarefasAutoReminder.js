@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
 
 const LOCK_TAREFAS_KEY = 'alpha_tarefas_lembrete_last_check'
 
@@ -67,7 +68,7 @@ export async function verificarEDispararLembretesTarefas(isManual = false) {
       msgTexto += `\n`
     })
 
-    msgTexto += `🔗 *Acesse o painel de Tarefas:* https://alpha-solucoes-condominiais.vercel.app/tarefas`
+    msgTexto += `🔗 *Acesse o painel de Tarefas:* https://app.alphaadmsc.com.br/tarefas`
 
     // 4. Telefones destinatários (Administradores / Financeiro / WhatsApp Master)
     const telefonesDestino = new Set()
@@ -91,14 +92,10 @@ export async function verificarEDispararLembretesTarefas(isManual = false) {
     // 5. Dispara WhatsApp para cada destinatário
     for (const numero of telefonesDestino) {
       try {
-        await fetch('/api/whatsapp-send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            number: numero,
-            text: msgTexto,
-            instance: 'InstanciaAlpha'
-          })
+        await enviarMensagemWhatsApp({
+          number: numero,
+          text: msgTexto,
+          instance: 'InstanciaAlpha'
         })
       } catch (errSend) {
         console.warn('Erro ao enviar WhatsApp de tarefas para:', numero, errSend)

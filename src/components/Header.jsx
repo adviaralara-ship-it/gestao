@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import OneSignal from 'react-onesignal'
 import { useFirestore } from '../hooks/useFirestore'
 import { getFilteredNavGroups } from '../utils/navData'
+import ModalLembretesDoDia from './ModalLembretesDoDia'
 
 const pageNames = {
   '/dashboard':'Dashboard','/condominios':'Condomínios & Unidades','/moradores':'Moradores',
@@ -117,6 +118,7 @@ export default function Header({ onMenuClick }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchCategory, setSearchCategory] = useState('')
   const [condoFilter, setCondoFilter] = useState('Todos')
+  const [modalLembretesAberto, setModalLembretesAberto] = useState(false)
   const { items: allNotifications, updateItem, deleteItem } = useFirestore('notificacoes')
 
   const filteredNavGroups = getFilteredNavGroups(user)
@@ -390,6 +392,21 @@ export default function Header({ onMenuClick }) {
                   </div>
                 </div>
 
+                {/* BOTÃO SELECIONAR E DISPARAR LEMBRETES DO DIA (WHATSAPP) */}
+                {podeVerNotif && (
+                  <button
+                    onClick={() => {
+                      setNotifOpen(false)
+                      setModalLembretesAberto(true)
+                    }}
+                    className="w-full py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 active:scale-[0.99] text-emerald-800 border-b border-emerald-200 text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    title="Visualizar e selecionar lembretes de tarefas, agenda, contas e manutenções do dia para enviar via WhatsApp"
+                  >
+                    <Bell size={13} className="text-emerald-600 animate-bounce" />
+                    <span>Selecionar Lembretes do Dia (WhatsApp)</span>
+                  </button>
+                )}
+
                 <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
                   {preview.map(n => (
                     <div 
@@ -561,6 +578,12 @@ export default function Header({ onMenuClick }) {
           </div>
         </div>
       )}
+      {/* Modal Interativo para Selecionar e Disparar Lembretes do Dia */}
+      <ModalLembretesDoDia
+        isOpen={modalLembretesAberto}
+        onClose={() => setModalLembretesAberto(false)}
+        initialTab="todas"
+      />
     </header>
   )
 }

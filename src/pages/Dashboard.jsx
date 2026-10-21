@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { isAlphaInterno } from './Financeiro'
+import ModalLembretesDoDia from '../components/ModalLembretesDoDia'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -745,6 +746,7 @@ export default function Dashboard() {
 
   const [modalInadimplencia, setModalInadimplencia] = useState(false)
   const [limpandoInadimp, setLimpandoInadimp] = useState(false)
+  const [modalLembretesAberto, setModalLembretesAberto] = useState(false)
 
   const fmtVal = (v) => {
     if (!saldoVisivel) return '••••••••'
@@ -1547,13 +1549,24 @@ export default function Dashboard() {
           )}
 
           {isAdm && (
-            <button
-              onClick={() => navigate('/seguranca')}
-              className="btn-secondary py-2 px-3 text-xs font-bold flex items-center gap-1.5 bg-red-50 text-red-700 border-red-200 hover:bg-red-100 shadow-xs cursor-pointer"
-              title="Acessar painel de alarmes, segurança e restauração de backups"
-            >
-              <ShieldAlert size={15} className="text-red-600" /> Segurança &amp; Backups
-            </button>
+            <>
+              <button
+                onClick={() => setModalLembretesAberto(true)}
+                className="btn-secondary py-2 px-3 text-xs font-black flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 shadow-xs cursor-pointer"
+                title="Visualizar e selecionar lembretes de tarefas, agenda, contas e manutenções do dia para enviar via WhatsApp"
+              >
+                <Bell size={15} className="text-emerald-600" />
+                <span>Lembretes de Hoje (WhatsApp)</span>
+              </button>
+
+              <button
+                onClick={() => navigate('/seguranca')}
+                className="btn-secondary py-2 px-3 text-xs font-bold flex items-center gap-1.5 bg-red-50 text-red-700 border-red-200 hover:bg-red-100 shadow-xs cursor-pointer"
+                title="Acessar painel de alarmes, segurança e restauração de backups"
+              >
+                <ShieldAlert size={15} className="text-red-600" /> Segurança &amp; Backups
+              </button>
+            </>
           )}
 
           <button
@@ -2467,6 +2480,12 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      {/* Modal Interativo para Selecionar e Disparar Lembretes do Dia */}
+      <ModalLembretesDoDia
+        isOpen={modalLembretesAberto}
+        onClose={() => setModalLembretesAberto(false)}
+        initialTab="todas"
+      />
     </div>
   )
 }

@@ -407,7 +407,7 @@ export default function Manutencoes() {
   const handleVerificarLembretes = async () => {
     setIsChecking(true)
     try {
-      const res = await verificarEDispararLembretesManutencao()
+      const res = await verificarEDispararLembretesManutencao(true)
       if (res?.success) {
         if (res.disparos > 0) {
           alert(`🔔 Verificação concluída!\n\nForam disparados ${res.disparos} lembretes automáticos de manutenção (WhatsApp e Sininho).`)

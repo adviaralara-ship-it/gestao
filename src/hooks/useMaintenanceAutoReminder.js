@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import { enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
 
 const LOCK_STORAGE_KEY = 'alpha_manu_lembretes_last_check'
 
@@ -129,16 +130,18 @@ export async function verificarEDispararLembretesManutencao(isManual = false) {
 
         // 3. Mensagem de WhatsApp D-0
         const tipoLabel = m.tipo || 'Manutenção Preventiva'
-        const msgWhats = `🚨 *ATENÇÃO - ${tipoLabel.toUpperCase()} HOJE!*\n\n🏢 *Condomínio:* ${m.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${m.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${m.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${m.status || 'Agendada'}${m.descricao ? `\n📝 *Observações:* ${m.descricao}` : ''}\n\n🔔 *Lembrete automático da Alpha Gestão. Favor acompanhar a execução do serviço.*\n🔗 *Acesse o painel:* https://alpha-solucoes-condominiais.vercel.app/manutencoes`
+        const msgWhats = `🚨 *ATENÇÃO - ${tipoLabel.toUpperCase()} HOJE!*\n\n🏢 *Condomínio:* ${m.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${m.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${m.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${m.status || 'Agendada'}${m.descricao ? `\n📝 *Observações:* ${m.descricao}` : ''}\n\n🔔 *Lembrete automático da Alpha Gestão. Favor acompanhar a execução do serviço.*\n🔗 *Acesse o painel:* https://app.alphaadmsc.com.br/manutencoes`
 
         for (const numero of telefonesDestino) {
           try {
-            fetch('/api/whatsapp-send', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ number: numero, text: msgWhats, instance: 'InstanciaAlpha' })
-            }).catch(e => console.warn('Erro envio WhatsApp lembrete D-0:', e))
-          } catch(e) {}
+            await enviarMensagemWhatsApp({
+              number: numero,
+              text: msgWhats,
+              instance: 'InstanciaAlpha'
+            })
+          } catch(e) {
+            console.warn('Erro envio WhatsApp lembrete D-0:', e)
+          }
         }
 
         disparosRealizados++

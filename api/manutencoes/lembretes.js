@@ -1,23 +1,23 @@
 // api/manutencoes/lembretes.js
 // Endpoint de Cron para verificação e disparo automático de lembretes D-1 e D-0 de manutenções
 
-import admin from 'firebase-admin';
+import { initializeApp, getApps } from 'firebase/app';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { getFirestore, collection, getDocs, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { applyCors, verifyCronAuth } from '../_middleware/auth.js';
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-    })
-  });
-}
-
-const db = admin.firestore();
+const firebaseConfig = {
+  apiKey: process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDj6CNYCaNSWv_tQYVjCdqFElcuG9lA1LE',
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'alphaadmsc-fdc4e.firebaseapp.com',
+  projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'alphaadmsc-fdc4e',
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'alphaadmsc-fdc4e.appspot.com',
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '30408137815',
+  appId: process.env.VITE_FIREBASE_APP_ID || '1:30408137815:web:fb091176b6d5f756088277'
+};
 
 const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://runningfly-evolution.cloudfy.live';
 const API_KEY = process.env.EVOLUTION_API_KEY || 'WHNRTDYyTpv4ze45wUUU5qN9ri3da1Oy';
+const INSTANCE = 'InstanciaAlpha';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, POST, OPTIONS')) return;
@@ -26,20 +26,29 @@ export default async function handler(req, res) {
   if (!verifyCronAuth(req, res)) return;
 
   try {
+    const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    try {
+      await signInWithEmailAndPassword(auth, 'admin@alpha.com.br', 'admin123');
+    } catch (authErr) {
+      console.warn('Login Firebase fallback:', authErr.message);
+    }
+
     const hoje = new Date();
-    // Obtém data no fuso de Brasília
     const brDateStr = hoje.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const [d, m, y] = brDateStr.split('/');
-    const hojeStr = `${y}-${m}-${d}`;
+    const hojeStr = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
     const hojeDate = new Date(Number(y), Number(m) - 1, Number(d));
 
     const [manutencoesSnap, usuariosSnap] = await Promise.all([
-      db.collection('manutencoes').get(),
-      db.collection('usuarios').get()
+      getDocs(collection(db, 'manutencoes')),
+      getDocs(collection(db, 'usuarios'))
     ]);
 
-    const manutencoes = manutencoesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    const usuarios = usuariosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const manutencoes = manutencoesSnap.docs.map(dDoc => ({ id: dDoc.id, ...dDoc.data() }));
+    const usuarios = usuariosSnap.docs.map(dDoc => ({ id: dDoc.id, ...dDoc.data() }));
 
     let disparos = 0;
 
@@ -56,13 +65,12 @@ export default async function handler(req, res) {
       const dataFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
       const custoFmt = manu.custoEstimado ? Number(manu.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00';
 
-      // Telefones destinatários
       const telefonesDestino = new Set();
-      telefonesDestino.add('558396885931');
-      telefonesDestino.add('5583996806325'); // 83 99680-6325
-      telefonesDestino.add('5583999797285'); // 83 99979-7285
-      telefonesDestino.add('5583998350321'); // 83 99835-0321
-      telefonesDestino.add('5583998468997'); // 83 99846-8997
+      telefonesDestino.add('5583996885931');
+      telefonesDestino.add('5583996806325');
+      telefonesDestino.add('5583999797285');
+      telefonesDestino.add('5583998350321');
+      telefonesDestino.add('5583998468997');
 
       usuarios.forEach(u => {
         const isAdm = u.role === 'Administrador' || u.role === 'Financeiro';
@@ -76,10 +84,9 @@ export default async function handler(req, res) {
         }
       });
 
-      // CASO 1: Lembrete de Véspera (1 dia antes / D-1) - Apenas Sininho do sistema
+      // CASO 1: Lembrete de Véspera (D-1)
       if (diffDays === 1 && manu.notifD1 !== hojeStr) {
-        // Grava no Sininho
-        await db.collection('notificacoes').add({
+        await addDoc(collection(db, 'notificacoes'), {
           text: `⚠️ LEMBRETE DE VÉSPERA: Manutenção "${manu.titulo}" agendada para AMANHÃ (${dataFmt}) no ${manu.condominio || 'Condomínio'}.`,
           titulo: `⚠️ Lembrete Amanhã: ${manu.titulo}`,
           time: new Date().toISOString(),
@@ -87,10 +94,10 @@ export default async function handler(req, res) {
           condominio: manu.condominio || 'Todos',
           lida: false,
           link: '/manutencoes',
-          _createdAt: admin.firestore.FieldValue.serverTimestamp()
+          _createdAt: serverTimestamp()
         });
 
-        await db.collection('manutencoes').doc(manu.id).update({
+        await updateDoc(doc(db, 'manutencoes', manu.id), {
           notifD1: hojeStr,
           lembreteVesperaEnviadoEm: hojeStr
         });
@@ -98,8 +105,7 @@ export default async function handler(req, res) {
 
       // CASO 2: Lembrete do Dia (Hoje / D-0)
       if (diffDays === 0 && manu.notifD0 !== hojeStr) {
-        // Grava no Sininho
-        await db.collection('notificacoes').add({
+        await addDoc(collection(db, 'notificacoes'), {
           text: `🚨 MANUTENÇÃO HOJE: "${manu.titulo}" está programada para execução HOJE (${dataFmt}) no ${manu.condominio || 'Condomínio'}.`,
           titulo: `🚨 Manutenção Hoje: ${manu.titulo}`,
           time: new Date().toISOString(),
@@ -107,23 +113,22 @@ export default async function handler(req, res) {
           condominio: manu.condominio || 'Todos',
           lida: false,
           link: '/manutencoes',
-          _createdAt: admin.firestore.FieldValue.serverTimestamp()
+          _createdAt: serverTimestamp()
         });
 
-        // WhatsApp D-0
-        const msgWhats = `🚨 *ATENÇÃO - MANUTENÇÃO PROGRAMADA PARA HOJE!*\n\n🏢 *Condomínio:* ${manu.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${manu.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${manu.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${manu.status || 'Agendada'}${manu.descricao ? `\n📝 *Observações:* ${manu.descricao}` : ''}\n\n🔔 *Lembrete automático da Alpha Gestão. Favor acompanhar a execução do serviço.*\n🔗 *Acesse o painel:* https://alpha-solucoes-condominiais.vercel.app/manutencoes`;
+        const msgWhats = `🚨 *ATENÇÃO - MANUTENÇÃO PROGRAMADA PARA HOJE!*\n\n🏢 *Condomínio:* ${manu.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${manu.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${manu.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${manu.status || 'Agendada'}${manu.descricao ? `\n📝 *Observações:* ${manu.descricao}` : ''}\n\n🔔 *Lembrete automático da Alpha Gestão.*\n🔗 *Acesse o painel:* https://app.alphaadmsc.com.br/manutencoes`;
 
         for (const numero of telefonesDestino) {
           try {
-            await fetch(`${EVOLUTION_URL}/message/sendText/InstanciaAlpha`, {
+            await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE}`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'apikey': API_KEY },
+              headers: { 'Content-Type': 'application/json', apikey: API_KEY },
               body: JSON.stringify({ number: numero, text: msgWhats })
             });
           } catch(e) {}
         }
 
-        await db.collection('manutencoes').doc(manu.id).update({
+        await updateDoc(doc(db, 'manutencoes', manu.id), {
           notifD0: hojeStr,
           lembreteHojeEnviadoEm: hojeStr
         });
@@ -141,4 +146,4 @@ export default async function handler(req, res) {
     console.error('Erro na rota de lembretes automáticos:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
-};
+}

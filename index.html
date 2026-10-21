@@ -56,6 +56,27 @@
       window.addEventListener('unhandledrejection', function(e) {
         console.warn('Promise rejection handled:', e.reason);
       });
+
+      // Blindagem contra inspeção e engenharia reversa básica no navegador (apenas fora de localhost)
+      (function() {
+        if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          // Desativa menu de contexto (clique direito)
+          document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+          });
+          // Bloqueia teclas de atalho de inspeção (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C, Ctrl+U)
+          document.addEventListener('keydown', function(e) {
+            if (
+              e.key === 'F12' ||
+              (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j' || e.key === 'C' || e.key === 'c')) ||
+              (e.ctrlKey && (e.key === 'U' || e.key === 'u' || e.key === 'S' || e.key === 's'))
+            ) {
+              e.preventDefault();
+              return false;
+            }
+          });
+        }
+      })();
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>

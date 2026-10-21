@@ -31,3 +31,7 @@ dist-ssr
 !.env.example
 
 .env*.local
+
+# Scripts locais de execucao manual na maquina
+disparar_lembretes_do_dia.js
+executar_lembretes.bat

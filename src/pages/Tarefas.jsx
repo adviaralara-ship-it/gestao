@@ -8,7 +8,9 @@ import {
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { EMAILJS_CONFIG } from '../emailjs.config'
-import { useTarefasAutoReminder, verificarEDispararLembretesTarefas } from '../hooks/useTarefasAutoReminder'
+import { useTarefasAutoReminder } from '../hooks/useTarefasAutoReminder'
+import ModalLembretesDoDia from '../components/ModalLembretesDoDia'
+import { enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
 
 // ─── Inicializa EmailJS se configurado ──────────────────────────────
 if (EMAILJS_CONFIG.ATIVO) {
@@ -244,6 +246,50 @@ function CardModal({ data, onClose, onSave, onEmail }) {
             </div>
             <div><label className="label">Tags (vírgula)</label><input className="input" value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="reunião, financeiro..." /></div>
           </div>
+
+          {/* Opção de Lembrete por WhatsApp */}
+          <div className="p-3.5 bg-emerald-50/70 rounded-2xl border border-emerald-200 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-black text-emerald-900 flex items-center gap-1.5 cursor-pointer">
+                <Bell size={14} className="text-emerald-600" />
+                Lembrete da Tarefa / Agenda
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-emerald-800">
+                <input
+                  type="checkbox"
+                  checked={form.lembreteAtivo !== false}
+                  onChange={e => set('lembreteAtivo', e.target.checked)}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                />
+                Ativar Lembrete no WhatsApp
+              </label>
+            </div>
+            {form.lembreteAtivo !== false && (
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="label text-[11px]">Horário do Compromisso</label>
+                  <input
+                    type="time"
+                    className="input text-xs"
+                    value={form.hora || ''}
+                    onChange={e => set('hora', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="label text-[11px]">Quando Notificar</label>
+                  <select
+                    className="input text-xs"
+                    value={form.lembreteMomento || 'dia'}
+                    onChange={e => set('lembreteMomento', e.target.value)}
+                  >
+                    <option value="dia">No dia do compromisso (Hoje)</option>
+                    <option value="vespera">1 dia antes (Véspera)</option>
+                    <option value="ambos">No dia e na véspera</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         <div className="p-6 border-t border-cream-300 flex gap-2 items-center">
           {form.id && (
@@ -263,7 +309,7 @@ function CardModal({ data, onClose, onSave, onEmail }) {
 }
 
 // ─── Vista Kanban ────────────────────────────────────────────────────
-function KanbanView({ tarefas, onEdit, onDelete, onMove, onAdd, onEmail }) {
+function KanbanView({ tarefas, onEdit, onDelete, onMove, onAdd, onEmail, onLembrete }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {COLUNAS.map(col => {
@@ -296,6 +342,7 @@ function KanbanView({ tarefas, onEdit, onDelete, onMove, onAdd, onEmail }) {
                   ))}
                   <button onClick={e => { e.stopPropagation(); onEmail(t) }} title="Enviar e-mail" className="text-xs px-2 py-0.5 rounded-lg bg-cream-100 hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-all border border-cream-300"><Mail size={10} /></button>
                   <button onClick={e => { e.stopPropagation(); exportarICS(t) }} title="Google Calendar" className="text-xs px-2 py-0.5 rounded-lg bg-cream-100 hover:bg-indigo-100 text-gray-400 hover:text-indigo-600 transition-all border border-cream-300"><Calendar size={10} /></button>
+                  <button onClick={e => { e.stopPropagation(); onLembrete(t) }} title="Disparar Lembrete no WhatsApp" className="text-xs px-2 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:text-emerald-900 transition-all border border-emerald-200 flex items-center gap-0.5"><Bell size={10} /> Lembrete</button>
                 </div>
               </div>
             ))}
@@ -308,7 +355,7 @@ function KanbanView({ tarefas, onEdit, onDelete, onMove, onAdd, onEmail }) {
 }
 
 // ─── Vista Agenda ────────────────────────────────────────────────────
-function AgendaView({ tarefas, onEdit, onDelete, onEmail }) {
+function AgendaView({ tarefas, onEdit, onDelete, onEmail, onLembrete }) {
   const agrupadas = useMemo(() => {
     const hj = hoje(); const grupos = {}
     const semData = tarefas.filter(t => !t.vencimento && t.coluna !== 'Concluído')
@@ -344,6 +391,7 @@ function AgendaView({ tarefas, onEdit, onDelete, onEmail }) {
                   </div>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-3">
+                  <button onClick={e => { e.stopPropagation(); onLembrete(t) }} title="Disparar Lembrete no WhatsApp" className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 hover:text-emerald-800"><Bell size={12} /></button>
                   <button onClick={e => { e.stopPropagation(); onEmail(t) }} className="p-1.5 rounded-lg bg-cream-100 hover:bg-blue-100 text-gray-400 hover:text-blue-600"><Mail size={12} /></button>
                   <button onClick={e => { e.stopPropagation(); exportarICS(t) }} className="p-1.5 rounded-lg bg-cream-100 hover:bg-indigo-100 text-gray-400 hover:text-indigo-600"><Calendar size={12} /></button>
                   <button onClick={e => { e.stopPropagation(); onDelete(t.id) }} className="p-1.5 rounded-lg bg-cream-100 hover:bg-red-100 text-gray-400 hover:text-red-500"><Trash2 size={12} /></button>
@@ -488,7 +536,37 @@ export default function Tarefas() {
   const [vizModal, setVizModal] = useState(null)
   const [filtroPrio, setFiltroPrio] = useState('')
   const [filtroResp, setFiltroResp] = useState('')
-  const [enviandoLembretes, setEnviandoLembretes] = useState(false)
+  const [modalLembretesAberto, setModalLembretesAberto] = useState(false)
+
+  const handleDispararIndividual = async (t) => {
+    const dataFmt = dtBR(t.vencimento) || 'Hoje'
+    const horaStr = t.hora ? ` às ${t.hora}` : ''
+    const prioStr = t.prioridade ? ` [${t.prioridade}]` : ''
+    const respStr = t.responsavel ? ` - Resp: ${t.responsavel}` : ''
+
+    let msg = `🔔 *LEMBRETE DE TAREFA / AGENDA - ALPHA GESTÃO*\n\n`
+    msg += `📌 *${t.titulo}*${horaStr}${prioStr}${respStr}\n`
+    if (t.descricao) msg += `📝 ${t.descricao}\n`
+    if (t.construtora) msg += `🏢 Construtora: ${t.construtora}\n`
+    if (t.bairro) msg += `📍 Local: ${t.bairro}\n`
+    msg += `📅 *Vencimento:* ${dataFmt}\n\n`
+    msg += `🔗 *Acesse o painel de Tarefas:* https://app.alphaadmsc.com.br/tarefas`
+
+    if (!window.confirm(`Deseja enviar agora o lembrete da tarefa "${t.titulo}" no WhatsApp da equipe?`)) {
+      return
+    }
+
+    const telefones = ['5583996885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
+    let sucessos = 0
+    for (const num of telefones) {
+      try {
+        const res = await enviarMensagemWhatsApp({ number: num, text: msg, instance: 'InstanciaAlpha' })
+        if (res && res.success) sucessos++
+      } catch (e) {}
+    }
+
+    alert(`✅ Lembrete da tarefa enviado com sucesso para ${sucessos} número(s) no WhatsApp!`)
+  }
 
   // Unifica as tarefas com os agendamentos comerciais recebidos pelo robô da Alpha
   const todasTarefas = useMemo(() => {
@@ -572,19 +650,12 @@ export default function Tarefas() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <button 
-            onClick={async () => {
-              setEnviandoLembretes(true)
-              const res = await verificarEDispararLembretesTarefas(true)
-              setEnviandoLembretes(false)
-              if (res?.success) alert(res.message || 'Lembrete enviado com sucesso!')
-              else alert('Aviso: ' + (res?.message || res?.error))
-            }} 
-            disabled={enviandoLembretes}
-            className="btn-secondary gap-1.5 text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold"
-            title="Disparar lembrete das tarefas de hoje pelo WhatsApp"
+            onClick={() => setModalLembretesAberto(true)} 
+            className="btn-secondary gap-1.5 text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300 font-bold shadow-xs cursor-pointer"
+            title="Selecionar quais tarefas e lembretes da agenda disparar no WhatsApp"
           >
             <Bell size={14} className="text-emerald-600" />
-            {enviandoLembretes ? 'Enviando...' : 'Lembrete no WhatsApp'}
+            Selecionar Lembretes (WhatsApp)
           </button>
           <button onClick={() => setEmailModal({})} className="btn-secondary gap-1.5 text-sm"><Mail size={14} />Novo E-mail</button>
           <button onClick={exportarCSV} className="btn-secondary gap-1.5 text-sm py-2 px-3"><Download size={14} /></button>
@@ -630,9 +701,9 @@ export default function Tarefas() {
       </div>
 
       {/* Vistas */}
-      {tab === 'kanban' && <KanbanView tarefas={tarefasFiltradas} onEdit={setCardModal} onDelete={handleDeleteTarefa} onMove={handleMoveTarefa} onAdd={(col, data = '') => setCardModal({ coluna: col, titulo: '', descricao: '', responsavel: '', email: '', vencimento: data, prioridade: 'Média', tags: '' })} onEmail={t => setEmailModal(t)} />}
+      {tab === 'kanban' && <KanbanView tarefas={tarefasFiltradas} onEdit={setCardModal} onDelete={handleDeleteTarefa} onMove={handleMoveTarefa} onAdd={(col, data = '') => setCardModal({ coluna: col, titulo: '', descricao: '', responsavel: '', email: '', vencimento: data, prioridade: 'Média', tags: '' })} onEmail={t => setEmailModal(t)} onLembrete={handleDispararIndividual} />}
 
-      {tab === 'agenda' && <AgendaView tarefas={tarefasFiltradas} onEdit={setCardModal} onDelete={handleDeleteTarefa} onEmail={t => setEmailModal(t)} />}
+      {tab === 'agenda' && <AgendaView tarefas={tarefasFiltradas} onEdit={setCardModal} onDelete={handleDeleteTarefa} onEmail={t => setEmailModal(t)} onLembrete={handleDispararIndividual} />}
 
       {tab === 'calendario' && <CalendarView tarefas={tarefasFiltradas} onEdit={setCardModal} onDelete={handleDeleteTarefa} onAdd={(col, data) => setCardModal({ coluna: col, titulo: '', descricao: '', responsavel: '', email: '', vencimento: data, prioridade: 'Média', tags: '' })} onEmail={t => setEmailModal(t)} />}
 
@@ -642,6 +713,7 @@ export default function Tarefas() {
       {cardModal && <CardModal data={cardModal?.titulo !== undefined ? cardModal : null} onClose={() => setCardModal(null)} onSave={handleSaveCard} onEmail={t => { setCardModal(null); setEmailModal(t) }} />}
       {emailModal !== null && <EmailModal tarefa={Object.keys(emailModal).length > 0 ? emailModal : null} onClose={() => setEmailModal(null)} onSent={async reg => await addEmail(reg)} />}
       {vizModal && <VisualizarEmailModal email={vizModal} onClose={() => setVizModal(null)} />}
+      <ModalLembretesDoDia isOpen={modalLembretesAberto} onClose={() => setModalLembretesAberto(false)} initialTab="tarefas" />
     </div>
   )
 }

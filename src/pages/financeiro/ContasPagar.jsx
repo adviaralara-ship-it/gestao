@@ -4,6 +4,7 @@ import MonthRangeFilter from '../../components/MonthRangeFilter'
 import { isAlphaInterno } from '../Financeiro'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage } from '../../firebase'
+import { enviarMensagemWhatsApp } from '../../utils/whatsappAutomacao'
 
 export default function ContasPagar({ lancamentos, setModalLanc, deleteLancamento, updateLancamento }) {
   const [search, setSearch] = useState('')
@@ -125,16 +126,15 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
       let enviados = 0
       for (const num of telefones) {
         try {
-          const res = await fetch('/api/whatsapp-send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ number: num, text: msg, instance: 'InstanciaAlpha' })
+          const res = await enviarMensagemWhatsApp({
+            number: num,
+            text: msg,
+            instance: 'InstanciaAlpha'
           })
-          const resData = await res.json().catch(() => null)
-          if (res.ok && resData?.success) {
+          if (res && res.success) {
             enviados++
           } else {
-            console.warn('Falha no envio para', num, resData?.error)
+            console.warn('Falha no envio para', num, res?.error)
           }
         } catch (e) {
           console.warn('Falha no envio WhatsApp:', num, e)

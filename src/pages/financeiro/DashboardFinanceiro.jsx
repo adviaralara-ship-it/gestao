@@ -234,9 +234,9 @@ export default function DashboardFinanceiro({ lancamentos = [], contas = [], con
             <div className="p-2 bg-red-100 rounded-lg text-red-600"><TrendingDown size={18} /></div>
             <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider">A Pagar (Mês)</p>
           </div>
-          <p className="text-3xl font-black text-red-500">R$ {fmt(finalPagarTotalMes)}</p>
+          <p className="text-3xl font-black text-red-500">R$ {fmt(pagarTotalMes)}</p>
           <p className="text-xs text-gray-400 mt-1">
-            Total do mês • <span className="font-bold text-amber-600">R$ {fmt(finalPagarPendenteMes)} pendente</span>
+            Total do mês • <span className="font-bold text-amber-600">R$ {fmt(pagarPendenteMes)} pendente</span>
           </p>
         </div>
       </div>

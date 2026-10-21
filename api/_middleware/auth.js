@@ -1,34 +1,39 @@
 // api/_middleware/auth.js
 // Middleware unificado de segurança, CORS e autenticação para Serverless Functions
 
-import admin from 'firebase-admin';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 
 // Inicialização segura do Firebase Admin
 export function getFirebaseAdmin() {
-  if (!admin.apps.length) {
+  if (!getApps().length) {
     try {
       if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-        admin.initializeApp({
-          credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
+        initializeApp({
+          credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
         });
       } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-        admin.initializeApp({
-          credential: admin.credential.cert({
+        initializeApp({
+          credential: cert({
             projectId: process.env.FIREBASE_PROJECT_ID,
             clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
             privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
           })
         });
       } else {
-        admin.initializeApp({
-          projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'alphaadmsc-fdc4e'
+        initializeApp({
+          projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'alphaadmsc-fdc4e'
         });
       }
     } catch (e) {
       console.warn('Firebase Admin init fallback:', e.message);
     }
   }
-  return admin;
+  return {
+    auth: () => getAuth(),
+    firestore: () => getFirestore()
+  };
 }
 
 export const ALLOWED_ORIGINS = [
