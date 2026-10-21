@@ -33,7 +33,17 @@ class ErrorBoundary extends React.Component {
           <button
             onClick={() => {
               this.setState({ hasError: false, error: null })
-              window.location.reload()
+              try {
+                if ('caches' in window) {
+                  caches.keys().then(keys => keys.forEach(k => caches.delete(k)))
+                }
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then(regs => {
+                    for (const r of regs) r.unregister()
+                  })
+                }
+              } catch (e) {}
+              window.location.href = window.location.pathname + '?v=' + Date.now()
             }}
             className="px-5 py-2.5 bg-brand-600 text-white font-black text-xs rounded-xl hover:bg-brand-500 shadow-md cursor-pointer"
           >
