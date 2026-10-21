@@ -232,7 +232,7 @@ export async function enviarEnqueteWhatsAppGrupo(enquete, condoDoc) {
  */
 export async function buscarGruposWhatsApp(instance = 'InstanciaAlpha') {
   try {
-    // 1. Tenta rota serverless /api/whatsapp-groups
+    // 1. Tenta rota serverless /api/whatsapp-send
     const res = await fetch(`/api/whatsapp-groups?instance=${encodeURIComponent(instance)}`)
     if (res.ok) {
       const data = await res.json()

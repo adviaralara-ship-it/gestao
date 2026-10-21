@@ -32,15 +32,43 @@ function isSafeUrl(urlStr) {
 }
 
 export default async function handler(req, res) {
-  if (applyCors(req, res, 'POST, OPTIONS')) return;
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
+  if (applyCors(req, res, 'GET, POST, OPTIONS')) return;
 
   // Autenticação obrigatória
   const user = await verifyUserAuth(req, res);
   if (!user) return;
+
+  // Consulta de Grupos via GET
+  if (req.method === 'GET') {
+    const instance = req.query?.instance || 'InstanciaAlpha';
+    const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://runningfly-evolution.cloudfy.live';
+    const API_KEY = process.env.EVOLUTION_API_KEY || 'WHNRTDYyTpv4ze45wUUU5qN9ri3da1Oy';
+    try {
+      const response = await fetch(`${EVOLUTION_URL}/group/fetchAllGroups/${instance}?getParticipants=false`, {
+        method: 'GET',
+        headers: {
+          'apikey': API_KEY,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (response.ok) {
+        const raw = await response.json();
+        const groups = Array.isArray(raw)
+          ? raw.map(g => ({ id: g.id, subject: g.subject || g.name || 'Grupo sem nome' }))
+          : [];
+        return res.status(200).json({ success: true, groups });
+      } else {
+        const err = await response.text();
+        return res.status(response.status).json({ success: false, error: 'Falha ao buscar grupos', details: err });
+      }
+    } catch (e) {
+      return res.status(500).json({ success: false, error: e.message || 'Erro de conexão com o WhatsApp' });
+    }
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
 
   const { number, text, instance = 'InstanciaAlpha', mediaBase64, mediaUrl, fileName, caption } = req.body || {};
 
