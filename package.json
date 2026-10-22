@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "deploy": "vite build && git add -A && git commit -m \"deploy: atualizacao automatica\" && git push origin master && npx vercel --prod --yes",
     "lint": "eslint .",
     "preview": "vite preview"
   },
