@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   const user = await verifyUserAuth(req, res);
   if (!user) return;
 
-  const instance = req.query.instance || 'InstanciaAlpha';
+  const instance = req.query?.instance || 'InstanciaAlpha';
   const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://runningfly-evolution.cloudfy.live';
   const API_KEY = process.env.EVOLUTION_API_KEY;
 

@@ -2,7 +2,6 @@
 // Middleware unificado de segurança, CORS e autenticação para Serverless Functions
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
 // Inicialização segura do Firebase Admin
@@ -31,7 +30,6 @@ export function getFirebaseAdmin() {
     }
   }
   return {
-    auth: () => getAuth(),
     firestore: () => getFirestore()
   };
 }
@@ -105,8 +103,9 @@ export async function verifyUserAuth(req, res) {
 
   // 3. Validação de ID Token (JWT) do Firebase Authentication
   try {
-    const fbAdmin = getFirebaseAdmin();
-    const decoded = await fbAdmin.auth().verifyIdToken(token);
+    const { getAuth } = await import('firebase-admin/auth');
+    getFirebaseAdmin();
+    const decoded = await getAuth().verifyIdToken(token);
     return decoded;
   } catch (err) {
     console.warn('Falha na validação do Firebase Token:', err.message);
