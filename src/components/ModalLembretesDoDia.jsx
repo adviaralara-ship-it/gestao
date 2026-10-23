@@ -53,13 +53,22 @@ export default function ModalLembretesDoDia({ isOpen, onClose, initialTab = 'tod
 
   // Itens filtrados
   const tarefasFiltradas = useMemo(() => {
-    return tarefas.filter(t => {
-      const isDone = t.coluna === 'Concluído' || t.coluna === 'concluido' || t.status === 'Concluído'
-      if (isDone) return false
-      const venc = normalizarParaIso(t.vencimento || t.data)
-      if (filtroData === 'hoje') return venc === hojeStr
-      return true
-    })
+    return tarefas
+      .filter(t => {
+        const isDone = t.coluna === 'Concluído' || t.coluna === 'concluido' || t.status === 'Concluído'
+        if (isDone) return false
+        const venc = normalizarParaIso(t.vencimento || t.data)
+        if (filtroData === 'hoje') return venc === hojeStr
+        return true
+      })
+      .sort((a, b) => {
+        const vA = normalizarParaIso(a.vencimento || a.data) || '9999-99-99'
+        const vB = normalizarParaIso(b.vencimento || b.data) || '9999-99-99'
+        if (vA !== vB) return vA.localeCompare(vB)
+        const hA = a.hora || '99:99'
+        const hB = b.hora || '99:99'
+        return hA.localeCompare(hB)
+      })
   }, [tarefas, filtroData, hojeStr])
 
   const contasFiltradas = useMemo(() => {

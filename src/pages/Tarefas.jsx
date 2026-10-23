@@ -313,7 +313,25 @@ function KanbanView({ tarefas, onEdit, onDelete, onMove, onAdd, onEmail, onLembr
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {COLUNAS.map(col => {
-        const cards = tarefas.filter(t => t.coluna === col)
+        const cards = tarefas
+          .filter(t => t.coluna === col)
+          .sort((a, b) => {
+            if (col === 'Concluído') {
+              const dA = a.vencimento || a.atualizadoEm || a.criadoEm || ''
+              const dB = b.vencimento || b.atualizadoEm || b.criadoEm || ''
+              return dB.localeCompare(dA)
+            }
+            if (a.vencimento && !b.vencimento) return -1
+            if (!a.vencimento && b.vencimento) return 1
+            if (!a.vencimento && !b.vencimento) return (a.titulo || '').localeCompare(b.titulo || '')
+            if (a.vencimento !== b.vencimento) {
+              return a.vencimento.localeCompare(b.vencimento)
+            }
+            const hA = a.hora || '99:99'
+            const hB = b.hora || '99:99'
+            return hA.localeCompare(hB)
+          })
+
         return (
           <div key={col} className={`rounded-2xl border ${colColors[col]} p-4 flex flex-col gap-3 min-h-[280px]`}>
             <div className={`flex items-center justify-between px-3 py-2 rounded-xl ${colHeaderColors[col]}`}>
@@ -330,6 +348,12 @@ function KanbanView({ tarefas, onEdit, onDelete, onMove, onAdd, onEmail, onLembr
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${prioColors[t.prioridade]}`}>{t.prioridade}</span>
                   <VencBadge venc={t.vencimento} coluna={t.coluna} />
+                  {t.hora && (
+                    <span className="text-xs font-bold text-brand-700 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Clock size={9} />
+                      {t.hora}
+                    </span>
+                  )}
                   {t.responsavel && <span className="text-xs text-gray-500 flex items-center gap-1 bg-cream-100 px-2 py-0.5 rounded-full"><User size={9} />{t.responsavel}</span>}
                   {t.construtora && <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold"><Building2 size={10} />{t.construtora}</span>}
                   {t.bairro && <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 flex items-center gap-1 px-2 py-0.5 rounded-full font-medium"><MapPin size={10} />{t.bairro}</span>}
@@ -357,17 +381,68 @@ function KanbanView({ tarefas, onEdit, onDelete, onMove, onAdd, onEmail, onLembr
 // ─── Vista Agenda ────────────────────────────────────────────────────
 function AgendaView({ tarefas, onEdit, onDelete, onEmail, onLembrete }) {
   const agrupadas = useMemo(() => {
-    const hj = hoje(); const grupos = {}
-    const semData = tarefas.filter(t => !t.vencimento && t.coluna !== 'Concluído')
-    if (semData.length) grupos['Sem data definida'] = semData
-    tarefas.filter(t => t.vencimento && t.coluna !== 'Concluído').forEach(t => {
-      const label = t.vencimento < hj ? '⚠️ Atrasadas' : t.vencimento === hj ? '🔥 Hoje'
-        : `📅 ${new Date(t.vencimento + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}`
-      if (!grupos[label]) grupos[label] = []
-      grupos[label].push(t)
+    const hj = hoje()
+    const grupos = {}
+
+    // 1. Tarefas pendentes com data, ordenadas cronologicamente do mais próximo pro final
+    const comData = tarefas
+      .filter(t => t.vencimento && t.coluna !== 'Concluído')
+      .sort((a, b) => {
+        if (a.vencimento !== b.vencimento) return a.vencimento.localeCompare(b.vencimento)
+        const hA = a.hora || '99:99'
+        const hB = b.hora || '99:99'
+        return hA.localeCompare(hB)
+      })
+
+    const atrasadas = []
+    const mapaDias = {}
+
+    comData.forEach(t => {
+      if (t.vencimento < hj) {
+        atrasadas.push(t)
+      } else if (t.vencimento === hj) {
+        const label = '🔥 Hoje'
+        if (!mapaDias[label]) mapaDias[label] = []
+        mapaDias[label].push(t)
+      } else {
+        const dObj = new Date(t.vencimento + 'T12:00:00')
+        const diaSemana = dObj.toLocaleDateString('pt-BR', { weekday: 'long' })
+        const diaMes = dObj.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })
+        const label = `📅 ${diaSemana.charAt(0).toUpperCase() + diaSemana.slice(1)}, ${diaMes}`
+        if (!mapaDias[label]) mapaDias[label] = []
+        mapaDias[label].push(t)
+      }
     })
-    const done = tarefas.filter(t => t.coluna === 'Concluído')
-    if (done.length) grupos['✅ Concluídas'] = done
+
+    // Agrupamento ordenado do mais próximo pro final:
+    // Atrasadas (se houver, atenção imediata)
+    if (atrasadas.length > 0) {
+      grupos['⚠️ Atrasadas'] = atrasadas
+    }
+
+    // Dias futuros em ordem cronológica estrita (Hoje, Amanhã, dias seguintes...)
+    Object.assign(grupos, mapaDias)
+
+    // Sem data definida (no final da agenda para não poluir o topo)
+    const semData = tarefas
+      .filter(t => !t.vencimento && t.coluna !== 'Concluído')
+      .sort((a, b) => (a.titulo || '').localeCompare(b.titulo || ''))
+    if (semData.length > 0) {
+      grupos['📋 Sem data definida'] = semData
+    }
+
+    // Concluídas (no final, com as mais recentes em cima)
+    const done = tarefas
+      .filter(t => t.coluna === 'Concluído')
+      .sort((a, b) => {
+        const dA = a.vencimento || a.atualizadoEm || a.criadoEm || ''
+        const dB = b.vencimento || b.atualizadoEm || b.criadoEm || ''
+        return dB.localeCompare(dA)
+      })
+    if (done.length > 0) {
+      grupos['✅ Concluídas'] = done
+    }
+
     return grupos
   }, [tarefas])
 
@@ -375,18 +450,42 @@ function AgendaView({ tarefas, onEdit, onDelete, onEmail, onLembrete }) {
     <div className="flex flex-col gap-6">
       {Object.entries(agrupadas).map(([grupo, items]) => (
         <div key={grupo}>
-          <p className="font-bold text-gray-700 text-sm mb-3 capitalize">{grupo}</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="font-bold text-gray-700 text-sm capitalize flex items-center gap-2">
+              {grupo}
+              <span className="text-xs bg-cream-200 text-gray-600 px-2 py-0.5 rounded-full font-semibold">
+                {items.length}
+              </span>
+            </p>
+          </div>
           <div className="flex flex-col gap-2">
             {items.map(t => (
               <div key={t.id} className={`card flex items-center justify-between hover:border-brand-300 transition-all group cursor-pointer ${t.coluna === 'Concluído' ? 'opacity-60' : ''}`} onClick={() => onEdit(t)}>
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className={`w-2 h-10 rounded-full flex-shrink-0 ${vencStatus(t.vencimento) === 'overdue' ? 'bg-red-400' : vencStatus(t.vencimento) === 'today' ? 'bg-amber-400' : colDots[t.coluna]}`} />
                   <div className="min-w-0">
-                    <p className={`font-semibold text-sm ${t.coluna === 'Concluído' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{t.titulo}</p>
-                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                    <div className="flex items-center gap-2">
+                      <p className={`font-semibold text-sm ${t.coluna === 'Concluído' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{t.titulo}</p>
+                      {t.hora && (
+                        <span className="text-xs font-bold text-brand-700 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Clock size={10} />
+                          {t.hora}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap mt-1">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${prioColors[t.prioridade]}`}>{t.prioridade}</span>
                       <span className="text-xs px-2 py-0.5 rounded-full text-gray-500 bg-cream-100">{t.coluna}</span>
+                      {t.vencimento && (
+                        <span className="text-xs text-gray-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Calendar size={10} />
+                          {dtBR(t.vencimento)}
+                        </span>
+                      )}
                       {t.responsavel && <span className="text-xs text-gray-400 flex items-center gap-1"><User size={9} />{t.responsavel}</span>}
+                      {t.construtora && <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold"><Building2 size={10} />{t.construtora}</span>}
+                      {t.bairro && <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 flex items-center gap-1 px-2 py-0.5 rounded-full font-medium"><MapPin size={10} />{t.bairro}</span>}
+                      {t.clienteTelefone && <span className="text-xs text-slate-600 bg-slate-100 border border-slate-200 flex items-center gap-1 px-2 py-0.5 rounded-full"><Phone size={9} />{t.clienteTelefone}</span>}
                     </div>
                   </div>
                 </div>
@@ -445,8 +544,14 @@ function CalendarView({ tarefas, onEdit, onDelete, onAdd, onEmail }) {
           const d = i + 1;
           const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-          // Filtrar tarefas daquele dia
-          const dayTasks = tarefas.filter(t => t.vencimento === dayStr)
+          // Filtrar tarefas daquele dia ordenadas por horário
+          const dayTasks = tarefas
+            .filter(t => t.vencimento === dayStr)
+            .sort((a, b) => {
+              const hA = a.hora || '99:99'
+              const hB = b.hora || '99:99'
+              return hA.localeCompare(hB)
+            })
           const isToday = dayStr === todayStr;
 
           return (
@@ -578,7 +683,8 @@ export default function Tarefas() {
         titulo: n.titulo || (n.construtora ? `Reunião Comercial: ${n.construtora}` : 'Nova Reunião Comercial Agendada'),
         descricao: n.descricao || n.mensagem || '',
         responsavel: n.responsavel || 'Equipe Alpha',
-        vencimento: n.vencimento || (n.criadoEm ? n.criadoEm.split('T')[0] : hoje()),
+        vencimento: n.vencimento || n.data || (n.criadoEm ? n.criadoEm.split('T')[0] : hoje()),
+        hora: n.hora || '',
         prioridade: n.prioridade || 'Alta',
         coluna: n.coluna || 'A Fazer',
         tags: n.tags || 'reunião, comercial, prospecção',
@@ -590,11 +696,44 @@ export default function Tarefas() {
     return [...tarefas, ...agendamentos]
   }, [tarefas, notificacoes])
 
-  const tarefasFiltradas = useMemo(() => todasTarefas.filter(t => {
-    if (filtroPrio && t.prioridade !== filtroPrio) return false
-    if (filtroResp && !t.responsavel?.toLowerCase().includes(filtroResp.toLowerCase())) return false
-    return true
-  }), [todasTarefas, filtroPrio, filtroResp])
+  const tarefasFiltradas = useMemo(() => {
+    return todasTarefas
+      .filter(t => {
+        if (filtroPrio && t.prioridade !== filtroPrio) return false
+        if (filtroResp && !t.responsavel?.toLowerCase().includes(filtroResp.toLowerCase())) return false
+        return true
+      })
+      .sort((a, b) => {
+        // Concluídas ficam no final
+        const aDone = a.coluna === 'Concluído'
+        const bDone = b.coluna === 'Concluído'
+        if (aDone && !bDone) return 1
+        if (!aDone && bDone) return -1
+        if (aDone && bDone) {
+          const dA = a.vencimento || a.atualizadoEm || a.criadoEm || ''
+          const dB = b.vencimento || b.atualizadoEm || b.criadoEm || ''
+          return dB.localeCompare(dA)
+        }
+
+        // Tarefas com vencimento aparecem antes das sem vencimento
+        if (a.vencimento && !b.vencimento) return -1
+        if (!a.vencimento && b.vencimento) return 1
+        if (!a.vencimento && !b.vencimento) return (a.titulo || '').localeCompare(b.titulo || '')
+
+        // Do mais próximo pro final (datas mais próximas no topo)
+        if (a.vencimento !== b.vencimento) {
+          return a.vencimento.localeCompare(b.vencimento)
+        }
+
+        // Horário mais cedo primeiro
+        const hA = a.hora || '99:99'
+        const hB = b.hora || '99:99'
+        if (hA !== hB) return hA.localeCompare(hB)
+
+        const prioMap = { Alta: 1, Média: 2, Baixa: 3 }
+        return (prioMap[a.prioridade] || 4) - (prioMap[b.prioridade] || 4)
+      })
+  }, [todasTarefas, filtroPrio, filtroResp])
 
   const stats = {
     total: todasTarefas.length,
