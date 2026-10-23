@@ -185,6 +185,7 @@ export default function ReservaEmergencia({ lancamentos = [], condoFilter = 'Tod
 
   const totalDespesasPagas = despesasMes.filter(l => l.status === 'Pago' || l.status === 'Liquidado' || l.pago).reduce((a, b) => a + Number(b.valor || 0), 0)
   const totalDespesasCompromisso = despesasMes.reduce((a, b) => a + Number(b.valor || 0), 0)
+  const deducaoDespesa = totalDespesasPagas
   
   // Saldo real dinâmico em caixa:
   // Saldo real dinâmico em caixa: Saldo base anterior + Boletos e receitas pagos do mês - Despesas pagas do mês

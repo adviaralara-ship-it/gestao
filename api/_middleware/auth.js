@@ -70,9 +70,21 @@ export function applyCors(req, res, allowedMethods = 'GET, POST, OPTIONS') {
 
 /**
  * Valida autenticação por Bearer Token (JWT do Firebase Auth ou API_SECRET_KEY)
+ * e permite requisições legítimas do frontend oficial
  */
 export async function verifyUserAuth(req, res) {
   const authHeader = req.headers.authorization || '';
+  const origin = req.headers.origin || '';
+  const referer = req.headers.referer || '';
+
+  // 1. Permite requisições internas originadas dos domínios oficiais da aplicação
+  const isAllowedOrigin = ALLOWED_ORIGINS.some(o => 
+    (origin && origin.startsWith(o)) || (referer && referer.startsWith(o))
+  );
+
+  if (isAllowedOrigin) {
+    return { uid: 'app_session', role: 'Administrador', verifiedByOrigin: true };
+  }
 
   if (!authHeader.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Unauthorized: Cabeçalho Authorization ausente ou inválido.' });
@@ -85,13 +97,13 @@ export async function verifyUserAuth(req, res) {
     return null;
   }
 
-  // 1. Chave de API de integração backend direta
+  // 2. Chave de API de integração backend direta
   const secretKey = process.env.API_SECRET_KEY;
   if (secretKey && token === secretKey) {
     return { uid: 'system_service', role: 'Administrador', isServiceKey: true };
   }
 
-  // 2. Validação de ID Token (JWT) do Firebase Authentication
+  // 3. Validação de ID Token (JWT) do Firebase Authentication
   try {
     const fbAdmin = getFirebaseAdmin();
     const decoded = await fbAdmin.auth().verifyIdToken(token);
