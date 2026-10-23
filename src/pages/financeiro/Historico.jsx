@@ -120,6 +120,8 @@ export default function Historico({ lancamentos, boletos = [], condoFilter = 'To
   }).sort((a, b) => parseDateStr(b.data || b.vencimento) - parseDateStr(a.data || a.vencimento))
 
   const totalReceitas = filtered.filter(t => t.tipo === 'Receita').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
+  const totalDespesas = filtered.filter(t => t.tipo === 'Despesa').reduce((acc, curr) => acc + Number(curr.valor || 0), 0)
+  const saldoTotal = totalReceitas - totalDespesas
   const [loadingHistId, setLoadingHistId] = useState(null)
 
   const alternarStatusPago = async (t) => {
@@ -249,7 +251,9 @@ export default function Historico({ lancamentos, boletos = [], condoFilter = 'To
             <tbody>
               {filtered.length === 0
                 ? <tr><td colSpan={6} className="text-center py-10 text-gray-400 text-sm">Nenhum lançamento encontrado.</td></tr>
-                : filtered.map(t => (
+                : filtered.map(t => {
+                  const isPago = t.status === 'Recebido' || t.status === 'Pago' || t.status === 'Liquidado'
+                  return (
                   <tr key={t.id} className="table-row">
                     <td className="table-cell text-gray-500 font-medium">
                       {t.data ? (t.data.includes('/') ? t.data : t.data.split('-').reverse().join('/')) : '-'}
@@ -317,7 +321,8 @@ export default function Historico({ lancamentos, boletos = [], condoFilter = 'To
                       </div>
                     </td>
                   </tr>
-                ))
+                  )
+                })
               }
             </tbody>
             {filtered.length > 0 && (
