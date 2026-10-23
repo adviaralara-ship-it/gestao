@@ -46,8 +46,9 @@ module.exports = async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const token = authHeader.split('Bearer ')[1];
-  if (token !== process.env.API_SECRET_KEY) {
+  const token = authHeader.split('Bearer ')[1]?.trim();
+  const secretKey = process.env.API_SECRET_KEY;
+  if (!secretKey || token !== secretKey) {
     return res.status(401).json({ error: 'Invalid token' });
   }
 

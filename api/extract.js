@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   const user = await verifyUserAuth(req, res);
   if (!user) return;
 
-  const rawKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || 'AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA';
+  const rawKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   const apiKey = String(rawKey || '').trim();
   if (!apiKey) {
     return res.status(500).json({ error: 'Chave da API Gemini não configurada no servidor.' });

@@ -6,7 +6,11 @@ import crypto from 'crypto'
  * Validação de Assinatura Criptográfica do Webhook Cora
  */
 function verifyCoraWebhookSignature(req) {
-  const webhookSecret = process.env.CORA_WEBHOOK_SECRET || 'Cora_Webhook_Secret_Token_Alpha_2026';
+  const webhookSecret = process.env.CORA_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.warn('CORA_WEBHOOK_SECRET não configurado no servidor.');
+    return false;
+  }
   
   // 1. Verificação por token em header ou query
   const authHeader = req.headers['authorization'] || '';

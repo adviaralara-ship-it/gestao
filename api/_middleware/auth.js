@@ -73,17 +73,6 @@ export function applyCors(req, res, allowedMethods = 'GET, POST, OPTIONS') {
  */
 export async function verifyUserAuth(req, res) {
   const authHeader = req.headers.authorization || '';
-  const origin = req.headers.origin || '';
-  const referer = req.headers.referer || '';
-
-  // 1. Permite requisições internas originadas dos domínios oficiais da aplicação
-  const isAllowedOrigin = ALLOWED_ORIGINS.some(o => 
-    (origin && origin.startsWith(o)) || (referer && referer.startsWith(o))
-  );
-
-  if (isAllowedOrigin) {
-    return { uid: 'app_session', role: 'Administrador', verifiedByOrigin: true };
-  }
 
   if (!authHeader.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Unauthorized: Cabeçalho Authorization ausente ou inválido.' });
@@ -108,7 +97,6 @@ export async function verifyUserAuth(req, res) {
     const decoded = await fbAdmin.auth().verifyIdToken(token);
     return decoded;
   } catch (err) {
-    // Se o Firebase Admin não estiver configurado para verificação de chaves públicas ou falhar
     console.warn('Falha na validação do Firebase Token:', err.message);
     res.status(401).json({ error: 'Unauthorized: Token de autenticação expirado ou inválido.' });
     return null;
@@ -119,7 +107,12 @@ export async function verifyUserAuth(req, res) {
  * Valida chamadas agendadas de Cron Jobs
  */
 export function verifyCronAuth(req, res) {
-  const cronSecret = process.env.CRON_SECRET || 'Cron_Alpha_Auth_Secret_2026_Secure_Key';
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    res.status(500).json({ error: 'CRON_SECRET não configurado no servidor.' });
+    return false;
+  }
+
   const authHeader = req.headers.authorization || '';
   const headerSecret = req.headers['x-cron-secret'];
 

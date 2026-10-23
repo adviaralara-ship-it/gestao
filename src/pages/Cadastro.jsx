@@ -163,7 +163,7 @@ export default function Cadastro() {
         email: emailClean,
         telefone: form.telefone.trim(),
         cpf: form.cpf.replace(/\D/g, ''),
-        senha: form.senha,
+        // Senha protegida: mantida exclusivamente criptografada no Firebase Authentication
         ...localInfo,
         condominio: form.role === 'Administrador' ? 'ALPHA' : localInfo.condominio,
         role: form.role,

@@ -587,8 +587,10 @@ export default function Usuarios() {
         }
       }
 
+      const { senha: _discardSenha, ...formSemSenha } = form
+
       const novo = {
-        ...form,
+        ...formSemSenha,
         nome: nomeNorm,
         condominio: condoNorm,
         bloco: blocoNorm,
@@ -636,8 +638,10 @@ export default function Usuarios() {
     } else {
       const viraAdmin = form.role === 'Administrador' && modal.role !== 'Administrador'
       
+      const { senha: _discardSenha2, ...formSemSenhaAtualizar } = form
+      
       const updated = {
-        ...form,
+        ...formSemSenhaAtualizar,
         nome: nomeNorm,
         condominio: condoNorm,
         bloco: blocoNorm,
