@@ -3,7 +3,7 @@
 
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
-import { getFirestore, collection, getDocs, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, addDoc, serverTimestamp, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { applyCors, verifyCronAuth } from '../_middleware/auth.js';
 
 const firebaseConfig = {
@@ -67,6 +67,22 @@ export default async function handler(req, res) {
     const hojeStr = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
     const dataFmt = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
 
+    // Trava global no Firestore: se já disparou hoje (pelo frontend ou por cron anterior), não dispara de novo
+    const isForce = req.query?.force === 'true' || req.body?.force === true;
+    const lockRef = doc(db, 'travas_sistema', `lembrete_diario_${hojeStr}`);
+
+    if (!isForce) {
+      const lockSnap = await getDoc(lockRef);
+      if (lockSnap.exists()) {
+        return res.status(200).json({
+          success: true,
+          dataReferencia: hojeStr,
+          ignoradoPorTrava: true,
+          message: 'Lembretes de hoje já foram disparados anteriormente pelo sistema. Operação ignorada para evitar disparos duplicados.'
+        });
+      }
+    }
+
     // 2. Buscar lançamentos financeiros, tarefas, manutenções e usuários
     const [finSnap, tarefasSnap, manuSnap, usuariosSnap] = await Promise.all([
       getDocs(collection(db, 'financeiro_lancamentos')),
@@ -103,6 +119,16 @@ export default async function handler(req, res) {
     });
 
     if (contasVencendoHoje.length === 0 && tarefasHoje.length === 0 && manutencoesHoje.length === 0) {
+      if (!isForce) {
+        try {
+          await setDoc(lockRef, {
+            enviadoEm: serverTimestamp(),
+            dataReferencia: hojeStr,
+            origem: 'vercel_cron_sem_itens',
+            horario: hoje.toISOString()
+          }, { merge: true });
+        } catch(e) {}
+      }
       return res.status(200).json({
         success: true,
         dataReferencia: hojeStr,
@@ -219,6 +245,18 @@ export default async function handler(req, res) {
         }
       }
     });
+
+    // 6.1 Registrar a trava no Firestore IMEDIATAMENTE antes dos disparos
+    if (!isForce) {
+      try {
+        await setDoc(lockRef, {
+          enviadoEm: serverTimestamp(),
+          dataReferencia: hojeStr,
+          origem: 'vercel_cron',
+          horario: hoje.toISOString()
+        }, { merge: true });
+      } catch(e) {}
+    }
 
     let disparos = 0;
     for (const numero of telefonesDestino) {

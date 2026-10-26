@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, getDocs, doc, getDoc, setDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 import { enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
@@ -47,9 +47,23 @@ export async function verificarEDispararLembretesDoDia(isManual = false) {
 
     // Trava de execução diária (para não re-disparar em cada clique ou troca de tela)
     if (!isManual) {
-      const lastSentDate = localStorage.getItem(LOCK_DAILY_KEY)
-      if (lastSentDate === hojeStr) {
-        return { success: true, ignoradoPorDia: true, hojeStr, message: 'Lembretes de hoje já foram disparados anteriormente.' }
+      try {
+        const lastSentDate = localStorage.getItem(LOCK_DAILY_KEY)
+        if (lastSentDate === hojeStr) {
+          return { success: true, ignoradoPorDia: true, hojeStr, message: 'Lembretes de hoje já foram disparados anteriormente neste navegador.' }
+        }
+      } catch (e) {}
+
+      // Trava global centralizada no Firestore (compartilhada entre todos os usuários, dispositivos e servidores)
+      try {
+        const lockRef = doc(db, 'travas_sistema', `lembrete_diario_${hojeStr}`)
+        const lockSnap = await getDoc(lockRef)
+        if (lockSnap.exists()) {
+          try { localStorage.setItem(LOCK_DAILY_KEY, hojeStr) } catch (e) {}
+          return { success: true, ignoradoPorDia: true, hojeStr, message: 'Lembretes de hoje já foram disparados anteriormente por outro dispositivo/sessão.' }
+        }
+      } catch (errLock) {
+        console.warn('Aviso ao consultar trava global Firestore:', errLock)
       }
     }
 
@@ -92,7 +106,15 @@ export async function verificarEDispararLembretesDoDia(isManual = false) {
 
     // Se não há nada hoje e não foi clique manual, grava a verificação de hoje e sai
     if (tarefasHoje.length === 0 && contasVencendoHoje.length === 0 && manutencoesHoje.length === 0 && !isManual) {
-      localStorage.setItem(LOCK_DAILY_KEY, hojeStr)
+      try {
+        const lockRef = doc(db, 'travas_sistema', `lembrete_diario_${hojeStr}`)
+        await setDoc(lockRef, {
+          enviadoEm: serverTimestamp(),
+          dataReferencia: hojeStr,
+          origem: 'sem_itens_hoje'
+        }, { merge: true })
+      } catch (e) {}
+      try { localStorage.setItem(LOCK_DAILY_KEY, hojeStr) } catch (e) {}
       return {
         success: true,
         message: 'Nenhum agendamento, conta ou manutenção com vencimento para hoje.',
@@ -220,6 +242,22 @@ export async function verificarEDispararLembretesDoDia(isManual = false) {
       }
     })
 
+    // 7.1. Registra a trava global no Firestore IMEDIATAMENTE antes do envio para evitar corridas simultâneas
+    if (!isManual) {
+      try {
+        const lockRef = doc(db, 'travas_sistema', `lembrete_diario_${hojeStr}`)
+        await setDoc(lockRef, {
+          enviadoEm: serverTimestamp(),
+          dataReferencia: hojeStr,
+          origem: 'frontend_layout',
+          executadoPor: 'sistema_automatico'
+        }, { merge: true })
+        try { localStorage.setItem(LOCK_DAILY_KEY, hojeStr) } catch (e) {}
+      } catch (errLockSet) {
+        console.warn('Aviso ao gravar trava global no Firestore:', errLockSet)
+      }
+    }
+
     let disparosRealizados = 0
     for (const tel of telefonesDestino) {
       try {
@@ -286,14 +324,23 @@ export function useDailyAutoReminder() {
     const isMaster = role.includes('admin') || role.includes('financeiro') || role.includes('síndico') || role.includes('sindico')
     if (!isMaster) return
 
+    // Checagem prévia no localStorage para não disparar timer se já enviado hoje
+    try {
+      const agora = new Date()
+      const brDateStr = agora.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+      const [d, m, y] = brDateStr.split('/')
+      const hojeStr = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+      if (localStorage.getItem(LOCK_DAILY_KEY) === hojeStr) return
+    } catch (e) {}
+
     hasRunRef.current = true
 
-    // Executa em segundo plano após 3 segundos para não atrasar a renderização da interface
+    // Executa em segundo plano após 5 segundos para não atrasar a renderização da interface
     const timer = setTimeout(() => {
       verificarEDispararLembretesDoDia(false).catch(err => {
         console.warn('Lembretes diários em background:', err)
       })
-    }, 3000)
+    }, 5000)
 
     return () => clearTimeout(timer)
   }, [user])
