@@ -74,12 +74,24 @@ export default async function handler(req, res) {
     if (!isForce) {
       const lockSnap = await getDoc(lockRef);
       if (lockSnap.exists()) {
-        return res.status(200).json({
-          success: true,
-          dataReferencia: hojeStr,
-          ignoradoPorTrava: true,
-          message: 'Lembretes de hoje já foram disparados anteriormente pelo sistema. Operação ignorada para evitar disparos duplicados.'
-        });
+        const lockData = lockSnap.data() || {};
+        if (lockData.status === 'sucesso' || lockData.origem === 'sem_itens_hoje') {
+          return res.status(200).json({
+            success: true,
+            dataReferencia: hojeStr,
+            ignoradoPorTrava: true,
+            message: 'Lembretes de hoje já foram entregues com sucesso pelo sistema.'
+          });
+        }
+        const enviadoEmMillis = lockData.enviadoEm?.toMillis ? lockData.enviadoEm.toMillis() : 0;
+        if (lockData.status === 'enviando' && (Date.now() - enviadoEmMillis < 2 * 60 * 1000)) {
+          return res.status(200).json({
+            success: true,
+            dataReferencia: hojeStr,
+            ignoradoPorTrava: true,
+            message: 'Disparo já em andamento por outro processo.'
+          });
+        }
       }
     }
 
@@ -246,10 +258,11 @@ export default async function handler(req, res) {
       }
     });
 
-    // 6.1 Registrar a trava no Firestore IMEDIATAMENTE antes dos disparos
+    // 6.1 Registrar a trava no Firestore como 'enviando'
     if (!isForce) {
       try {
         await setDoc(lockRef, {
+          status: 'enviando',
           enviadoEm: serverTimestamp(),
           dataReferencia: hojeStr,
           origem: 'vercel_cron',
@@ -270,6 +283,26 @@ export default async function handler(req, res) {
       } catch (errSend) {
         console.warn('Erro envio WhatsApp:', numero, errSend.message);
       }
+    }
+
+    // 6.2 Atualiza status final da trava
+    if (!isForce) {
+      try {
+        if (disparos > 0) {
+          await setDoc(lockRef, {
+            status: 'sucesso',
+            disparos,
+            concluidoEm: serverTimestamp()
+          }, { merge: true });
+        } else {
+          await setDoc(lockRef, {
+            status: 'falha',
+            erro: 'Falha no envio de WhatsApp (Evolution API)',
+            disparos: 0,
+            tentadoEm: serverTimestamp()
+          }, { merge: true });
+        }
+      } catch(e) {}
     }
 
     // 7. Atualiza marcações

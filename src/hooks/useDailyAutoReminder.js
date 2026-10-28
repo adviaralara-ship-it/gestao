@@ -59,8 +59,17 @@ export async function verificarEDispararLembretesDoDia(isManual = false) {
         const lockRef = doc(db, 'travas_sistema', `lembrete_diario_${hojeStr}`)
         const lockSnap = await getDoc(lockRef)
         if (lockSnap.exists()) {
-          try { localStorage.setItem(LOCK_DAILY_KEY, hojeStr) } catch (e) {}
-          return { success: true, ignoradoPorDia: true, hojeStr, message: 'Lembretes de hoje já foram disparados anteriormente por outro dispositivo/sessão.' }
+          const lockData = lockSnap.data() || {}
+          // Só ignora se os lembretes foram de fato entregues com sucesso OU não havia nada agendado
+          if (lockData.status === 'sucesso' || lockData.origem === 'sem_itens_hoje') {
+            try { localStorage.setItem(LOCK_DAILY_KEY, hojeStr) } catch (e) {}
+            return { success: true, ignoradoPorDia: true, hojeStr, message: 'Lembretes de hoje já foram entregues com sucesso.' }
+          }
+          // Se está em andamento há menos de 2 minutos, aguarda para não colidir
+          const enviadoEmMillis = lockData.enviadoEm?.toMillis ? lockData.enviadoEm.toMillis() : 0
+          if (lockData.status === 'enviando' && (Date.now() - enviadoEmMillis < 2 * 60 * 1000)) {
+            return { success: true, ignoradoPorDia: true, hojeStr, message: 'Disparo em andamento por outro dispositivo.' }
+          }
         }
       } catch (errLock) {
         console.warn('Aviso ao consultar trava global Firestore:', errLock)
@@ -242,17 +251,17 @@ export async function verificarEDispararLembretesDoDia(isManual = false) {
       }
     })
 
-    // 7.1. Registra a trava global no Firestore IMEDIATAMENTE antes do envio para evitar corridas simultâneas
+    // 7.1. Registra a trava global temporária como 'enviando' para evitar corridas simultâneas
     if (!isManual) {
       try {
         const lockRef = doc(db, 'travas_sistema', `lembrete_diario_${hojeStr}`)
         await setDoc(lockRef, {
+          status: 'enviando',
           enviadoEm: serverTimestamp(),
           dataReferencia: hojeStr,
           origem: 'frontend_layout',
           executadoPor: 'sistema_automatico'
         }, { merge: true })
-        try { localStorage.setItem(LOCK_DAILY_KEY, hojeStr) } catch (e) {}
       } catch (errLockSet) {
         console.warn('Aviso ao gravar trava global no Firestore:', errLockSet)
       }
@@ -271,6 +280,32 @@ export async function verificarEDispararLembretesDoDia(isManual = false) {
         }
       } catch (errSend) {
         console.warn('Erro ao enviar WhatsApp:', tel, errSend)
+      }
+    }
+
+    // 7.2. Atualiza a trava com o resultado real dos envios
+    if (!isManual) {
+      try {
+        const lockRef = doc(db, 'travas_sistema', `lembrete_diario_${hojeStr}`)
+        if (disparosRealizados > 0) {
+          await setDoc(lockRef, {
+            status: 'sucesso',
+            disparos: disparosRealizados,
+            concluidoEm: serverTimestamp()
+          }, { merge: true })
+          try { localStorage.setItem(LOCK_DAILY_KEY, hojeStr) } catch (e) {}
+        } else {
+          // Se todos os envios falharam (ex: WhatsApp desconectado), marca como falha para permitir retry
+          await setDoc(lockRef, {
+            status: 'falha',
+            erro: 'Falha no envio de mensagens (instância WhatsApp pode estar desconectada)',
+            disparos: 0,
+            tentadoEm: serverTimestamp()
+          }, { merge: true })
+          try { localStorage.removeItem(LOCK_DAILY_KEY) } catch (e) {}
+        }
+      } catch (errLockFinal) {
+        console.warn('Aviso ao finalizar trava global no Firestore:', errLockFinal)
       }
     }
 

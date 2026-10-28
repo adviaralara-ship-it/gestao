@@ -22,6 +22,10 @@ export default function WhatsApp() {
   const [instance, setInstance] = useState('InstanciaAlpha')
   const [instancesInfo, setInstancesInfo] = useState([])
   const [loadingStatus, setLoadingStatus] = useState(false)
+  const [isHealthy, setIsHealthy] = useState(true)
+  const [healthDetail, setHealthDetail] = useState('')
+  const [qrCodeData, setQrCodeData] = useState(null)
+  const [reconnecting, setReconnecting] = useState(false)
   const [abaAtiva, setAbaAtiva] = useState('mensagens') // 'mensagens' ou 'campanha'
   const [modoEnvio, setModoEnvio] = useState('individual') // 'individual' ou 'lote'
 
@@ -44,24 +48,50 @@ export default function WhatsApp() {
   const [sending, setSending] = useState(false)
   const [logsEnvio, setLogsEnvio] = useState([])
 
-  // Buscar status das instâncias na Evolution API
+  // Buscar status real e verificação de saúde da instância na Evolution API
   const fetchStatus = async () => {
     setLoadingStatus(true)
     try {
-      const res = await fetch('/api/whatsapp-status')
+      const res = await fetch(`/api/whatsapp-status?instance=${instance}`)
       const data = await res.json()
-      if (data.success && Array.isArray(data.instances)) {
-        setInstancesInfo(data.instances)
+      if (data.success) {
+        if (Array.isArray(data.instances)) setInstancesInfo(data.instances)
+        setIsHealthy(data.isHealthy === true)
+        setHealthDetail(data.healthDetail || '')
       }
     } catch (err) {
       console.error('Erro ao buscar status do WhatsApp:', err)
+      setIsHealthy(false)
+      setHealthDetail(err.message)
     }
     setLoadingStatus(false)
   }
 
+  const handleReconectar = async () => {
+    if (!window.confirm(`Deseja reiniciar a sessão e gerar um novo QR Code para ${instance}? Será necessário ler o QR Code com o WhatsApp no celular da Alpha.`)) return
+    setReconnecting(true)
+    setQrCodeData(null)
+    try {
+      const res = await fetch('/api/whatsapp-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reconnect', instance })
+      })
+      const data = await res.json()
+      if (data.success && data.qrcode) {
+        setQrCodeData(data.qrcode)
+      } else {
+        alert(data.error || 'Não foi possível gerar o QR Code. Tente novamente.')
+      }
+    } catch (err) {
+      alert('Erro ao solicitar reconexão: ' + err.message)
+    }
+    setReconnecting(false)
+  }
+
   useEffect(() => {
     fetchStatus()
-  }, [])
+  }, [instance])
 
   // Moradores filtrados pelo condomínio selecionado
   const moradoresFiltrados = moradores.filter(m => {
@@ -499,15 +529,22 @@ export default function WhatsApp() {
       {/* Card de Status da Conexão em Tempo Real */}
       <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-lg border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center font-black text-3xl text-emerald-400 shrink-0 shadow-inner">
+          <div className={`w-14 h-14 rounded-2xl ${isHealthy ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-400' : 'bg-rose-500/20 border-rose-400/50 text-rose-400'} border flex items-center justify-center font-black text-3xl shrink-0 shadow-inner`}>
             📱
           </div>
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/40">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-                Conexão Oficial Ativa
-              </span>
+              {isHealthy ? (
+                <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/40">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                  Conexão Oficial Ativa
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                  Conexão Interrompida
+                </span>
+              )}
               <span className="text-sm font-bold text-slate-300">
                 Instância: <b className="text-white">{instance}</b>
               </span>
@@ -515,14 +552,21 @@ export default function WhatsApp() {
             <h2 className="text-lg sm:text-xl font-black text-white mt-1.5 tracking-tight">
               Alpha Soluções Condominiais
             </h2>
-            <p className="text-sm text-emerald-300 font-bold font-mono mt-0.5">
-              WhatsApp Conectado: +55 (83) 9688-5931
+            <p className="text-sm text-slate-300 font-mono mt-0.5">
+              WhatsApp: +55 (83) 9688-5931 {!isHealthy && <span className="text-rose-400 font-sans font-bold">({healthDetail || 'Desconectado'})</span>}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3 bg-slate-800/80 p-3 rounded-2xl border border-slate-700 shrink-0">
-          <label className="text-xs font-black uppercase text-slate-300">Instância:</label>
+          <button
+            onClick={handleReconectar}
+            disabled={reconnecting}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center gap-2"
+          >
+            <QrCode size={16} />
+            <span>{reconnecting ? 'Gerando QR...' : 'Reconectar / QR Code'}</span>
+          </button>
           <select 
             className="input py-2 px-3 text-sm font-bold text-slate-900 bg-white rounded-xl cursor-pointer"
             value={instance}
@@ -533,6 +577,40 @@ export default function WhatsApp() {
           </select>
         </div>
       </div>
+
+      {/* Painel de Exibição do QR Code quando solicitado */}
+      {qrCodeData && (
+        <div className="bg-white text-slate-900 p-6 rounded-3xl shadow-xl border-2 border-emerald-500 flex flex-col items-center text-center gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-2 text-emerald-700">
+            <QrCode size={24} />
+            <h3 className="text-lg font-black text-slate-900">Escaneie o QR Code no WhatsApp da Alpha</h3>
+          </div>
+          <p className="text-sm text-slate-600 max-w-md">
+            No celular da Alpha (+55 83 9688-5931), abra o <b>WhatsApp &gt; Configurações (ou 3 pontinhos) &gt; Aparelhos Conectados &gt; Conectar Aparelho</b> e aponte para o código abaixo:
+          </p>
+          <div className="p-3 bg-white rounded-2xl border-2 border-slate-200 shadow-inner">
+            <img 
+              src={qrCodeData.startsWith('data:') ? qrCodeData : `data:image/png;base64,${qrCodeData}`} 
+              alt="QR Code WhatsApp" 
+              className="w-64 h-64 object-contain rounded-xl"
+            />
+          </div>
+          <div className="flex flex-wrap gap-3 justify-center">
+            <button 
+              onClick={fetchStatus} 
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl flex items-center gap-2 shadow-md"
+            >
+              <RefreshCw size={16} /> Já Escaneei / Atualizar Status
+            </button>
+            <button 
+              onClick={() => setQrCodeData(null)} 
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl"
+            >
+              Fechar QR Code
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Abas Principais: Central de Envios vs Régua de Cobrança vs Campanha de Adesão */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
