@@ -10,6 +10,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { notificarAdm, enviarEmail } from '../emailjs.config'
 import RepassesAlphaModal from '../components/RepassesAlphaModal'
+import ModalImportarBoletosPDF from '../components/ModalImportarBoletosPDF'
 import { CurrencyInput, maskCurrency, parseCurrency } from '../utils/currency'
 import { enviarBoletoWhatsAppAuto } from '../utils/whatsappAutomacao'
 
@@ -2166,6 +2167,7 @@ export default function Boletos() {
   const [modal, setModal] = useState(null)
   const [modalLote, setModalLote] = useState(false)
   const [modalImportarPlanilha, setModalImportarPlanilha] = useState(false)
+  const [modalImportarPDF, setModalImportarPDF] = useState(false)
   const [modalNotificarVencimento, setModalNotificarVencimento] = useState(false)
   const [condoFundoEdit, setCondoFundoEdit] = useState(null)
   const [selectedIds, setSelectedIds] = useState([])
@@ -2910,6 +2912,20 @@ export default function Boletos() {
     }
   }
 
+  const handleSaveImportarPDF = async (lista) => {
+    if (!lista || lista.length === 0) return
+    let adicionados = 0
+    try {
+      for (const item of lista) {
+        await addItem(item)
+        adicionados++
+      }
+    } catch(err) {
+      console.error('Erro ao registrar boletos importados em PDF:', err)
+      throw err
+    }
+  }
+
   const handleReconciliationExtrato = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2940,19 +2956,62 @@ export default function Boletos() {
             const trnAmtStr = getTag('TRNAMT').replace(',', '.');
             const valor = parseFloat(trnAmtStr);
             const memo = (getTag('MEMO') + ' ' + getTag('NAME')).toLowerCase();
+            const checknum = getTag('CHECKNUM');
+            const refnum = getTag('REFNUM');
+            const fitid = getTag('FITID');
+            const trnFull = (trn + ' ' + memo + ' ' + checknum + ' ' + refnum + ' ' + fitid).toLowerCase();
 
             // Apenas entradas de dinheiro / créditos recebidos
             if (valor > 0 || trnType.toUpperCase() === 'CREDIT' || trnType.toUpperCase() === 'DEP') {
               const absValor = Math.abs(valor);
 
-              // Tenta casar com o boleto pendente por valor e/ou nome do morador
-              const boletoMatch = pendentes.find(b => {
-                const mesmoValor = Math.abs(Number(b.valor) - absValor) < 0.1;
-                const moradorNome = (b.morador || '').toLowerCase().trim();
-                const aptNumero = String(b.apt || '').trim();
-                const matchTexto = memo.includes(moradorNome) || (aptNumero && memo.includes(aptNumero));
-                return mesmoValor && (matchTexto || pendentes.length === 1);
-              }) || pendentes.find(b => Math.abs(Number(b.valor) - absValor) < 0.05);
+              // 1º Nível: Cruzamento de alta fidelidade por Nosso Número
+              let boletoMatch = pendentes.find(b => {
+                if (!b.nossoNumero) return false;
+                const nNum = String(b.nossoNumero).trim().toLowerCase();
+                return nNum.length >= 6 && trnFull.includes(nNum);
+              });
+
+              // 2º Nível: Cruzamento por Valor + (Nome do Morador ou Apartamento ou Nosso Número)
+              if (!boletoMatch) {
+                boletoMatch = pendentes.find(b => {
+                  const mesmoValor = Math.abs(Number(b.valor) - absValor) < 0.1;
+                  if (!mesmoValor) return false;
+
+                  const moradorNome = (b.morador || '').toLowerCase().trim();
+                  const aptNumero = String(b.apt || '').trim();
+                  const nNum = String(b.nossoNumero || '').trim().toLowerCase();
+
+                  if (nNum && nNum.length >= 6 && memo.includes(nNum)) return true;
+                  if (moradorNome && memo.includes(moradorNome)) return true;
+
+                  // Primeiro e último nome
+                  const partes = moradorNome.split(/\s+/).filter(p => p.length > 2);
+                  if (partes.length >= 2 && memo.includes(partes[0]) && memo.includes(partes[partes.length - 1])) {
+                    return true;
+                  }
+
+                  // Apartamento citado no memo do extrato
+                  if (aptNumero && (
+                    memo.includes(`apt ${aptNumero}`) ||
+                    memo.includes(`apto ${aptNumero}`) ||
+                    memo.includes(`ap ${aptNumero}`) ||
+                    memo.includes(` ${aptNumero} `)
+                  )) {
+                    return true;
+                  }
+
+                  return pendentes.length === 1;
+                });
+              }
+
+              // 3º Nível: Correspondência unívoca por valor
+              if (!boletoMatch) {
+                const candidatosValor = pendentes.filter(b => Math.abs(Number(b.valor) - absValor) < 0.05);
+                if (candidatosValor.length === 1) {
+                  boletoMatch = candidatosValor[0];
+                }
+              }
 
               if (boletoMatch) {
                 await updateItem(boletoMatch.id, { ...boletoMatch, status: 'Pago' });
@@ -2998,6 +3057,7 @@ export default function Boletos() {
           }
 
           for (let i = 1; i < lines.length; i++) {
+            const lineRaw = lines[i].toLowerCase();
             const cols = lines[i].split(/[;,]/).map(c => c.trim().replace(/^"|"$/g, ''));
             const nome = idxMorador !== -1 ? cols[idxMorador] : '';
             let valorBruto = cols[idxValor] || '0';
@@ -3006,11 +3066,21 @@ export default function Boletos() {
 
             if (valorLido <= 0) continue;
 
-            const boletoMatch = pendentes.find(b => {
-              const mesmoValor = Math.abs(Number(b.valor) - valorLido) < 0.1;
-              const matchNome = nome ? (b.morador.toLowerCase().includes(nome.toLowerCase()) || nome.toLowerCase().includes(b.morador.toLowerCase())) : true;
-              return mesmoValor && matchNome;
+            // 1º Match por Nosso Número
+            let boletoMatch = pendentes.find(b => {
+              if (!b.nossoNumero) return false;
+              const nNum = String(b.nossoNumero).trim().toLowerCase();
+              return nNum.length >= 6 && lineRaw.includes(nNum);
             });
+
+            // 2º Match por valor + nome
+            if (!boletoMatch) {
+              boletoMatch = pendentes.find(b => {
+                const mesmoValor = Math.abs(Number(b.valor) - valorLido) < 0.1;
+                const matchNome = nome ? (b.morador.toLowerCase().includes(nome.toLowerCase()) || nome.toLowerCase().includes(b.morador.toLowerCase())) : true;
+                return mesmoValor && matchNome;
+              });
+            }
 
             if (boletoMatch) {
               await updateItem(boletoMatch.id, { ...boletoMatch, status: 'Pago' });
@@ -3068,6 +3138,14 @@ export default function Boletos() {
                   <span>Conciliar Extrato (OFX / CSV)</span>
                   <input type="file" accept=".ofx,.csv,.txt" className="hidden" onChange={handleReconciliationExtrato}/>
                 </label>
+                <button 
+                  onClick={()=>setModalImportarPDF(true)} 
+                  className="btn-secondary text-sm flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-900 font-bold shadow-sm"
+                  title="Importar boletos emitidos em PDF e associar automaticamente aos moradores"
+                >
+                  <FileText size={14} className="text-indigo-600" />
+                  <span>Importar Boletos em PDF</span>
+                </button>
                 <button 
                   onClick={()=>setModalImportarPlanilha(true)} 
                   className="btn-secondary text-sm flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold"
@@ -3613,6 +3691,15 @@ export default function Boletos() {
       {modal&&<ModalBoleto data={modal==='new'?null:modal} onClose={()=>setModal(null)} onSave={handleSaveBoleto} moradores={moradores} condominios={condominios} initialCondo={user?.role !== 'Administrador' ? user?.condominio : (condoFilter !== 'Todos' ? condoFilter : '')}/>}
       {modalLote&&<ModalGerarLote condominios={condominios} moradores={moradores} allBoletos={allBoletos} initialCondo={user?.role !== 'Administrador' ? user?.condominio : (condoFilter !== 'Todos' ? condoFilter : '')} onClose={()=>setModalLote(false)} onSave={handleSaveLote}/>}
       {modalImportarPlanilha&&<ModalImportarPlanilha condominios={condominios} moradores={moradores} initialCondo={user?.role !== 'Administrador' ? user?.condominio : (condoFilter !== 'Todos' ? condoFilter : '')} onClose={()=>setModalImportarPlanilha(false)} onSave={handleSaveImportarPlanilha}/>}
+      {modalImportarPDF && (
+        <ModalImportarBoletosPDF
+          condominios={condominios}
+          moradores={moradores}
+          initialCondo={user?.role !== 'Administrador' ? user?.condominio : (condoFilter !== 'Todos' ? condoFilter : '')}
+          onClose={() => setModalImportarPDF(false)}
+          onSave={handleSaveImportarPDF}
+        />
+      )}
       {modalNotificarVencimento && (
         <ModalNotificarVencimento
           boletosPendentes={(() => {

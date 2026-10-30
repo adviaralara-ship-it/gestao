@@ -82,6 +82,12 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
+    // Artigos públicos do Blog institucional da Alpha
+    match /blog_posts/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
     // Módulos confidenciais (Financeiro, Boletos, Documentos, Contratos, etc.)
     // Apenas usuários registrados e autenticados de verdade (bloqueia anônimos)
     match /{document=**} {

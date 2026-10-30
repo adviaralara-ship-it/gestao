@@ -104,10 +104,40 @@ async function conciliarTransacoes(transactions, origem = 'OFX', condominio = 'T
     }
 
     if (isCredit) {
-      const boletoMatch = boletosPendentes.find(b => 
+      const descLower = (tx.description || '').toLowerCase();
+
+      // 1º Match por Nosso Número (se presente no boleto emitido externamente)
+      let boletoMatch = boletosPendentes.find(b => 
         !b._conciliadoTemp &&
-        Math.abs(Number(b.valor) - txValorAbs) < 0.05
+        b.nossoNumero &&
+        String(b.nossoNumero).trim().length >= 6 &&
+        descLower.includes(String(b.nossoNumero).trim().toLowerCase())
       );
+
+      // 2º Match por Valor + Identificação (Nome do Morador ou Apartamento)
+      if (!boletoMatch) {
+        boletoMatch = boletosPendentes.find(b => {
+          if (b._conciliadoTemp) return false;
+          const mesmoValor = Math.abs(Number(b.valor) - txValorAbs) < 0.05;
+          if (!mesmoValor) return false;
+
+          const morador = (b.morador || '').toLowerCase().trim();
+          const apt = String(b.apt || '').trim();
+          if (morador && descLower.includes(morador)) return true;
+          const partes = morador.split(/\s+/).filter(p => p.length > 2);
+          if (partes.length >= 2 && descLower.includes(partes[0]) && descLower.includes(partes[partes.length - 1])) return true;
+          if (apt && (descLower.includes(`apt ${apt}`) || descLower.includes(`apto ${apt}`) || descLower.includes(`ap ${apt}`) || descLower.includes(` ${apt} `))) return true;
+          return false;
+        });
+      }
+
+      // 3º Fallback por valor puro
+      if (!boletoMatch) {
+        boletoMatch = boletosPendentes.find(b => 
+          !b._conciliadoTemp &&
+          Math.abs(Number(b.valor) - txValorAbs) < 0.05
+        );
+      }
 
       if (boletoMatch) {
         boletoMatch._conciliadoTemp = true;
