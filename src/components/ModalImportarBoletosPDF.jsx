@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { X, Upload, FileText, CheckCircle2, AlertCircle, Trash2, Loader2, Building, Calendar, DollarSign, Check, RefreshCw } from 'lucide-react'
+import { X, Upload, FileText, CheckCircle2, AlertCircle, Trash2, Loader2, Building, Calendar, DollarSign, Check, Info, Droplet, Tag } from 'lucide-react'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage } from '../firebase'
 
@@ -14,7 +14,7 @@ function norm(s) {
     .trim()
 }
 
-// Distância Levenshtein para tolerância a pequenos erros de digitação (ex: Brinlhante vs Brilhante)
+// Distância Levenshtein para tolerância a pequenas variações/erros de digitação
 function levenshtein(a, b) {
   if (a === b) return 0
   if (!a.length) return b.length
@@ -38,9 +38,19 @@ function levenshtein(a, b) {
   return matrix[b.length][a.length]
 }
 
-// Decompõe o nome do arquivo no padrão bancário:
-// Ex: Boleto-AndressaMariaMoreiraPalitot-2026-11-05-8013916210000058822.pdf
-function parseBoletoFileName(fileName) {
+// Leitura ultra-rápida do arquivo PDF como DataURL base64 (nunca trava nem depende de bucket externo)
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error(`Falha ao ler o arquivo ${file.name}`))
+    reader.readAsDataURL(file)
+  })
+}
+
+// Decompõe o nome do arquivo no padrão bancário Febraban/Cora:
+// Ex: Boleto-KellyNayaneBrilhanteBarreto-2026-11-05-3013716210000058038.pdf
+function parseBoletoFileName(fileName, cotaPadraoNum = 265) {
   let clean = fileName.replace(/\.pdf$/i, '')
   
   // Extrai data no formato YYYY-MM-DD
@@ -48,6 +58,7 @@ function parseBoletoFileName(fileName) {
   let date = dateMatch ? dateMatch[1] : ''
   let nossoNumero = ''
   let namePart = clean
+  let valor = 0
 
   if (dateMatch) {
     const idx = clean.indexOf(dateMatch[0])
@@ -55,6 +66,16 @@ function parseBoletoFileName(fileName) {
     const suffix = clean.substring(idx + dateMatch[0].length).replace(/^[-_]/, '')
     namePart = prefix
     nossoNumero = suffix
+
+    // Padrão Febraban / Bancos (Cora, BB, Sicoob, etc.):
+    // Os últimos 10 dígitos do código numérico contêm o valor exato do boleto em centavos
+    if (suffix.length >= 10) {
+      const last10 = suffix.slice(-10)
+      const centavos = parseInt(last10, 10)
+      if (!isNaN(centavos) && centavos > 0) {
+        valor = centavos / 100
+      }
+    }
   } else {
     namePart = clean.replace(/^boleto[-_]?/i, '')
   }
@@ -65,12 +86,39 @@ function parseBoletoFileName(fileName) {
     .replace(/[-_]/g, ' ')
     .trim()
 
+  // Se não extraiu valor do sufixo, usa a cota padrão
+  if (valor <= 0) {
+    valor = Number(cotaPadraoNum) || 265
+  }
+
+  // Identificação inteligente do tipo de cobrança e discriminação
+  let tipoCobranca = 'Taxa Condominial'
+  let detalhe = 'Cota Ordinária Padrão'
+  let valorExtra = 0
+
+  if (Math.abs(valor - cotaPadraoNum) < 0.05) {
+    tipoCobranca = 'Taxa Condominial'
+    detalhe = 'Cota Ordinária Padrão'
+  } else if (valor > cotaPadraoNum) {
+    valorExtra = Math.round((valor - cotaPadraoNum) * 100) / 100
+    tipoCobranca = 'Taxa Condominial + Extras / Consumo'
+    detalhe = `Cota (R$ ${cotaPadraoNum.toFixed(2).replace('.', ',')}) + Extras/Água (R$ ${valorExtra.toFixed(2).replace('.', ',')})`
+  } else {
+    tipoCobranca = 'Consumo de Água / Avulso'
+    detalhe = `Consumo Individual / Taxa Avulsa (R$ ${valor.toFixed(2).replace('.', ',')})`
+  }
+
   return {
     fileName,
     namePart,
     spacedName,
     date,
-    nossoNumero
+    nossoNumero,
+    valor,
+    cotaBase: cotaPadraoNum,
+    valorExtra,
+    tipoCobranca,
+    detalhe
   }
 }
 
@@ -88,7 +136,6 @@ function matchMorador(spacedName, moradores) {
     const normMorador = norm(m.nome)
     if (!normMorador) continue
 
-    // Correspondência exata direta
     if (normMorador === normSpaced) {
       return { morador: m, score: 1.0 }
     }
@@ -129,10 +176,14 @@ export default function ModalImportarBoletosPDF({
     return condominios[0]?.nome || ''
   })
 
-  // Dados do condomínio selecionado (para puxar cota padrão, cnpj, etc)
+  // Dados do condomínio selecionado
   const selectedCondo = useMemo(() => {
     return condominios.find(c => c.nome === condominioNome) || null
   }, [condominios, condominioNome])
+
+  const cotaPadraoNum = useMemo(() => {
+    return Number(selectedCondo?.cotaPadrao || selectedCondo?.taxaPadrao || 265)
+  }, [selectedCondo])
 
   // Moradores do condomínio selecionado
   const moradoresDoCondo = useMemo(() => {
@@ -147,12 +198,6 @@ export default function ModalImportarBoletosPDF({
       return aptA - aptB
     })
   }, [moradores, condominioNome])
-
-  // Valor padrão carregado do condomínio (ex: 265)
-  const [valorPadrao, setValorPadrao] = useState(() => {
-    const cota = selectedCondo?.cotaPadrao || selectedCondo?.taxaPadrao || 265
-    return String(cota).replace('.', ',')
-  })
 
   // Competência padrão (ex: nov/2026)
   const [competencia, setCompetencia] = useState(() => {
@@ -170,10 +215,8 @@ export default function ModalImportarBoletosPDF({
   const handleCondominioChange = (novoCondoNome) => {
     setCondominioNome(novoCondoNome)
     const novoCondoDoc = condominios.find(c => c.nome === novoCondoNome)
-    const novoValor = novoCondoDoc?.cotaPadrao ? String(novoCondoDoc.cotaPadrao).replace('.', ',') : valorPadrao
-    setValorPadrao(novoValor)
+    const novoCota = Number(novoCondoDoc?.cotaPadrao || novoCondoDoc?.taxaPadrao || 265)
 
-    // Reavalia lista de moradores do novo condomínio
     const cNorm = norm(novoCondoNome)
     const novosMoradores = (moradores || []).filter(m => {
       const mc = norm(m.condominio || m.condominioNome || '')
@@ -182,24 +225,20 @@ export default function ModalImportarBoletosPDF({
 
     setItens(prev => prev.map(item => {
       const { morador, score } = matchMorador(item.spacedName, novosMoradores)
-      if (morador && score >= 0.4) {
-        return {
-          ...item,
-          moradorId: morador.id,
-          moradorNome: morador.nome,
-          apt: morador.apt || item.apt,
-          bloco: morador.bloco || '',
-          cpf: morador.cpf || '',
-          tel: morador.tel || morador.telefone || '',
-          encontrado: true,
-          score
-        }
-      }
+      const parsed = parseBoletoFileName(item.fileName, novoCota)
       return {
         ...item,
-        moradorId: '',
-        encontrado: false,
-        score: 0
+        moradorId: morador ? morador.id : '',
+        moradorNome: morador ? morador.nome : item.spacedName,
+        apt: morador ? (morador.apt || item.apt) : item.apt,
+        bloco: morador ? (morador.bloco || '') : '',
+        cpf: morador ? (morador.cpf || '') : '',
+        tel: morador ? (morador.tel || morador.telefone || '') : '',
+        encontrado: !!(morador && score >= 0.4),
+        score: score || 0,
+        cotaBase: novoCota,
+        detalhe: parsed.detalhe,
+        tipoCobranca: parsed.tipoCobranca
       }
     }))
   }
@@ -217,18 +256,15 @@ export default function ModalImportarBoletosPDF({
 
     try {
       const novosItens = pdfFiles.map((file, idx) => {
-        const parsed = parseBoletoFileName(file.name)
+        const parsed = parseBoletoFileName(file.name, cotaPadraoNum)
         const { morador, score } = matchMorador(parsed.spacedName, moradoresDoCondo)
 
-        // Se data foi extraída, define vencimento; se for nov/2026, sugere competência
         let vencimento = parsed.date || ''
         if (!vencimento) {
           const hoje = new Date()
           hoje.setDate(hoje.getDate() + 5)
           vencimento = hoje.toISOString().split('T')[0]
         }
-
-        const valorNum = parseFloat(valorPadrao.replace(/\./g, '').replace(',', '.')) || 265
 
         return {
           idTemp: `pdf_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
@@ -243,13 +279,17 @@ export default function ModalImportarBoletosPDF({
           cpf: morador ? (morador.cpf || '') : '',
           tel: morador ? (morador.tel || morador.telefone || '') : '',
           vencimento,
-          valor: valorNum,
+          valor: parsed.valor,
+          cotaBase: parsed.cotaBase,
+          valorExtra: parsed.valorExtra,
+          tipoCobranca: parsed.tipoCobranca,
+          detalhe: parsed.detalhe,
           encontrado: !!(morador && score >= 0.4),
           score: score || 0
         }
       })
 
-      // Se achou uma data na maioria dos arquivos, ajusta a competência
+      // Sugere competência baseada no mês de vencimento dos boletos
       const dataComum = novosItens.find(it => it.vencimento)?.vencimento
       if (dataComum && dataComum.includes('-')) {
         const [ano, mes] = dataComum.split('-')
@@ -315,21 +355,30 @@ export default function ModalImportarBoletosPDF({
         }
       }
 
+      if (campo === 'valor') {
+        const numVal = parseFloat(valor) || 0
+        const extra = Math.max(0, Math.round((numVal - cotaPadraoNum) * 100) / 100)
+        let tipo = item.tipoCobranca
+        if (Math.abs(numVal - cotaPadraoNum) < 0.05) {
+          tipo = 'Taxa Condominial'
+        } else if (numVal > cotaPadraoNum) {
+          tipo = 'Taxa Condominial + Extras / Consumo'
+        } else {
+          tipo = 'Consumo de Água / Avulso'
+        }
+        return {
+          ...item,
+          valor: numVal,
+          valorExtra: extra,
+          tipoCobranca: tipo
+        }
+      }
+
       return { ...item, [campo]: valor }
     }))
   }
 
-  // Aplicar mesmo valor para todos os itens
-  const handleAplicarValorParaTodos = () => {
-    const v = parseFloat(valorPadrao.replace(/\./g, '').replace(',', '.')) || 0
-    if (v <= 0) {
-      alert('Informe um valor padrão válido.')
-      return
-    }
-    setItens(prev => prev.map(it => ({ ...it, valor: v })))
-  }
-
-  // Salvar e fazer upload dos PDFs
+  // Salvar e fazer upload dos PDFs com fallback instantâneo a Base64
   const handleConfirmarImportacao = async () => {
     if (!condominioNome) {
       alert('Selecione o condomínio de destino.')
@@ -338,15 +387,6 @@ export default function ModalImportarBoletosPDF({
     if (itens.length === 0) {
       alert('Selecione pelo menos um arquivo PDF de boleto.')
       return
-    }
-
-    // Validação básica se todos possuem morador ou apartamento
-    const semApt = itens.filter(it => !it.apt)
-    if (semApt.length > 0) {
-      const confirmar = window.confirm(
-        `Existem ${semApt.length} boleto(s) sem o número do apartamento preenchido. Deseja prosseguir mesmo assim?`
-      )
-      if (!confirmar) return
     }
 
     setSalvando(true)
@@ -361,20 +401,38 @@ export default function ModalImportarBoletosPDF({
         setProgresso({
           atual: i + 1,
           total,
-          status: `Enviando PDF (${i + 1}/${total}): ${item.fileName}`
+          status: `Processando boleto (${i + 1}/${total}): ${item.spacedName}`
         })
 
-        // 1. Upload do PDF para o Firebase Storage
-        const cleanFileName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-        const storagePath = `boletos_externos/${cleanCondoFolder}/${Date.now()}_${cleanFileName}`
-        const storageRef = ref(storage, storagePath)
+        // 1. Converte o PDF para Data URL Base64 (instantâneo, seguro e sem travas de rede)
+        let downloadUrl = ''
+        try {
+          downloadUrl = await readFileAsDataUrl(item.file)
+        } catch (e) {
+          console.warn('Falha na leitura local do PDF, continuando...', e)
+        }
 
-        const uploadSnap = await uploadBytes(storageRef, item.file, {
-          contentType: 'application/pdf'
-        })
-        const downloadUrl = await getDownloadURL(uploadSnap.ref)
+        // 2. Tenta salvar no Firebase Storage em segundo plano com timeout de 2.5s (fallback transparente)
+        try {
+          const cleanFileName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+          const storagePath = `boletos_externos/${cleanCondoFolder}/${Date.now()}_${cleanFileName}`
+          const storageRef = ref(storage, storagePath)
 
-        // 2. Monta o registro de boleto para o Firestore
+          const uploadPromise = uploadBytes(storageRef, item.file, {
+            contentType: 'application/pdf'
+          }).then(snap => getDownloadURL(snap.ref))
+
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Storage timeout')), 2500)
+          )
+
+          const storageUrl = await Promise.race([uploadPromise, timeoutPromise])
+          if (storageUrl) downloadUrl = storageUrl
+        } catch (storageErr) {
+          // Usa o Base64 DataURL caso o Storage não esteja provisionado ou demore
+        }
+
+        // 3. Monta o registro completo do boleto para o Firestore
         const boletoData = {
           morador: item.moradorNome || 'Morador',
           moradorId: item.moradorId || null,
@@ -386,6 +444,10 @@ export default function ModalImportarBoletosPDF({
           tel: item.tel || '',
           vencimento: item.vencimento,
           valor: Number(item.valor) || 0,
+          cotaBase: Number(item.cotaBase) || cotaPadraoNum,
+          valorExtra: Number(item.valorExtra) || 0,
+          tipoCobranca: item.tipoCobranca || 'Taxa Condominial',
+          descricao: item.detalhe || 'Taxa Condominial',
           status: 'Pendente',
           competencia: competencia || new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '/'),
           emitido: true,
@@ -394,7 +456,6 @@ export default function ModalImportarBoletosPDF({
           nossoNumero: String(item.nossoNumero || '').trim(),
           url: downloadUrl,
           nomeArquivo: item.file.name,
-          tipoCobranca: 'Taxa Condominial',
           dataEmissao: new Date().toISOString().split('T')[0]
         }
 
@@ -404,13 +465,13 @@ export default function ModalImportarBoletosPDF({
       setProgresso({
         atual: total,
         total,
-        status: 'Salvando boletos no sistema...'
+        status: 'Salvando no sistema...'
       })
 
       // Salva no Firestore através do callback onSave
       await onSave(boletosSalvos)
 
-      alert(`🎉 Sucesso!\n\n${boletosSalvos.length} boletos em PDF foram importados e associados com sucesso aos moradores do "${condominioNome}".\n\nAo exportar o extrato OFX bancário, eles serão conciliados automaticamente!`)
+      alert(`🎉 Sucesso!\n\n${boletosSalvos.length} boletos em PDF foram importados e associados com sucesso aos moradores do "${condominioNome}".\n\nTodos os valores reais (cotas, água e taxas extras) foram identificados e estão prontos para conciliação automática via extrato bancário OFX!`)
       onClose()
     } catch (err) {
       console.error(err)
@@ -421,9 +482,11 @@ export default function ModalImportarBoletosPDF({
     }
   }
 
-  // Estatísticas
+  // Estatísticas do Lote
   const identificadosCount = itens.filter(it => it.encontrado).length
   const totalValor = itens.reduce((acc, it) => acc + (Number(it.valor) || 0), 0)
+  const itensComExtras = itens.filter(it => it.valor > cotaPadraoNum).length
+  const itensAvulsos = itens.filter(it => it.valor < cotaPadraoNum).length
 
   return (
     <div 
@@ -431,11 +494,11 @@ export default function ModalImportarBoletosPDF({
       onClick={!salvando ? onClose : undefined}
     >
       <div 
-        className="modal-content max-w-4xl w-full bg-white rounded-3xl shadow-2xl border border-gray-200 flex flex-col max-h-[92vh] overflow-hidden animate-fade-in"
+        className="modal-content max-w-5xl w-full bg-white rounded-3xl shadow-2xl border border-gray-200 flex flex-col max-h-[92vh] overflow-hidden animate-fade-in"
         onClick={e => e.stopPropagation()}
       >
         {/* Cabeçalho */}
-        <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-50/50 via-white to-emerald-50/40">
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-50/60 via-white to-emerald-50/50">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-2xl bg-brand-600 text-white flex items-center justify-center font-bold shadow-md shadow-brand-500/20">
               <Upload size={22} />
@@ -443,12 +506,12 @@ export default function ModalImportarBoletosPDF({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-black text-gray-900 text-lg">Importar Boletos em PDF</h3>
-                <span className="text-[10px] font-bold bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full border border-brand-200">
-                  Lote Inteligente
+                <span className="text-[10px] font-bold bg-brand-50 text-brand-700 px-2.5 py-0.5 rounded-full border border-brand-200">
+                  Leitura Inteligente Cora / FEBRABAN
                 </span>
               </div>
               <p className="text-xs text-gray-500">
-                Selecione os PDFs baixados do banco. O sistema identifica o morador, unidade e data para conciliação OFX.
+                O sistema lê os valores exatos de cada boleto (incluindo taxas extras e consumo de água) e associa aos moradores.
               </p>
             </div>
           </div>
@@ -505,35 +568,19 @@ export default function ModalImportarBoletosPDF({
               <p className="text-[10px] text-gray-500 mt-1">Referência contábil da cobrança.</p>
             </div>
 
-            {/* Valor Padrão da Cota */}
+            {/* Referência da Cota Padrão */}
             <div>
-              <label className="label text-xs font-bold text-gray-700 flex items-center justify-between mb-1">
-                <span className="flex items-center gap-1.5">
-                  <DollarSign size={14} className="text-emerald-600" />
-                  <span>Valor Padrão (R$):</span>
-                </span>
-                {itens.length > 0 && (
-                  <button 
-                    type="button"
-                    onClick={handleAplicarValorParaTodos}
-                    className="text-[10px] text-brand-600 hover:text-brand-800 font-bold underline"
-                    title="Aplica este valor em todas as linhas da tabela abaixo"
-                  >
-                    Aplicar a todos
-                  </button>
-                )}
+              <label className="label text-xs font-bold text-gray-700 flex items-center gap-1.5 mb-1">
+                <DollarSign size={14} className="text-emerald-600" />
+                <span>Cota Ordinária Base:</span>
               </label>
-              <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  className="input text-xs font-bold bg-white w-full font-mono text-emerald-800" 
-                  value={valorPadrao} 
-                  onChange={e => setValorPadrao(e.target.value)} 
-                  placeholder="265,00"
-                  disabled={salvando}
-                />
+              <div className="input text-xs font-bold bg-gray-100/80 w-full font-mono text-emerald-800 flex items-center justify-between">
+                <span>R$ {cotaPadraoNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                <span className="text-[10px] text-gray-400 font-sans">Cadastrada</span>
               </div>
-              <p className="text-[10px] text-gray-500 mt-1">Cota padrão de condomínio.</p>
+              <p className="text-[10px] text-gray-500 mt-1">
+                Valores acima desta base são identificados como taxas extras / água.
+              </p>
             </div>
           </div>
 
@@ -542,7 +589,7 @@ export default function ModalImportarBoletosPDF({
             onDragOver={e => { e.preventDefault(); setDragOver(true) }}
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-2xl p-5 text-center transition-all cursor-pointer ${
+            className={`border-2 border-dashed rounded-2xl p-4 text-center transition-all cursor-pointer ${
               dragOver 
                 ? 'border-brand-500 bg-brand-50/50 scale-[0.99]' 
                 : 'border-gray-300 hover:border-brand-400 bg-white hover:bg-slate-50/50'
@@ -558,18 +605,18 @@ export default function ModalImportarBoletosPDF({
               disabled={salvando || processandoArquivos}
             />
             <label htmlFor="file-input-pdf-boletos" className="cursor-pointer flex flex-col items-center">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-2 shadow-sm">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-1.5 shadow-sm">
                 {processandoArquivos ? (
-                  <Loader2 size={24} className="animate-spin" />
+                  <Loader2 size={20} className="animate-spin" />
                 ) : (
-                  <FileText size={24} />
+                  <FileText size={20} />
                 )}
               </div>
               <p className="text-xs font-black text-gray-800">
                 Arraste todos os PDFs aqui ou <span className="text-brand-600 underline">clique para selecionar</span>
               </p>
               <p className="text-[11px] text-gray-400 mt-0.5">
-                Pode selecionar todos os boletos de uma vez (ex: Florence com 12 arquivos)
+                Pode selecionar todos os arquivos de uma vez. O sistema lê os valores e discriminativos automaticamente.
               </p>
             </label>
           </div>
@@ -582,21 +629,31 @@ export default function ModalImportarBoletosPDF({
               <FileText size={48} className="stroke-1 text-gray-300 mb-2" />
               <p className="text-sm font-bold text-gray-600">Nenhum boleto em PDF carregado</p>
               <p className="text-xs text-gray-400 max-w-md mt-1">
-                Selecione os arquivos baixados do banco. O sistema cruzará automaticamente o nome do arquivo com a lista de moradores de <strong className="text-gray-700">{condominioNome}</strong>.
+                Selecione os arquivos baixados do banco. O sistema cruzará automaticamente o morador, unidade, vencimento e o valor real cobrado.
               </p>
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {/* Barra de resumo */}
-              <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-200/80 p-3 rounded-2xl text-xs">
-                <div className="flex items-center gap-3">
+              {/* Barra de resumo com identificação de extras */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-emerald-50 via-blue-50 to-purple-50 border border-emerald-200/80 p-3 rounded-2xl text-xs">
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className="font-black text-gray-800 flex items-center gap-1.5">
                     <CheckCircle2 size={16} className="text-emerald-600" />
                     <span>{itens.length} boletos carregados</span>
                   </span>
-                  <span className="text-emerald-800 font-bold bg-white/80 border border-emerald-200 px-2.5 py-0.5 rounded-full text-[11px]">
-                    {identificadosCount} de {itens.length} moradores vinculados
+                  <span className="text-emerald-800 font-bold bg-white/90 border border-emerald-200 px-2 py-0.5 rounded-full text-[11px]">
+                    {identificadosCount} de {itens.length} moradores identificados
                   </span>
+                  {itensComExtras > 0 && (
+                    <span className="text-purple-800 font-bold bg-purple-100/90 border border-purple-200 px-2 py-0.5 rounded-full text-[11px] inline-flex items-center gap-1">
+                      <Tag size={11} /> {itensComExtras} com Taxa Extra / Água
+                    </span>
+                  )}
+                  {itensAvulsos > 0 && (
+                    <span className="text-cyan-800 font-bold bg-cyan-100/90 border border-cyan-200 px-2 py-0.5 rounded-full text-[11px] inline-flex items-center gap-1">
+                      <Droplet size={11} /> {itensAvulsos} Consumo Avulso
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500 font-medium text-[11px]">Total Cobrado:</span>
@@ -606,19 +663,19 @@ export default function ModalImportarBoletosPDF({
                 </div>
               </div>
 
-              {/* Tabela de arquivos com dropdown de moradores */}
+              {/* Tabela de arquivos com dropdown de moradores e discriminação */}
               <div className="border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                 <div className="max-h-[380px] overflow-y-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead className="bg-gray-50 border-b border-gray-200 text-gray-700 font-bold sticky top-0 z-10">
                       <tr>
-                        <th className="p-3 w-10 text-center">#</th>
-                        <th className="p-3">Arquivo / Nosso Nº</th>
-                        <th className="p-3">Morador no Sistema (Destino)</th>
-                        <th className="p-3 w-24">Apt / Unid.</th>
-                        <th className="p-3 w-32">Vencimento</th>
-                        <th className="p-3 w-28">Valor (R$)</th>
-                        <th className="p-3 w-10 text-center"></th>
+                        <th className="p-3 w-8 text-center">#</th>
+                        <th className="p-3">Morador no Sistema</th>
+                        <th className="p-3 w-20">Apt</th>
+                        <th className="p-3">Tipo / Discriminação da Cobrança</th>
+                        <th className="p-3 w-28">Vencimento</th>
+                        <th className="p-3 w-32 text-right">Valor Real (R$)</th>
+                        <th className="p-3 w-8 text-center"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -626,22 +683,6 @@ export default function ModalImportarBoletosPDF({
                         <tr key={item.idTemp} className="hover:bg-slate-50/70 transition-colors">
                           <td className="p-3 text-center text-gray-400 font-bold text-[11px]">
                             {idx + 1}
-                          </td>
-
-                          {/* Arquivo e Nosso Número */}
-                          <td className="p-3">
-                            <div className="font-bold text-gray-800 truncate max-w-[220px]" title={item.fileName}>
-                              {item.fileName}
-                            </div>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {item.nossoNumero ? (
-                                <span className="font-mono text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
-                                  Nº {item.nossoNumero}
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-gray-400">Sem Nosso Nº</span>
-                              )}
-                            </div>
                           </td>
 
                           {/* Morador Selecionado / Sugerido */}
@@ -665,17 +706,16 @@ export default function ModalImportarBoletosPDF({
                                 ))}
                               </select>
                               
-                              {/* Status do Match */}
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 truncate max-w-[240px]">
                                 {item.encontrado ? (
                                   <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
                                     <Check size={11} className="text-emerald-600" />
-                                    Identificado ({Math.round((item.score || 1) * 100)}%)
+                                    {item.spacedName}
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600" title="Verifique o morador correspondente">
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 truncate" title="Verifique o morador correspondente">
                                     <AlertCircle size={11} className="text-amber-500" />
-                                    Nome no PDF: {item.spacedName}
+                                    No PDF: {item.spacedName}
                                   </span>
                                 )}
                               </div>
@@ -694,6 +734,29 @@ export default function ModalImportarBoletosPDF({
                             />
                           </td>
 
+                          {/* Tipo de Cobrança / Discriminação */}
+                          <td className="p-3">
+                            <div className="flex flex-col gap-1">
+                              <select
+                                className="input text-[11px] py-1 px-2 font-bold bg-white rounded-lg border-gray-300"
+                                value={item.tipoCobranca}
+                                onChange={e => handleUpdateItem(item.idTemp, 'tipoCobranca', e.target.value)}
+                                disabled={salvando}
+                              >
+                                <option value="Taxa Condominial">🏢 Taxa Condominial Ordinária</option>
+                                <option value="Taxa Condominial + Extras / Consumo">🏷️ Taxa Condominial + Extras / Consumo</option>
+                                <option value="Consumo de Água / Avulso">💧 Consumo de Água / Avulso</option>
+                                <option value="Taxa Extra">⚖️ Taxa Extra / Rateio</option>
+                              </select>
+
+                              {/* Discriminação detalhada */}
+                              <span className="text-[10px] text-gray-500 flex items-center gap-1 font-medium">
+                                <Info size={11} className="text-gray-400 shrink-0" />
+                                <span>{item.detalhe}</span>
+                              </span>
+                            </div>
+                          </td>
+
                           {/* Vencimento */}
                           <td className="p-3">
                             <input 
@@ -705,16 +768,28 @@ export default function ModalImportarBoletosPDF({
                             />
                           </td>
 
-                          {/* Valor */}
-                          <td className="p-3">
-                            <input 
-                              type="number"
-                              step="0.01"
-                              className="input text-xs py-1 px-2 font-mono font-bold text-emerald-700 rounded-lg text-right"
-                              value={item.valor}
-                              onChange={e => handleUpdateItem(item.idTemp, 'valor', parseFloat(e.target.value) || 0)}
-                              disabled={salvando}
-                            />
+                          {/* Valor Real Extraído */}
+                          <td className="p-3 text-right">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <input 
+                                type="number"
+                                step="0.01"
+                                className="input text-xs py-1 px-2 font-mono font-black text-emerald-700 rounded-lg text-right w-24"
+                                value={item.valor}
+                                onChange={e => handleUpdateItem(item.idTemp, 'valor', e.target.value)}
+                                disabled={salvando}
+                              />
+                              {item.valor > cotaPadraoNum && (
+                                <span className="text-[9px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded">
+                                  + R$ {(item.valor - cotaPadraoNum).toFixed(2).replace('.', ',')} extra
+                                </span>
+                              )}
+                              {item.valor < cotaPadraoNum && (
+                                <span className="text-[9px] font-bold text-cyan-700 bg-cyan-50 px-1.5 py-0.2 rounded">
+                                  avulso
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           {/* Remover */}

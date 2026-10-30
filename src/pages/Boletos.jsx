@@ -360,6 +360,26 @@ function BoletoPrintModal({ boleto, condominio, moradores = [], onClose }) {
             <span className="text-xs text-gray-400 truncate max-w-[140px] sm:max-w-none">• {condominio?.nome || 'Condomínio'}</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {boleto.url && (
+              <button 
+                onClick={() => {
+                  if (boleto.url.startsWith('data:')) {
+                    const link = document.createElement('a')
+                    link.href = boleto.url
+                    link.download = boleto.nomeArquivo || `Boleto-${boleto.morador || 'Morador'}.pdf`
+                    document.body.appendChild(link)
+                    link.click()
+                    document.body.removeChild(link)
+                  } else {
+                    window.open(boleto.url, '_blank')
+                  }
+                }}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm"
+                title="Abrir o PDF original emitido pelo banco"
+              >
+                <FileText size={14} /> PDF Banco
+              </button>
+            )}
             <button 
               onClick={shareWhatsAppDirect} 
               disabled={enviandoDirectWhats} 
@@ -3505,6 +3525,27 @@ export default function Boletos() {
                             <button onClick={()=>setViewing(b)} className="btn-secondary py-1 px-2.5 text-xs text-indigo-700 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 flex items-center gap-1 font-bold">
                               <Download size={12}/> Baixar PDF
                             </button>
+
+                            {b.url && (
+                              <button 
+                                onClick={() => {
+                                  if (b.url.startsWith('data:')) {
+                                    const link = document.createElement('a')
+                                    link.href = b.url
+                                    link.download = b.nomeArquivo || `Boleto-${b.morador || 'Morador'}.pdf`
+                                    document.body.appendChild(link)
+                                    link.click()
+                                    document.body.removeChild(link)
+                                  } else {
+                                    window.open(b.url, '_blank')
+                                  }
+                                }} 
+                                className="btn-secondary py-1 px-2.5 text-xs text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100 flex items-center gap-1 font-bold shadow-xs"
+                                title="Abrir ou baixar o PDF original emitido pelo banco"
+                              >
+                                <FileText size={12} className="text-rose-600" /> PDF Banco
+                              </button>
+                            )}
 
                             {(user?.role === 'Administrador' || user?.role === 'Financeiro') && !b.emitido && (
                               <button onClick={()=>emitirBoleto(b)} className="btn-primary py-1 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1">
