@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Shield, User, Lock, Mail, ArrowRight, CheckCircle, Phone, Building, DoorOpen, Layers, Check, Smartphone, Clock, ShieldAlert } from 'lucide-react'
 import { collection, addDoc, serverTimestamp, getDocs, updateDoc, doc, query, where } from 'firebase/firestore'
 import { db, secondaryAuth } from '../firebase'
-import { createUserWithEmailAndPassword, signOut } from 'firebase/auth'
+import { createUserWithEmailAndPassword, signOut, sendEmailVerification } from 'firebase/auth'
 import { sindicoPerms, porteiroPerms, moradorPerms, conselhoPerms, allModulesPerms } from '../context/AuthContext'
 import { useFirestore } from '../hooks/useFirestore'
 import { dispararAlarmeSeguranca } from '../utils/alarmeService'
@@ -107,7 +107,15 @@ export default function Cadastro() {
 
       // 1. Cria conta no Firebase Authentication
       try {
-        await createUserWithEmailAndPassword(secondaryAuth, emailClean, form.senha)
+        const userCred = await createUserWithEmailAndPassword(secondaryAuth, emailClean, form.senha)
+        try {
+          await sendEmailVerification(userCred.user, {
+            url: window.location.origin ? `${window.location.origin}/login` : 'https://app.alphaadmsc.com.br/login',
+            handleCodeInApp: false
+          })
+        } catch (vErr) {
+          console.warn('Aviso ao enviar e-mail de verificação:', vErr)
+        }
         await signOut(secondaryAuth)
       } catch (authErr) {
         if (authErr.code === 'auth/email-already-in-use') {
@@ -173,6 +181,8 @@ export default function Cadastro() {
         status: isGestao ? 'Pendente' : 'Ativo',
         pendenteAprovacao: isGestao,
         origem: 'auto-cadastro',
+        emailVerificado: false,
+        pendenteVerificacaoEmail: true,
         _createdAt: serverTimestamp()
       })
 
@@ -319,11 +329,23 @@ export default function Cadastro() {
           ) : (
             <>
               <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle size={32} className="text-emerald-500"/>
+                <Mail size={32} className="text-emerald-600"/>
               </div>
-              <h2 className="text-xl font-bold text-gray-800 mb-2">Cadastro concluído!</h2>
-              <p className="text-gray-500 text-sm mb-4">Seu cadastro foi realizado com sucesso. Você já pode fazer login usando seu e-mail e senha.</p>
+              <h2 className="text-xl font-bold text-gray-800 mb-2">Conta criada com sucesso!</h2>
               
+              <div className="mb-5 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-left">
+                <p className="text-xs font-bold text-emerald-900 mb-1 flex items-center gap-1.5">
+                  <CheckCircle size={15} className="text-emerald-600" />
+                  E-mail de confirmação enviado
+                </p>
+                <p className="text-xs text-emerald-800 leading-relaxed">
+                  Enviamos um link de confirmação para <b>{form.email}</b>. Acesse seu e-mail e clique no link para validar sua conta com total segurança.
+                </p>
+                <p className="text-[11px] text-emerald-700 mt-2">
+                  💡 <i>Caso não encontre na caixa de entrada em instantes, verifique também a pasta de <b>Spam</b> ou <b>Lixo Eletrônico</b>.</i>
+                </p>
+              </div>
+
               <div className="mb-6 p-3.5 bg-brand-50 border border-brand-200 rounded-2xl text-left flex items-start gap-2.5">
                 <Smartphone size={22} className="text-brand-600 shrink-0 mt-0.5" />
                 <div className="text-xs text-brand-900">

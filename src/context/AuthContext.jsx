@@ -90,6 +90,9 @@ async function fetchUserProfile(firebaseUser) {
           bloco: data.bloco || '',
           unidade: data.unidade || data.apt || '',
           apt: data.apt || data.unidade || '',
+          origem: data.origem || '',
+          pendenteVerificacaoEmail: data.pendenteVerificacaoEmail || false,
+          emailVerificado: data.emailVerificado || false,
         }
     }
 
@@ -125,6 +128,9 @@ async function fetchUserProfile(firebaseUser) {
         bloco: data.bloco || '',
         unidade: data.unidade || data.apt || '',
         apt: data.apt || data.unidade || '',
+        origem: data.origem || '',
+        pendenteVerificacaoEmail: data.pendenteVerificacaoEmail || false,
+        emailVerificado: data.emailVerificado || false,
       }
     }
 
@@ -197,6 +203,23 @@ export function AuthProvider({ children }) {
       // Busca perfil imediatamente para evitar race condition na navegação
       const profile = await fetchUserProfile(credential.user)
       if (profile) {
+        // Se for cadastro que exige confirmação de e-mail e ainda não foi verificado
+        const isMaster = !!MASTER_PROFILES[emailLower]
+        if (!isMaster && !credential.user.emailVerified && (profile.pendenteVerificacaoEmail || profile.origem === 'auto-cadastro')) {
+          await signOut(auth)
+          return 'Seu e-mail ainda não foi confirmado. Enviamos um link de confirmação para o seu e-mail ao cadastrar. Por favor, acesse seu e-mail e clique no link de validação para ativar seu acesso.'
+        }
+
+        // Se confirmou o e-mail no Firebase, atualiza a flag no banco
+        if (credential.user.emailVerified && profile.pendenteVerificacaoEmail) {
+          try {
+            await updateDoc(doc(db, 'usuarios', profile.id), {
+              emailVerificado: true,
+              pendenteVerificacaoEmail: false
+            })
+          } catch (e) {}
+        }
+
         setUser(profile)
         return true
       } else {

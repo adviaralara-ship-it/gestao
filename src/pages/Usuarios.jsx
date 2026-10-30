@@ -1,11 +1,11 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, Plus, Shield, Edit2, Trash2, Eye, EyeOff, KeyRound, Building, Layers, DoorOpen, Phone, Search, CheckSquare, ShieldAlert, CheckCircle2, Clock } from 'lucide-react'
+import { Users, Plus, Shield, Edit2, Trash2, Eye, EyeOff, KeyRound, Building, Layers, DoorOpen, Phone, Search, CheckSquare, ShieldAlert, CheckCircle2, Clock, Mail } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore'
 import { db, secondaryAuth } from '../firebase'
 import { enviarEmail } from '../emailjs.config'
-import { createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth'
+import { createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, sendEmailVerification } from 'firebase/auth'
 import { dispararAlarmeSeguranca } from '../utils/alarmeService'
 import { useAuth } from '../context/AuthContext'
 
@@ -84,6 +84,8 @@ function Modal({ data, onClose, onSave, condominios = [], currentUser }) {
   const availableRoles = isAdm 
     ? roles 
     : roles.filter(r => r !== 'Administrador')
+
+  const [enviarEmailCriacao, setEnviarEmailCriacao] = useState(true)
 
   const [form, setForm] = useState(() => (
     data ? { 
@@ -205,27 +207,46 @@ function Modal({ data, onClose, onSave, condominios = [], currentUser }) {
             </div>
 
             {!isEdit ? (
-              <div>
-                <label className="label">Senha Inicial *</label>
-                <div className="relative">
-                  <KeyRound size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-2.5 cursor-pointer bg-brand-50/80 hover:bg-brand-50 border border-brand-200 p-3 rounded-2xl text-xs font-bold text-brand-900 shadow-2xs transition-colors">
                   <input
-                    type={showSenha ? 'text' : 'password'}
-                    name="new_user_password_field_custom"
-                    autoComplete="new-password"
-                    className="input pl-9 pr-10"
-                    value={form.senha}
-                    onChange={e => set('senha', e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
+                    type="checkbox"
+                    checked={enviarEmailCriacao}
+                    onChange={e => setEnviarEmailCriacao(e.target.checked)}
+                    className="rounded text-brand-600 focus:ring-brand-500 w-4 h-4 mt-0.5"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowSenha(s => !s)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-600 transition-colors"
-                  >
-                    {showSenha ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
+                  <div>
+                    <span className="flex items-center gap-1.5"><Mail size={13} className="text-brand-600" /> Enviar e-mail de ativação e confirmação (Recomendado)</span>
+                    <p className="text-[11px] font-normal text-brand-700 mt-0.5">
+                      O morador recebe um link oficial do Google para criar a própria senha e validar seu e-mail no primeiro acesso.
+                    </p>
+                  </div>
+                </label>
+
+                {!enviarEmailCriacao && (
+                  <div>
+                    <label className="label">Senha Inicial *</label>
+                    <div className="relative">
+                      <KeyRound size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type={showSenha ? 'text' : 'password'}
+                        name="new_user_password_field_custom"
+                        autoComplete="new-password"
+                        className="input pl-9 pr-10"
+                        value={form.senha}
+                        onChange={e => set('senha', e.target.value)}
+                        placeholder="Mínimo 6 caracteres"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSenha(s => !s)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-600 transition-colors"
+                      >
+                        {showSenha ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div>
@@ -401,11 +422,11 @@ function Modal({ data, onClose, onSave, condominios = [], currentUser }) {
                 alert('Preencha os campos obrigatórios (Nome e E-mail).')
                 return
               }
-              if (!isEdit && (!form.senha || form.senha.length < 6)) {
+              if (!isEdit && !enviarEmailCriacao && (!form.senha || form.senha.length < 6)) {
                 alert('A senha inicial deve ter no mínimo 6 caracteres.')
                 return
               }
-              onSave(form)
+              onSave({ ...form, enviarEmailCriacao })
             }}
             className="btn-primary bg-brand-600 hover:bg-brand-500 text-white font-black text-xs py-2.5 px-6 rounded-xl shadow-md cursor-pointer"
           >
@@ -546,6 +567,20 @@ export default function Usuarios() {
     }
   }
 
+  const handleReenviarEmailAtivacao = async (u) => {
+    if (!u.email) return
+    if (!window.confirm(`Deseja reenviar o e-mail oficial com o link de confirmação e criação de senha para "${u.nome || u.email}"?`)) return
+    try {
+      await sendPasswordResetEmail(secondaryAuth, u.email.toLowerCase().trim(), {
+        url: window.location.origin ? `${window.location.origin}/login` : 'https://app.alphaadmsc.com.br/login',
+        handleCodeInApp: false
+      })
+      alert(`✅ E-mail de confirmação e ativação reenviado com sucesso para ${u.email}!`)
+    } catch (err) {
+      alert('Erro ao reenviar e-mail: ' + err.message)
+    }
+  }
+
   // Padronização automática: Administradores pertencem à gestão interna 'ALPHA' (sem bloco/apto)
   React.useEffect(() => {
     if (!users.length) return
@@ -577,17 +612,48 @@ export default function Usuarios() {
     const emailClean = (form.email || '').toLowerCase().trim()
 
     if (modal === 'new') {
+      const isEmailInvite = form.enviarEmailCriacao !== false || !form.senha
+      const finalSenha = form.senha || (Math.random().toString(36).slice(-8) + 'Aa1!')
+      let userCred = null
+
       try {
-        await createUserWithEmailAndPassword(secondaryAuth, emailClean, form.senha)
+        userCred = await createUserWithEmailAndPassword(secondaryAuth, emailClean, finalSenha)
+        if (isEmailInvite) {
+          try {
+            await sendPasswordResetEmail(secondaryAuth, emailClean, {
+              url: window.location.origin ? `${window.location.origin}/login` : 'https://app.alphaadmsc.com.br/login',
+              handleCodeInApp: false
+            })
+          } catch (pErr) {
+            console.warn('Aviso ao enviar link de criacao de senha:', pErr)
+          }
+        }
+        try {
+          if (userCred?.user) {
+            await sendEmailVerification(userCred.user, {
+              url: window.location.origin ? `${window.location.origin}/login` : 'https://app.alphaadmsc.com.br/login',
+              handleCodeInApp: false
+            })
+          }
+        } catch (vErr) {
+          console.warn('Aviso ao enviar confirmacao de email:', vErr)
+        }
         await signOut(secondaryAuth)
       } catch (err) {
         if (err.code !== 'auth/email-already-in-use') {
           alert('Erro ao criar acesso (Auth): ' + err.message)
           return
         }
+        // Se já existe no Auth, dispara link oficial do Google para redefinição/confirmação
+        if (isEmailInvite) {
+          await sendPasswordResetEmail(secondaryAuth, emailClean, {
+            url: window.location.origin ? `${window.location.origin}/login` : 'https://app.alphaadmsc.com.br/login',
+            handleCodeInApp: false
+          }).catch(() => {})
+        }
       }
 
-      const { senha: _discardSenha, ...formSemSenha } = form
+      const { senha: _discardSenha, enviarEmailCriacao: _discardInvite, ...formSemSenha } = form
 
       const novo = {
         ...formSemSenha,
@@ -597,6 +663,8 @@ export default function Usuarios() {
         unidade: unidadeNorm,
         email: emailClean,
         ativo: form.status === 'Ativo',
+        emailVerificado: false,
+        pendenteAtivacaoEmail: isEmailInvite,
         _createdAt: new Date().toISOString()
       }
       await addItem(novo)
@@ -628,13 +696,17 @@ export default function Usuarios() {
         })
       }
 
-      // Dispara o e-mail de boas-vindas / validação
-      await enviarEmail(
-        emailClean,
-        nomeNorm,
-        'Sua conta foi criada no Alpha Gestão Condominial',
-        `Olá ${nomeNorm},<br><br>Seu acesso ao sistema foi criado com sucesso.<br><br><b>Login:</b> ${emailClean}<br><b>Senha provisória:</b> ${form.senha}<br><br>Acesse o painel para validar seus dados e alterar sua senha.`
-      ).catch(() => {})
+      if (isEmailInvite) {
+        alert(`✅ Usuário criado com sucesso!\n\nEnviamos um e-mail oficial para ${emailClean} com o link de ativação, confirmação e definição de senha.`)
+      } else {
+        // Dispara o e-mail de boas-vindas com a senha definida manualmente
+        await enviarEmail(
+          emailClean,
+          nomeNorm,
+          'Sua conta foi criada no Alpha Gestão Condominial',
+          `Olá ${nomeNorm},<br><br>Seu acesso ao sistema foi criado com sucesso.<br><br><b>Login:</b> ${emailClean}<br><b>Senha provisória:</b> ${form.senha}<br><br>Acesse o painel para validar seus dados e alterar sua senha.`
+        ).catch(() => {})
+      }
     } else {
       const viraAdmin = form.role === 'Administrador' && modal.role !== 'Administrador'
       
@@ -997,6 +1069,15 @@ export default function Usuarios() {
                             title="Aprovar e ativar este usuário imediatamente"
                           >
                             <CheckCircle2 size={13} /> Aprovar
+                          </button>
+                        )}
+                        {u.email && (
+                          <button
+                            onClick={() => handleReenviarEmailAtivacao(u)}
+                            className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 hover:text-blue-800 transition-all cursor-pointer shadow-2xs"
+                            title="Reenviar e-mail de ativação e confirmação"
+                          >
+                            <Mail size={14} />
                           </button>
                         )}
                         <button

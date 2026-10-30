@@ -3,7 +3,8 @@ import { Users, Plus, Search, Edit2, Trash2, Phone, Mail, Filter, PawPrint, Home
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, setDoc, addDoc, serverTimestamp } from 'firebase/firestore'
-import { db } from '../firebase'
+import { db, secondaryAuth } from '../firebase'
+import { createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth'
 
 function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialApt, initialBloco, initialCondo, condominiosList = [] }) {
   const [form, setForm] = useState(() => (data ? { ...data } : {
@@ -137,6 +138,25 @@ function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialAp
             <label className="label">E-mail</label>
             <input className="input" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@exemplo.com" />
           </div>
+
+          {form.email && !isMorador && (
+            <div className="col-span-2">
+              <label className="flex items-start gap-2 cursor-pointer bg-brand-50/70 border border-brand-200 p-2.5 rounded-xl text-xs font-bold text-brand-900 shadow-2xs">
+                <input
+                  type="checkbox"
+                  checked={form.criarAcessoEmail !== false}
+                  onChange={e => set('criarAcessoEmail', e.target.checked)}
+                  className="rounded text-brand-600 focus:ring-brand-500 w-4 h-4 mt-0.5"
+                />
+                <div>
+                  <span className="flex items-center gap-1.5"><Mail size={13} className="text-brand-600" /> Enviar e-mail de ativação e confirmação da conta</span>
+                  <p className="text-[11px] font-normal text-brand-700 mt-0.5">
+                    O morador recebe um e-mail oficial com link para definir a senha e confirmar seu acesso com segurança.
+                  </p>
+                </div>
+              </label>
+            </div>
+          )}
 
           <div className="col-span-2 border-t border-cream-200 mt-2 pt-4">
             <label className="label text-brand-700 font-bold">Reconhecimento Facial (Portaria)</label>
@@ -1003,8 +1023,48 @@ export default function Moradores() {
         }
       }
     }
+    if (form.email && form.criarAcessoEmail !== false) {
+      const emailClean = form.email.toLowerCase().trim()
+      try {
+        const tempPass = Math.random().toString(36).slice(-8) + 'Aa1!'
+        await createUserWithEmailAndPassword(secondaryAuth, emailClean, tempPass).catch(() => {})
+        await sendPasswordResetEmail(secondaryAuth, emailClean, {
+          url: window.location.origin ? `${window.location.origin}/login` : 'https://app.alphaadmsc.com.br/login',
+          handleCodeInApp: false
+        })
+        await signOut(secondaryAuth).catch(() => {})
+      } catch (errEmail) {
+        console.warn('Aviso ao enviar e-mail de ativação:', errEmail)
+      }
+    }
+
     setModal(null)
     setTargetUnidade(null)
+  }
+
+  const handleEmailConvite = async (m, u) => {
+    const emailClean = (m.email || '').toLowerCase().trim()
+    if (!emailClean) {
+      alert('Este morador não possui e-mail cadastrado. Edite o morador para adicionar um e-mail.')
+      return
+    }
+    if (!window.confirm(`Deseja enviar o e-mail oficial com link de confirmação e criação de senha para "${m.nome}" (${emailClean})?`)) return
+    try {
+      try {
+        const tempPass = Math.random().toString(36).slice(-8) + 'Aa1!'
+        await createUserWithEmailAndPassword(secondaryAuth, emailClean, tempPass)
+        await signOut(secondaryAuth)
+      } catch (authErr) {
+        // Conta já existe, apenas envia o link
+      }
+      await sendPasswordResetEmail(secondaryAuth, emailClean, {
+        url: window.location.origin ? `${window.location.origin}/login` : 'https://app.alphaadmsc.com.br/login',
+        handleCodeInApp: false
+      })
+      alert(`✅ E-mail de confirmação e ativação enviado com sucesso para ${emailClean}!`)
+    } catch (err) {
+      alert('Erro ao enviar e-mail: ' + err.message)
+    }
   }
 
   const handleSavePet = async form => {
@@ -1657,6 +1717,15 @@ export default function Moradores() {
                                   title="Enviar convite e link de cadastro pelo WhatsApp"
                                 >
                                   <MessageSquare size={13} />
+                                </button>
+                              )}
+                              {!isMorador && m.email && (
+                                <button
+                                  onClick={() => handleEmailConvite(m, u)}
+                                  className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 shadow-sm cursor-pointer"
+                                  title="Enviar e-mail oficial de confirmação e criação de senha"
+                                >
+                                  <Mail size={13} />
                                 </button>
                               )}
                               {!isMorador && (

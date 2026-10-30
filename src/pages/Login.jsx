@@ -211,8 +211,17 @@ export default function Login() {
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3 text-xs text-red-400">
-                {error}
+              <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-3 text-xs text-red-300 flex flex-col gap-2">
+                <span>{error}</span>
+                {error.includes('e-mail') && (
+                  <button
+                    type="button"
+                    onClick={handleResetPassword}
+                    className="self-start text-[11px] font-bold text-brand-300 hover:text-white underline cursor-pointer"
+                  >
+                    ✉️ Reenviar link de confirmação / ativação por e-mail
+                  </button>
+                )}
               </div>
             )}
             {msg && (
