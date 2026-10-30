@@ -1466,13 +1466,14 @@ function ModalGerarLote({ condominios, moradores, allBoletos = [], initialCondo 
 function ModalNotificarVencimento({ boletosPendentes, moradores, condominios, onClose, onEnviarLote }) {
   const [selecionadosIds, setSelecionadosIds] = useState(() => boletosPendentes.map(b => b.id))
   const [busca, setBusca] = useState('')
-  const [tipoTemplate, setTipoTemplate] = useState('vencendo') // 'vencendo', 'hoje', 'vencido', 'custom'
+  const [tipoTemplate, setTipoTemplate] = useState('cobranca') // 'cobranca', 'vencendo', 'hoje', 'vencido', 'custom'
   const [mensagemPersonalizada, setMensagemPersonalizada] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [progresso, setProgresso] = useState(null)
 
   // Mensagens modelo pré-configuradas com variáveis inteligentes
   const templates = {
+    cobranca: `*Alpha Soluções Condominiais*\nOlá *{morador}* (Apt *{apt}*)!\n\nSegue a sua cobrança referente a *{competencia}* do *{condominio}*:\n\n📋 *Discriminação:* {tipoCobranca}\n💰 *Valor:* R$ {valor}\n📅 *Vencimento:* {vencimento}\n\n💠 *PIX Copia e Cola:*\n\`\`\`{pix}\`\`\`\n\nAbra o aplicativo do seu banco, escolha a opção PIX Copia e Cola e cole o código acima para pagamento instantâneo. O boleto oficial em PDF segue em anexo.\n\nQualquer dúvida estamos à disposição!\n*Alpha Soluções Condominiais*`,
     vencendo: `Olá *{morador}* (Apt *{apt}*)!\n\nPassando para lembrar que o seu *Boleto Condominial* referente a *{competencia}* do *{condominio}* está próximo do vencimento em *{vencimento}*.\n\n💰 *Valor:* R$ {valor}\n\nSegue o boleto oficial em anexo com o QR Code PIX para sua comodidade. Evite multas pagando em dia!\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`,
     hoje: `🔴 *Seu Boleto Condominial Vence HOJE*\n\nOlá *{morador}* (Apt *{apt}*)!\n\nLembramos que a taxa de condomínio referente a *{competencia}* do *{condominio}* vence *hoje* ({vencimento}).\n\n💰 *Valor:* R$ {valor}\n\nEfetue o pagamento via PIX no documento em anexo para evitar a incidência de juros e encargos.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`,
     vencido: `Prezado(a) *{morador}* (Apt *{apt}*),\n\nIdentificamos que o boleto condominial referente a *{competencia}* do *{condominio}* encontra-se em aberto (venceu em {vencimento}).\n\n💰 *Valor:* R$ {valor}\n\nPara facilitar a regularização, segue em anexo o documento oficial com o *QR Code PIX*. Caso já tenha efetuado o pagamento, por favor desconsidere este aviso.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`,
@@ -1504,10 +1505,71 @@ function ModalNotificarVencimento({ boletosPendentes, moradores, condominios, on
     }
   }
 
+  const getMsgFormatadaParaBoleto = (b, moradorDoc) => {
+    const condoDoc = (condominios || []).find(c => c.nome === (b.condominio || moradorDoc?.condominio))
+    const chavePix = condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
+    const pixStr = b.pix_emv || generateStaticPix(chavePix, b.valor, condoDoc?.nome || "Alpha Solucoes", "BR")
+    const valorFmt = Number(b.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+    const vencFmt = b.vencimento ? (b.vencimento.includes('-') ? b.vencimento.split('-').reverse().join('/') : b.vencimento) : '—'
+    const tipoCobrancaStr = b.tipoCobranca ? `${b.tipoCobranca} (${b.competencia || 'Mês Vigente'})` : (b.descricao || 'Taxa Condominial')
+
+    return (textoBase || '')
+      .replace(/{morador}/g, b.morador || 'Morador')
+      .replace(/{apt}/g, b.apt || '—')
+      .replace(/{condominio}/g, condoDoc?.nome || b.condominio || 'Condomínio')
+      .replace(/{competencia}/g, b.competencia || 'Mês Vigente')
+      .replace(/{vencimento}/g, vencFmt)
+      .replace(/{valor}/g, valorFmt)
+      .replace(/{tipoCobranca}/g, tipoCobrancaStr)
+      .replace(/{pix}/g, pixStr)
+  }
+
+  const abrirWhatsWebSingle = (b, moradorDoc) => {
+    const msg = getMsgFormatadaParaBoleto(b, moradorDoc)
+    let rawTel = b.tel || b.telefone || b.whatsapp || moradorDoc?.tel || moradorDoc?.telefone || moradorDoc?.whatsapp || moradorDoc?.celular || ''
+    let cleanTel = String(rawTel).replace(/\D/g, '')
+
+    if (!cleanTel || cleanTel.length < 8) {
+      const promptTel = window.prompt(`Informe o WhatsApp com DDD para ${b.morador}:`, cleanTel)
+      if (promptTel) cleanTel = String(promptTel).replace(/\D/g, '')
+    }
+
+    if (cleanTel && !cleanTel.startsWith('55') && cleanTel.length >= 10) {
+      cleanTel = `55${cleanTel}`
+    }
+
+    const waUrl = cleanTel ? `https://wa.me/${cleanTel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`
+    window.open(waUrl, '_blank')
+  }
+
+  const handleAbrirWhatsWebLote = () => {
+    const listaParaEnviar = boletosPendentes.filter(b => selecionadosIds.includes(b.id))
+    if (listaParaEnviar.length === 0) {
+      alert('Selecione ao menos um morador.')
+      return
+    }
+
+    if (listaParaEnviar.length > 5) {
+      const confirm = window.confirm(`Você selecionou ${listaParaEnviar.length} moradores. O navegador abrirá as conversas do WhatsApp Web sequencialmente. Deseja continuar?`)
+      if (!confirm) return
+    }
+
+    listaParaEnviar.forEach((b, idx) => {
+      setTimeout(() => {
+        const moradorDoc = (moradores || []).find(m => 
+          (m.id && b.moradorId && m.id === b.moradorId) ||
+          (m.nome && b.morador && m.nome.trim().toLowerCase() === b.morador.trim().toLowerCase()) ||
+          (m.apt && b.apt && String(m.apt).trim() === String(b.apt).trim())
+        )
+        abrirWhatsWebSingle(b, moradorDoc)
+      }, idx * 700)
+    })
+  }
+
   const handleDisparar = async () => {
     const listaParaEnviar = boletosPendentes.filter(b => selecionadosIds.includes(b.id))
     if (listaParaEnviar.length === 0) {
-      alert('Selecione ao menos um morador para disparar a notificação.')
+      alert('Selecione ao menos um morador para disparar.')
       return
     }
 
@@ -1531,18 +1593,18 @@ function ModalNotificarVencimento({ boletosPendentes, moradores, condominios, on
       <div className="modal-content max-w-3xl w-full p-0 flex flex-col max-h-[92vh] overflow-hidden rounded-3xl shadow-2xl bg-white" onClick={e => e.stopPropagation()}>
         
         {/* Cabeçalho */}
-        <div className="p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-brand-950 text-white flex items-center justify-between shrink-0">
+        <div className="p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-400 flex items-center justify-center">
               <MessageSquare size={22} />
             </div>
             <div>
               <h3 className="font-black text-base sm:text-lg flex items-center gap-2">
-                Notificar Vencimento via WhatsApp
-                <span className="bg-emerald-500 text-slate-950 text-[10px] font-black uppercase px-2 py-0.5 rounded-full">Boleto + PDF Oficial</span>
+                Enviar Boletos via WhatsApp
+                <span className="bg-emerald-500 text-slate-950 text-[10px] font-black uppercase px-2 py-0.5 rounded-full">Mensagem + PIX + PDF</span>
               </h3>
               <p className="text-xs text-slate-300">
-                Selecione os moradores que ainda não pagaram para disparar o aviso de vencimento com o PDF do boleto anexado
+                Selecione os moradores para os quais deseja enviar a mensagem de cobrança com os dados de pagamento.
               </p>
             </div>
           </div>
@@ -1560,10 +1622,19 @@ function ModalNotificarVencimento({ boletosPendentes, moradores, condominios, on
           <div className="bg-slate-50 p-4 rounded-2xl border border-gray-200 flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <label className="text-xs font-black text-gray-800 uppercase flex items-center gap-1.5">
-                <Sparkles size={14} className="text-amber-500" />
-                Modelo da Mensagem de Notificação
+                <Sparkles size={14} className="text-emerald-600" />
+                Finalidade / Modelo da Mensagem:
               </label>
-              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200">
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setTipoTemplate('cobranca')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                    tipoTemplate === 'cobranca' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  📨 Envio de Cobrança
+                </button>
                 <button
                   type="button"
                   onClick={() => setTipoTemplate('vencendo')}
@@ -1608,27 +1679,27 @@ function ModalNotificarVencimento({ boletosPendentes, moradores, condominios, on
                 className="input text-xs min-h-[90px] font-mono leading-relaxed"
                 value={mensagemPersonalizada}
                 onChange={e => setMensagemPersonalizada(e.target.value)}
-                placeholder="Digite a mensagem. Variáveis disponíveis: {morador}, {apt}, {condominio}, {competencia}, {vencimento}, {valor}"
+                placeholder="Digite a mensagem. Variáveis disponíveis: {morador}, {apt}, {condominio}, {competencia}, {vencimento}, {valor}, {tipoCobranca}, {pix}"
               />
             ) : (
               <div className="bg-white p-3 rounded-xl border border-gray-200 text-xs text-gray-700 whitespace-pre-line leading-relaxed font-sans">
                 {textoBase}
               </div>
             )}
-            <p className="text-[11px] text-gray-400">
-              💡 <b>Nota:</b> O arquivo PDF com o código de barras e o QR Code PIX do boleto de cada morador é gerado e anexado automaticamente no WhatsApp.
+            <p className="text-[11px] text-gray-500">
+              💡 <b>Nota:</b> O arquivo PDF com o código de barras e o QR Code PIX acompanha o envio pelo WhatsApp.
             </p>
           </div>
 
-          {/* Lista de Moradores Pendentes com Checkbox */}
+          {/* Lista de Moradores com Checkbox e Ação Individual */}
           <div className="flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black text-gray-800 uppercase">
-                  Moradores que ainda não pagaram ({boletosFiltrados.length})
+                  Moradores Selecionáveis ({boletosFiltrados.length})
                 </span>
                 <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  {selecionadosIds.length} selecionado(s)
+                  {selecionadosIds.length} marcado(s)
                 </span>
               </div>
 
@@ -1694,10 +1765,15 @@ function ModalNotificarVencimento({ boletosPendentes, moradores, condominios, on
                             <span className="text-[10px] text-gray-500 truncate max-w-[140px]">
                               • {b.condominio || 'Geral'}
                             </span>
+                            {b.tipoCobranca && b.tipoCobranca !== 'Taxa Condominial' && (
+                              <span className="text-[9px] font-bold bg-purple-50 text-purple-700 border border-purple-200 px-1 rounded">
+                                {b.tipoCobranca}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 text-[11px]">
                             <span className={`text-[10px] ${corVenc}`}>
-                              📅 Venc: {b.vencimento || '—'} ({labelVenc})
+                              📅 Venc: {b.vencimento || '—'} {labelVenc ? `(${labelVenc})` : ''}
                             </span>
                             <span className="text-gray-300">•</span>
                             <span className={temTel ? 'text-emerald-700 font-semibold' : 'text-rose-600 font-bold'}>
@@ -1707,13 +1783,29 @@ function ModalNotificarVencimento({ boletosPendentes, moradores, condominios, on
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <span className="font-mono font-black text-xs text-gray-900 block">
-                          R$ {Number(b.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </span>
-                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100/70 px-1.5 py-0.2 rounded">
-                          {b.competencia || 'Mês Atual'}
-                        </span>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="text-right">
+                          <span className="font-mono font-black text-xs text-gray-900 block">
+                            R$ {Number(b.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                          <span className="text-[10px] font-bold text-amber-700 bg-amber-100/70 px-1.5 py-0.2 rounded">
+                            {b.competencia || 'Mês Atual'}
+                          </span>
+                        </div>
+
+                        {/* Botão de Envio Manual Imediato via WhatsApp Web */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            abrirWhatsWebSingle(b, moradorDoc)
+                          }}
+                          className="p-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-[11px] font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                          title="Abrir diretamente no WhatsApp Web para enviar agora"
+                        >
+                          <MessageSquare size={13} className="text-emerald-600" />
+                          <span className="hidden sm:inline">WhatsApp</span>
+                        </button>
                       </div>
                     </div>
                   )
@@ -1740,8 +1832,8 @@ function ModalNotificarVencimento({ boletosPendentes, moradores, condominios, on
 
         </div>
 
-        {/* Rodapé */}
-        <div className="p-4 bg-slate-50 border-t border-gray-200 flex items-center justify-between gap-3 shrink-0">
+        {/* Rodapé com Envio Manual ou Automático */}
+        <div className="p-4 bg-slate-50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <button
             type="button"
             onClick={onClose}
@@ -1751,20 +1843,36 @@ function ModalNotificarVencimento({ boletosPendentes, moradores, condominios, on
             Cancelar
           </button>
 
-          <button
-            type="button"
-            onClick={handleDisparar}
-            disabled={enviando || selecionadosIds.length === 0}
-            className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-xs font-black flex items-center gap-2 py-2.5 px-5 shadow-lg shadow-emerald-700/20 disabled:opacity-50 cursor-pointer"
-          >
-            <Send size={15} />
-            <span>
-              {enviando 
-                ? 'Disparando WhatsApp com Boleto...' 
-                : `Disparar Aviso para ${selecionadosIds.length} ${selecionadosIds.length === 1 ? 'Morador' : 'Moradores'}`
-              }
-            </span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Opção 1: Enviar Manual no WhatsApp Web */}
+            <button
+              type="button"
+              onClick={handleAbrirWhatsWebLote}
+              disabled={enviando || selecionadosIds.length === 0}
+              className="btn-secondary bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold flex items-center gap-1.5 py-2 px-3.5 shadow-2xs cursor-pointer"
+              title="Abre as conversas dos moradores selecionados no WhatsApp Web para você clicar e enviar manualmente"
+            >
+              <MessageSquare size={14} className="text-emerald-600" />
+              <span>Enviar Manual (WhatsApp Web)</span>
+            </button>
+
+            {/* Opção 2: Disparo Automático pelo Robô */}
+            <button
+              type="button"
+              onClick={handleDisparar}
+              disabled={enviando || selecionadosIds.length === 0}
+              className="btn-primary bg-emerald-600 hover:bg-emerald-500 text-xs font-black flex items-center gap-2 py-2 px-4 shadow-md shadow-emerald-700/20 disabled:opacity-50 cursor-pointer"
+              title="Dispara automaticamente pelo robô da Alpha com o PDF anexo para todos os selecionados"
+            >
+              <Send size={14} />
+              <span>
+                {enviando 
+                  ? 'Disparando...' 
+                  : `Disparar Automático (${selecionadosIds.length})`
+                }
+              </span>
+            </button>
+          </div>
         </div>
 
       </div>
@@ -2695,16 +2803,33 @@ export default function Boletos() {
   }
 
   const enviarWhats = b => {
-    const mor = (moradores || []).find(m => m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase())
+    const mor = (moradores || []).find(m => 
+      (m.id && b.moradorId && m.id === b.moradorId) ||
+      (m && m.nome && b?.morador && m.nome.trim().toLowerCase() === String(b.morador).trim().toLowerCase()) ||
+      (m.apt && b.apt && String(m.apt).trim() === String(b.apt).trim() && (!b.condominio || m.condominio === b.condominio))
+    )
     const condoDoc = allCondominios.find(c => c.nome === (b.condominio || mor?.condominio))
     const chavePix = condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
     const pix = b.pix_emv || generateStaticPix(chavePix, b.valor, condoDoc?.nome || "Alpha Solucoes", "BR")
     const valorFormatado = Number(b.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
     const dataVenc = b.vencimento ? (b.vencimento.includes('-') ? b.vencimento.split('-').reverse().join('/') : b.vencimento) : '—'
 
+    let rawTel = b.tel || b.telefone || b.whatsapp || mor?.tel || mor?.telefone || mor?.whatsapp || mor?.celular || ''
+    let cleanTel = String(rawTel).replace(/\D/g, '')
+
+    if (!cleanTel || cleanTel.length < 8) {
+      const promptTel = window.prompt(`Informe o WhatsApp com DDD para ${b.morador}:`, cleanTel)
+      if (promptTel) cleanTel = String(promptTel).replace(/\D/g, '')
+    }
+
+    if (cleanTel && !cleanTel.startsWith('55') && cleanTel.length >= 10) {
+      cleanTel = `55${cleanTel}`
+    }
+
     const tipoDesc = b.tipoCobranca ? `${b.tipoCobranca} (${b.competencia || 'Mês Vigente'})` : (b.competencia || 'Taxa Condominial')
     const msg = `*Alpha Soluções Condominiais*\nOlá *${b.morador}* (Apt ${b.apt}), segue sua fatura referente a *${tipoDesc}*:\n\n💰 *Valor:* R$ ${valorFormatado}\n📅 *Vencimento:* ${dataVenc}\n\n💠 *PIX Copia e Cola:*\n\`\`\`${pix}\`\`\`\n\nAbra o aplicativo do seu banco, escolha *PIX Copia e Cola* e cole o código acima para efetuar o pagamento.`
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+    const waUrl = cleanTel ? `https://wa.me/${cleanTel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`
+    window.open(waUrl, '_blank')
   }
 
   const handleDispararNotificacoesVencimento = async (lista, textoTemplate, onProgresso) => {
@@ -2731,6 +2856,9 @@ export default function Boletos() {
       const condoDoc = allCondominios.find(c => c.nome === (b.condominio || moradorDoc?.condominio))
       const valorFmt = Number(b.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
       const vencFmt = b.vencimento ? (b.vencimento.includes('-') ? b.vencimento.split('-').reverse().join('/') : b.vencimento) : '—'
+      const tipoCobrancaStr = b.tipoCobranca ? `${b.tipoCobranca} (${b.competencia || 'Mês Vigente'})` : (b.descricao || 'Taxa Condominial')
+      const chavePix = condoDoc?.chave_pix || 'alpha.solucoes@condominios.com.br'
+      const pixStr = b.pix_emv || generateStaticPix(chavePix, b.valor, condoDoc?.nome || "Alpha Solucoes", "BR")
 
       // Substitui variáveis do template
       const msgPersonalizada = (textoTemplate || '')
@@ -2740,6 +2868,8 @@ export default function Boletos() {
         .replace(/{competencia}/g, b.competencia || 'Mês Vigente')
         .replace(/{vencimento}/g, vencFmt)
         .replace(/{valor}/g, valorFmt)
+        .replace(/{tipoCobranca}/g, tipoCobrancaStr)
+        .replace(/{pix}/g, pixStr)
 
       try {
         const res = await enviarBoletoWhatsAppAuto(b, moradorDoc, condoDoc, msgPersonalizada)
@@ -3176,10 +3306,10 @@ export default function Boletos() {
                 <button
                   onClick={() => setModalNotificarVencimento(true)}
                   className="btn-secondary text-sm flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 font-black shadow-sm"
-                  title="Disparar aviso de vencimento no WhatsApp com o boleto em PDF para moradores pendentes"
+                  title="Enviar cobrança ou aviso no WhatsApp com o boleto em PDF para moradores"
                 >
                   <MessageSquare size={15} className="text-emerald-600" />
-                  <span>Notificar Vencimento (WhatsApp)</span>
+                  <span>Enviar Boletos no WhatsApp</span>
                 </button>
                 <button onClick={()=>setModal('new')} className="btn-primary text-sm flex items-center gap-1"><Plus size={14}/> Novo Individual</button>
               </>
@@ -3377,9 +3507,9 @@ export default function Boletos() {
                           setModalNotificarVencimento(true)
                         }}
                         className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-                        title="Enviar aviso de vencimento no WhatsApp dos moradores selecionados"
+                        title="Enviar cobrança ou aviso no WhatsApp dos moradores selecionados"
                       >
-                        <MessageSquare size={14} /> Notificar Vencimento ({selectedIds.length})
+                        <MessageSquare size={14} /> Enviar Boleto no WhatsApp ({selectedIds.length})
                       </button>
                       <button
                         onClick={async () => {
