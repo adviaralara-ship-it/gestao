@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { Building2, Plus, Search, Edit2, Trash2, Home, DollarSign, TrendingUp, Share2 } from 'lucide-react'
+import { Building2, Plus, Search, Edit2, Trash2, Home, DollarSign, TrendingUp, Share2, MessageSquare } from 'lucide-react'
 import { collection, query, where, getDocs, writeBatch, doc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { CurrencyInput } from '../utils/currency'
+import { buscarGruposWhatsApp } from '../utils/whatsappAutomacao'
 
 const parseBR = v => typeof v === 'number' ? v : (parseFloat((v||'').toString().replace(/\./g,'').replace(',','.')) || 0)
 const fmtBR   = v => Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})
@@ -12,13 +13,31 @@ const fmtBR   = v => Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:
 function CondoModal({ data, onClose, onSave, isAdm }) {
   const [form, setForm] = useState(() => (data ? { ...data } : {
     nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
-    honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: ''
+    honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: '', grupoWhatsapp: ''
   }))
   const [fundoStr, setFundoStr] = useState(data?.fundoReserva || '')
   const [metaStr,  setMetaStr]  = useState(data?.fundoMeta || '')
   const [honorariosStr, setHonorariosStr] = useState(data?.honorariosAdm || '')
   const [taxaStr, setTaxaStr] = useState(data?.taxaEmissao !== undefined ? data.taxaEmissao : 3.50)
   const [cotaStr, setCotaStr] = useState(data?.cotaPadrao !== undefined ? data.cotaPadrao : '')
+  const [gruposDisponiveis, setGruposDisponiveis] = useState([])
+  const [carregandoGrupos, setCarregandoGrupos] = useState(false)
+
+  const handleCarregarGrupos = async () => {
+    setCarregandoGrupos(true)
+    try {
+      const list = await buscarGruposWhatsApp()
+      if (list && list.length > 0) {
+        setGruposDisponiveis(list)
+      } else {
+        alert('Nenhum grupo encontrado na instância do WhatsApp ou a instância ainda está inicializando.')
+      }
+    } catch (err) {
+      alert(`Erro ao buscar grupos do WhatsApp: ${err.message}`)
+    } finally {
+      setCarregandoGrupos(false)
+    }
+  }
 
   useEffect(() => {
     if (data) {
@@ -31,7 +50,7 @@ function CondoModal({ data, onClose, onSave, isAdm }) {
     } else {
       setForm({
         nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
-        honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: ''
+        honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: '', grupoWhatsapp: ''
       })
       setFundoStr('')
       setMetaStr('')
@@ -51,9 +70,56 @@ function CondoModal({ data, onClose, onSave, isAdm }) {
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors cursor-pointer" title="Fechar">✕</button>
         </div>
         <div className="p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto flex-1">
-          {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['mandatoFim','Fim do Mandato (Síndico)'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX do Condomínio (Para onde vão as cotas)'],['grupoWhatsapp','ID do Grupo de WhatsApp do Condomínio (ex: 120363012345678901@g.us)']].map(([k,l])=>(
+          {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['mandatoFim','Fim do Mandato (Síndico)'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX do Condomínio (Para onde vão as cotas)']].map(([k,l])=>(
             <div key={k}><label className="label">{l}</label><input type={k==='mandatoFim'?'date':'text'} className={`input ${k==='nome'?'uppercase font-bold':''}`} value={form[k]||''} onChange={e=>set(k, k==='nome'?e.target.value.toUpperCase():e.target.value)} placeholder={l}/></div>
           ))}
+
+          {/* Grupo de WhatsApp do Condomínio */}
+          <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <label className="label text-xs font-black text-emerald-900 flex items-center gap-1.5 m-0">
+                <MessageSquare size={14} className="text-emerald-700"/> Grupo de WhatsApp do Residencial
+              </label>
+              <button
+                type="button"
+                onClick={handleCarregarGrupos}
+                disabled={carregandoGrupos}
+                className="text-[11px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                title="Carregar grupos direto da instância do WhatsApp conectada"
+              >
+                {carregandoGrupos ? 'Buscando grupos...' : '🔄 Carregar Grupos Conectados'}
+              </button>
+            </div>
+            <p className="text-[11px] text-emerald-800/80 leading-relaxed">
+              Este ID é utilizado para enviar notificações automáticas de novas reservas de áreas comuns, comunicados e enquetes para os moradores no grupo do condomínio.
+            </p>
+            {gruposDisponiveis.length > 0 && (
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Selecionar grupo da lista conectada:</label>
+                <select
+                  className="input text-xs font-semibold mt-1"
+                  value={form.grupoWhatsapp || ''}
+                  onChange={e => set('grupoWhatsapp', e.target.value)}
+                >
+                  <option value="">Selecione o grupo correspondente...</option>
+                  {gruposDisponiveis.map(g => (
+                    <option key={g.id} value={g.id}>{g.subject} ({g.id})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">ID do Grupo (JID @g.us):</label>
+              <input
+                type="text"
+                className="input font-mono text-xs mt-1"
+                value={form.grupoWhatsapp || ''}
+                onChange={e => set('grupoWhatsapp', e.target.value)}
+                placeholder="ex: 120363012345678901@g.us"
+              />
+            </div>
+          </div>
+
           <div><label className="label">Status</label>
             <select className="input" value={form.status} onChange={e=>set('status',e.target.value)}>
               <option>Ativo</option><option>Manutenção</option><option>Inativo</option>

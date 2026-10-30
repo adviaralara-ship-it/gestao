@@ -230,10 +230,41 @@ export async function enviarEnqueteWhatsAppGrupo(enquete, condoDoc) {
  * Consulta a lista de grupos disponíveis na InstanciaAlpha conectada.
  * Retorna [{ id: '...@g.us', subject: 'Nome do Grupo' }]
  */
+
+/**
+ * Gera o texto formatado para envio de nova reserva no grupo de WhatsApp do condomínio
+ */
+export function gerarTextoReservaWhatsApp(reserva, condoNome) {
+  const espaco = reserva.espaco || 'Área Comum'
+  const morador = reserva.morador || 'Morador'
+  const apt = reserva.apt ? `Apt ${reserva.apt}` : ''
+  const dataFmt = reserva.data
+    ? (String(reserva.data).includes('-') ? String(reserva.data).split('-').reverse().join('/') : String(reserva.data))
+    : 'A definir'
+  const horario = reserva.horario || 'Horário a combinar'
+  const pessoas = reserva.pessoas ? `${reserva.pessoas} pessoas` : 'Não informado'
+  const status = reserva.status || 'Pendente'
+
+  return `📅 *NOVA RESERVA REGISTRADA!*\n\n🏢 *Condomínio:* ${condoNome || reserva.condominio || '—'}\n🎈 *Espaço:* ${espaco}\n👤 *Morador:* ${morador} ${apt ? `(${apt})` : ''}\n🗓️ *Data:* ${dataFmt}\n⏰ *Horário:* ${horario}\n👥 *Convidados:* ${pessoas}\n📌 *Status:* ${status}\n\n_Para consultar o calendário completo de áreas comuns, acesse o painel Alpha Gestão._\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+}
+
+/**
+ * Envia notificação de reserva diretamente para o grupo de WhatsApp do condomínio
+ */
+export async function enviarReservaWhatsAppGrupo(reserva, condoDoc) {
+  const grupo = String(condoDoc?.grupoWhatsapp || '').trim()
+  if (!grupo) {
+    return { success: false, error: 'Condomínio não possui o grupo de WhatsApp configurado (campo grupoWhatsapp).' }
+  }
+
+  const textoFinal = gerarTextoReservaWhatsApp(reserva, condoDoc?.nome || reserva.condominio)
+  return await enviarMensagemWhatsApp({ number: grupo, text: textoFinal, instance: 'InstanciaAlpha' })
+}
+
 export async function buscarGruposWhatsApp(instance = 'InstanciaAlpha') {
   try {
     // 1. Tenta rota serverless /api/whatsapp-send
-    const res = await fetch(`/api/whatsapp-groups?instance=${encodeURIComponent(instance)}`)
+    const res = await fetch(`/api/whatsapp-send?instance=${encodeURIComponent(instance)}`)
     if (res.ok) {
       const data = await res.json()
       if (data.success && Array.isArray(data.groups) && data.groups.length > 0) {

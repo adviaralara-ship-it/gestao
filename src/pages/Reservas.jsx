@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react'
-import { CalendarCheck, Plus, Search, Edit2, Trash2, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { CalendarCheck, Plus, Search, Edit2, Trash2, ChevronLeft, ChevronRight, X, MessageSquare, DollarSign } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
-import { DollarSign } from 'lucide-react'
+import { enviarReservaWhatsAppGrupo, gerarTextoReservaWhatsApp } from '../utils/whatsappAutomacao'
 
 const espacos = ['Salão de Festas','Churrasqueira','Piscina','Quadra Esportiva','Espaço Gourmet','Brinquedoteca','Coworking']
 const spaceIcons = {'Salão de Festas':'🎉','Churrasqueira':'🔥','Piscina':'🏊','Quadra Esportiva':'⚽','Espaço Gourmet':'🍽️','Brinquedoteca':'🎮','Coworking':'💻'}
 
-function Modal({ data, user, onClose, onSave, onDelete }) {
-  const [form, setForm] = useState(data)
+function Modal({ data, user, condominios = [], onClose, onSave, onDelete, onNotificarWhatsApp, enviandoZap }) {
+  const [form, setForm] = useState(() => ({
+    notificarWhatsapp: true,
+    ...data
+  }))
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
   
   const parseBR = v => parseFloat(v.toString().replace(/\./g,'').replace(',','.')) || 0
@@ -34,7 +37,19 @@ function Modal({ data, user, onClose, onSave, onDelete }) {
             </select>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div><label className="label">Condomínio</label><input className="input" value={form.condominio} onChange={e=>set('condominio',e.target.value)} disabled={user?.role==='Morador'}/></div>
+            <div>
+              <label className="label">Condomínio</label>
+              {user?.role === 'Morador' ? (
+                <input className="input" value={form.condominio || user?.condominio || ''} disabled />
+              ) : (
+                <select className="input" value={form.condominio || ''} onChange={e=>set('condominio',e.target.value)}>
+                  <option value="">Selecione o condomínio...</option>
+                  {condominios.map(c => (
+                    <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                  ))}
+                </select>
+              )}
+            </div>
             <div><label className="label">Morador</label><input className="input" value={form.morador} onChange={e=>set('morador',e.target.value)}/></div>
             <div><label className="label">Apartamento</label><input className="input" value={form.apt} onChange={e=>set('apt',e.target.value)}/></div>
             <div><label className="label">Data</label><input type="date" className="input" value={form.data} onChange={e=>set('data',e.target.value)}/></div>
@@ -48,13 +63,41 @@ function Modal({ data, user, onClose, onSave, onDelete }) {
               </select>
             </div>
           </div>
+
+          {/* Notificação automática no WhatsApp */}
+          <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl flex items-center justify-between gap-3">
+            <label className="flex items-center gap-2.5 cursor-pointer select-none text-xs font-semibold text-emerald-900">
+              <input
+                type="checkbox"
+                checked={form.notificarWhatsapp !== false}
+                onChange={e => set('notificarWhatsapp', e.target.checked)}
+                className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer"
+              />
+              <span>Notificar automaticamente no grupo de WhatsApp do condomínio</span>
+            </label>
+            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">Automático</span>
+          </div>
         </div>
-        <div className="p-6 border-t border-cream-300 flex gap-3 justify-end items-center">
-          {data.id && data.status === 'Cancelada' && (
-            <button onClick={() => { if(window.confirm('Excluir esta reserva?')) onDelete(data.id) }} className="btn-secondary text-red-500 mr-auto hover:bg-red-50 border-red-200"><Trash2 size={14}/> Excluir Permanente</button>
+        <div className="p-6 border-t border-cream-300 flex flex-wrap gap-2 justify-end items-center">
+          {data.id && (
+            <button
+              type="button"
+              onClick={() => onNotificarWhatsApp(form)}
+              disabled={enviandoZap}
+              className="btn-secondary text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-300 font-bold text-xs flex items-center gap-1.5 mr-auto cursor-pointer"
+              title="Disparar notificação agora no grupo de WhatsApp"
+            >
+              <MessageSquare size={14} className="text-emerald-600" />
+              {enviandoZap ? 'Disparando...' : 'Disparar no WhatsApp'}
+            </button>
           )}
-          <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={()=>onSave(form)} className="btn-primary">Salvar</button>
+          {data.id && data.status === 'Cancelada' && (
+            <button onClick={() => { if(window.confirm('Excluir esta reserva?')) onDelete(data.id) }} className="btn-secondary text-red-500 hover:bg-red-50 border-red-200 text-xs">
+              <Trash2 size={14}/> Excluir Permanente
+            </button>
+          )}
+          <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
+          <button onClick={()=>onSave(form)} className="btn-primary text-xs">Salvar</button>
         </div>
       </div>
     </div>
@@ -66,11 +109,76 @@ const statusBadge = s=>({Confirmada:'badge-green',Pendente:'badge-yellow',Cancel
 export default function Reservas() {
   const { user } = useAuth()
   const { items, addItem, updateItem, deleteItem } = useFirestore('reservas')
+  const { items: condominios } = useFirestore('condominios')
   const { addItem: addBoleto } = useFirestore('boletos')
   const [modal, setModal]           = useState(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedEspaco, setSelectedEspaco] = useState('Todos')
   const [search, setSearch]         = useState('')
+  const [enviandoZap, setEnviandoZap] = useState(false)
+
+  const isMorador = user?.role === 'Morador'
+  const isAdm = user?.role === 'Administrador'
+  const meuCondo = (user?.condominio || '').trim().toLowerCase()
+
+  const [condoFiltro, setCondoFiltro] = useState(() => {
+    if (!isAdm && user?.condominio) return user.condominio
+    return 'Todos'
+  })
+
+  useEffect(() => {
+    if (!isAdm && user?.condominio) {
+      setCondoFiltro(user.condominio)
+    }
+  }, [isAdm, user])
+
+  // Disparo manual ou sob demanda no WhatsApp
+  const handleDispararWhatsApp = async (reserva) => {
+    const norm = s => String(s || '').trim().toLowerCase()
+    const cNome = norm(reserva.condominio || user?.condominio || '')
+    const condoDoc = condominios.find(c => {
+      const cn = norm(c.nome)
+      return cn === cNome || (cn && cNome && (cn.includes(cNome) || cNome.includes(cn)))
+    })
+
+    const textoMsg = gerarTextoReservaWhatsApp(reserva, condoDoc?.nome || reserva.condominio)
+
+    if (condoDoc && condoDoc.grupoWhatsapp) {
+      const querEnviar = window.confirm(
+        `Deseja enviar a notificação desta reserva para o grupo do WhatsApp do condomínio "${condoDoc.nome}"?\n\n` +
+        `📅 Espaço: ${reserva.espaco}\n` +
+        `👤 Morador: ${reserva.morador} (Apt ${reserva.apt || '—'})\n` +
+        `🗓️ Data: ${reserva.data} · ${reserva.horario}`
+      )
+      if (!querEnviar) return
+
+      setEnviandoZap(true)
+      try {
+        const res = await enviarReservaWhatsAppGrupo(reserva, condoDoc)
+        if (res.success) {
+          alert(`✅ Notificação disparada com sucesso para o grupo "${condoDoc.nome}" no WhatsApp!`)
+        } else {
+          const abrirWeb = window.confirm(
+            `⚠️ Não foi possível enviar diretamente via API (${res.error || 'Erro de conexão'}).\n\nDeseja abrir o WhatsApp Web para disparar a mensagem pronta manualmente?`
+          )
+          if (abrirWeb) {
+            window.open(`https://wa.me/?text=${encodeURIComponent(textoMsg)}`, '_blank')
+          }
+        }
+      } catch (err) {
+        alert(`Erro ao conectar com o serviço de WhatsApp: ${err.message}`)
+      } finally {
+        setEnviandoZap(false)
+      }
+    } else {
+      const abrirWeb = window.confirm(
+        `ℹ️ O condomínio "${reserva.condominio || 'Não informado'}" ainda não possui o ID do Grupo de WhatsApp cadastrado em Condomínios.\n\nDeseja abrir o WhatsApp agora com o texto da reserva pronto para compartilhar no grupo manualmente?`
+      )
+      if (abrirWeb) {
+        window.open(`https://wa.me/?text=${encodeURIComponent(textoMsg)}`, '_blank')
+      }
+    }
+  }
 
   const handleSave = async form => {
     if (form.status !== 'Cancelada') {
@@ -123,17 +231,41 @@ export default function Reservas() {
       if (overlap) { alert('Já existe uma reserva conflitante neste dia/horário! Verifique o calendário.'); return }
     }
     if (!form.id) {
+      const finalCondominio = form.condominio || user?.condominio || ''
       const finalForm = {
         ...form,
-        condominio: form.condominio || user?.condominio || '',
-        uid: user?.uid || ''
+        condominio: finalCondominio,
+        uid: user?.uid || '',
+        criadoEm: new Date().toISOString()
       }
-      await addItem(finalForm)
+      const docRef = await addItem(finalForm)
       // notificação sistema
       await addDoc(collection(db,'notificacoes'),{
-        text:`[${finalForm.condominio}] Nova reserva: ${finalForm.espaco} – ${finalForm.morador} (Apt ${finalForm.apt} | ${finalForm.data})`,
-        time:new Date().toISOString(),tipo:'reserva',lida:false, condominio: finalForm.condominio, _createdAt:serverTimestamp()
+        text:`[${finalCondominio}] Nova reserva: ${finalForm.espaco} – ${finalForm.morador} (Apt ${finalForm.apt} | ${finalForm.data})`,
+        time:new Date().toISOString(),tipo:'reserva',lida:false, condominio: finalCondominio, _createdAt:serverTimestamp()
       })
+
+      // Envio AUTOMÁTICO no grupo do WhatsApp do residencial
+      if (form.notificarWhatsapp !== false) {
+        const norm = s => String(s || '').trim().toLowerCase()
+        const cNome = norm(finalCondominio)
+        const condoDoc = condominios.find(c => {
+          const cn = norm(c.nome)
+          return cn === cNome || (cn && cNome && (cn.includes(cNome) || cNome.includes(cn)))
+        })
+
+        if (condoDoc && condoDoc.grupoWhatsapp) {
+          enviarReservaWhatsAppGrupo({ ...finalForm, id: docRef?.id }, condoDoc).then(res => {
+            if (res && res.success) {
+              console.log('✅ Notificação de reserva enviada no grupo do WhatsApp:', condoDoc.nome)
+            } else {
+              console.warn('⚠️ Falha no disparo automático no grupo de WhatsApp:', res?.error)
+            }
+          }).catch(err => {
+            console.error('Erro ao enviar notificação de reserva no grupo:', err)
+          })
+        }
+      }
     } else {
       await updateItem(form.id, form)
     }
@@ -148,22 +280,6 @@ export default function Reservas() {
   const weekDays=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
   const today=new Date()
   const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
-
-  const { items: condominios } = useFirestore('condominios')
-  const isMorador = user?.role === 'Morador'
-  const isAdm = user?.role === 'Administrador'
-  const meuCondo = (user?.condominio || '').trim().toLowerCase()
-
-  const [condoFiltro, setCondoFiltro] = useState(() => {
-    if (!isAdm && user?.condominio) return user.condominio
-    return 'Todos'
-  })
-
-  useEffect(() => {
-    if (!isAdm && user?.condominio) {
-      setCondoFiltro(user.condominio)
-    }
-  }, [isAdm, user])
 
   const getReservationsForDay = dayStr =>
     items.filter(i=>{
@@ -213,7 +329,7 @@ export default function Reservas() {
               ))}
             </select>
           )}
-          <button onClick={()=>setModal({espaco:selectedEspaco==='Todos'?'Salão de Festas':selectedEspaco,condominio:user?.condominio||(condoFiltro!=='Todos'?condoFiltro:''),morador:user?.nome||'',apt:user?.apt||'',data:'',horario:'',pessoas:'',status:'Pendente'})} className="btn-primary"><Plus size={16}/>Nova Reserva</button>
+          <button onClick={()=>setModal({espaco:selectedEspaco==='Todos'?'Salão de Festas':selectedEspaco,condominio:user?.condominio||(condoFiltro!=='Todos'?condoFiltro:''),morador:user?.nome||'',apt:user?.apt||'',data:'',horario:'',pessoas:'',status:'Pendente',notificarWhatsapp:true})} className="btn-primary"><Plus size={16}/>Nova Reserva</button>
         </div>
       </div>
 
@@ -245,7 +361,7 @@ export default function Reservas() {
             const dayRes=getReservationsForDay(dayStr)
             const isToday=dayStr===todayStr
             return (
-              <div key={d} onClick={()=>setModal({espaco:selectedEspaco==='Todos'?'Salão de Festas':selectedEspaco,condominio:user?.condominio||'',morador:user?.nome||'',apt:user?.apt||'',data:dayStr,horario:'',pessoas:'',status:'Pendente'})}
+              <div key={d} onClick={()=>setModal({espaco:selectedEspaco==='Todos'?'Salão de Festas':selectedEspaco,condominio:user?.condominio||'',morador:user?.nome||'',apt:user?.apt||'',data:dayStr,horario:'',pessoas:'',status:'Pendente',notificarWhatsapp:true})}
                 className={`bg-white min-h-[120px] p-2 transition-all hover:bg-brand-50 hover:scale-[1.02] hover:z-10 hover:shadow-lg cursor-pointer group flex flex-col gap-1.5 relative border border-transparent hover:border-brand-300 rounded-lg m-0.5 ${isToday?'bg-blue-50/30 border-blue-200':''}`}>
                 <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full transition-all ${isToday?'bg-brand-600 text-white shadow-md':'text-gray-400 group-hover:text-brand-600 group-hover:bg-brand-100'}`}>{d}</span>
                 <div className="flex flex-col gap-1.5 mt-1 flex-1 overflow-y-auto custom-scrollbar pr-1 max-h-[100px]">
@@ -284,9 +400,18 @@ export default function Reservas() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={statusBadge(r.status)}>{r.status}</span>
-                    <button onClick={()=>setModal(r)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all"><Edit2 size={12}/></button>
+                    <button
+                      onClick={() => handleDispararWhatsApp(r)}
+                      disabled={enviandoZap}
+                      className="p-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer shadow-sm"
+                      title="Disparar notificação desta reserva no WhatsApp"
+                    >
+                      <MessageSquare size={13} className="text-emerald-600" />
+                      <span className="hidden sm:inline">Disparar WhatsApp</span>
+                    </button>
+                    <button onClick={()=>setModal(r)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all cursor-pointer"><Edit2 size={12}/></button>
                     {r.status==='Cancelada' && (
-                      <button onClick={()=>deleteItem(r.id)} className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 transition-all" title="Excluir reserva cancelada"><Trash2 size={12}/></button>
+                      <button onClick={()=>deleteItem(r.id)} className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 transition-all cursor-pointer" title="Excluir reserva cancelada"><Trash2 size={12}/></button>
                     )}
                   </div>
                 </div>
@@ -296,7 +421,7 @@ export default function Reservas() {
         }
       </div>
 
-      {modal&&<Modal data={modal} user={user} onClose={()=>setModal(null)} onSave={handleSave} onDelete={async id => { await deleteItem(id); setModal(null) }}/>}
+      {modal&&<Modal data={modal} user={user} condominios={condominios} onClose={()=>setModal(null)} onSave={handleSave} onDelete={async id => { await deleteItem(id); setModal(null) }} onNotificarWhatsApp={handleDispararWhatsApp} enviandoZap={enviandoZap}/>}
     </div>
   )
 }
