@@ -109,6 +109,7 @@ export default function Cadastro() {
       try {
         const userCred = await createUserWithEmailAndPassword(secondaryAuth, emailClean, form.senha)
         try {
+          secondaryAuth.languageCode = 'pt-BR'
           await sendEmailVerification(userCred.user, {
             url: window.location.origin ? `${window.location.origin}/login` : 'https://app.alphaadmsc.com.br/login',
             handleCodeInApp: false

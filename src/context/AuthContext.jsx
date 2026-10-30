@@ -272,6 +272,7 @@ export function AuthProvider({ children }) {
   const resetPassword = async (email) => {
     const { sendPasswordResetEmail } = await import('firebase/auth')
     try {
+      auth.languageCode = 'pt-BR'
       await sendPasswordResetEmail(auth, email.toLowerCase().trim())
       return true
     } catch (err) {

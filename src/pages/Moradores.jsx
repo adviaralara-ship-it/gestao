@@ -1026,6 +1026,7 @@ export default function Moradores() {
     if (form.email && form.criarAcessoEmail !== false) {
       const emailClean = form.email.toLowerCase().trim()
       try {
+        secondaryAuth.languageCode = 'pt-BR'
         const tempPass = Math.random().toString(36).slice(-8) + 'Aa1!'
         await createUserWithEmailAndPassword(secondaryAuth, emailClean, tempPass).catch(() => {})
         await sendPasswordResetEmail(secondaryAuth, emailClean, {
@@ -1050,6 +1051,7 @@ export default function Moradores() {
     }
     if (!window.confirm(`Deseja enviar o e-mail oficial com link de confirmação e criação de senha para "${m.nome}" (${emailClean})?`)) return
     try {
+      secondaryAuth.languageCode = 'pt-BR'
       try {
         const tempPass = Math.random().toString(36).slice(-8) + 'Aa1!'
         await createUserWithEmailAndPassword(secondaryAuth, emailClean, tempPass)

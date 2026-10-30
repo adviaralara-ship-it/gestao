@@ -571,6 +571,7 @@ export default function Usuarios() {
     if (!u.email) return
     if (!window.confirm(`Deseja reenviar o e-mail oficial com o link de confirmação e criação de senha para "${u.nome || u.email}"?`)) return
     try {
+      secondaryAuth.languageCode = 'pt-BR'
       await sendPasswordResetEmail(secondaryAuth, u.email.toLowerCase().trim(), {
         url: window.location.origin ? `${window.location.origin}/login` : 'https://app.alphaadmsc.com.br/login',
         handleCodeInApp: false
@@ -618,6 +619,7 @@ export default function Usuarios() {
 
       try {
         userCred = await createUserWithEmailAndPassword(secondaryAuth, emailClean, finalSenha)
+        secondaryAuth.languageCode = 'pt-BR'
         if (isEmailInvite) {
           try {
             await sendPasswordResetEmail(secondaryAuth, emailClean, {
@@ -646,6 +648,7 @@ export default function Usuarios() {
         }
         // Se já existe no Auth, dispara link oficial do Google para redefinição/confirmação
         if (isEmailInvite) {
+          secondaryAuth.languageCode = 'pt-BR'
           await sendPasswordResetEmail(secondaryAuth, emailClean, {
             url: window.location.origin ? `${window.location.origin}/login` : 'https://app.alphaadmsc.com.br/login',
             handleCodeInApp: false

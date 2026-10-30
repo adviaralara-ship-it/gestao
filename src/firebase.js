@@ -20,3 +20,7 @@ export const storage = getStorage(app)
 // Secondary app to create users without signing out the current admin
 export const secondaryApp = initializeApp(firebaseConfig, 'SecondaryApp')
 export const secondaryAuth = getAuth(secondaryApp)
+
+// Forçar idioma oficial para Português do Brasil em todos os e-mails e fluxos de autenticação
+auth.languageCode = 'pt-BR'
+secondaryAuth.languageCode = 'pt-BR'
