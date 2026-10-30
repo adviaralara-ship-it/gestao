@@ -56,118 +56,123 @@ function extractBoletoPdfData(uint8Array, fileName = '', cotaPadraoNum = 265) {
   let nossoNumero = ''
 
   try {
-    const pdfStr = typeof TextDecoder !== 'undefined' 
-      ? new TextDecoder('latin1').decode(uint8Array) 
-      : String.fromCharCode.apply(null, uint8Array)
+    const STREAM_BYTES = [115, 116, 114, 101, 97, 109] // 'stream'
+    const ENDSTREAM_BYTES = [101, 110, 100, 115, 116, 114, 101, 97, 109] // 'endstream'
+    const ENDOBJ_BYTES = [101, 110, 100, 111, 98, 106] // 'endobj'
 
-    // Localiza todos os objetos do PDF
-    const objRegex = /(\d+)\s+(\d+)\s+obj([\s\S]*?)endobj/g
-    const objects = {}
-    let m
-    while ((m = objRegex.exec(pdfStr)) !== null) {
-      objects[m[1]] = m[3]
+    function findBytes(bytes, target, start = 0) {
+      outer: for (let i = start; i <= bytes.length - target.length; i++) {
+        for (let j = 0; j < target.length; j++) {
+          if (bytes[i + j] !== target[j]) continue outer
+        }
+        return i
+      }
+      return -1
     }
 
-    // Mapeia todas as fontes e seus CMaps (ToUnicode) para traduzir glifos em texto UTF-8 legível
+    const pdfHeaderStr = new TextDecoder('latin1').decode(uint8Array)
+    const objRegex = /(\d+)\s+(\d+)\s+obj/g
+    let m
+    const objPositions = []
+    while ((m = objRegex.exec(pdfHeaderStr)) !== null) {
+      objPositions.push({ id: m[1], pos: m.index })
+    }
+
+    const objects = {}
+    for (let i = 0; i < objPositions.length; i++) {
+      const id = objPositions[i].id
+      const start = objPositions[i].pos
+      const end = findBytes(uint8Array, ENDOBJ_BYTES, start)
+      if (end !== -1) {
+        const headerSlice = uint8Array.subarray(start, Math.min(end, start + 400))
+        const headerStr = new TextDecoder('latin1').decode(headerSlice)
+
+        let streamData = null
+        const sPos = findBytes(uint8Array, STREAM_BYTES, start)
+        if (sPos !== -1 && sPos < end) {
+          let chunkStart = sPos + 6
+          if (uint8Array[chunkStart] === 0x0d && uint8Array[chunkStart + 1] === 0x0a) chunkStart += 2
+          else if (uint8Array[chunkStart] === 0x0a) chunkStart += 1
+
+          const sEnd = findBytes(uint8Array, ENDSTREAM_BYTES, chunkStart)
+          if (sEnd !== -1 && sEnd <= end) {
+            try {
+              streamData = fflate.unzlibSync(uint8Array.subarray(chunkStart, sEnd))
+            } catch (e) {}
+          }
+        }
+        objects[id] = { header: headerStr, stream: streamData }
+      }
+    }
+
+    // Mapeia todas as fontes e seus CMaps (ToUnicode)
     const fontToCMap = {}
-    for (const [id, body] of Object.entries(objects)) {
-      if (body.includes('/Type /Font') || body.includes('/Type/Font')) {
-        const toUnicodeMatch = body.match(/\/ToUnicode\s+(\d+)\s+0\s+R/)
+    for (const [id, obj] of Object.entries(objects)) {
+      if (obj.header.includes('/Type /Font') || obj.header.includes('/Type/Font')) {
+        const toUnicodeMatch = obj.header.match(/\/ToUnicode\s+(\d+)\s+0\s+R/)
         if (toUnicodeMatch) {
-          const cmapObjId = toUnicodeMatch[1]
-          const cmapBody = objects[cmapObjId]
-          if (cmapBody) {
-            const streamStart = cmapBody.indexOf('stream')
-            const streamEnd = cmapBody.indexOf('endstream')
-            if (streamStart !== -1 && streamEnd !== -1) {
-              let rawChunk = uint8Array.subarray(cmapBody.indexOf('stream') + 6, cmapBody.indexOf('endstream'))
-              // Pula quebras de linha iniciais do stream
-              let startIdx = 0
-              if (rawChunk[0] === 0x0d && rawChunk[1] === 0x0a) startIdx = 2
-              else if (rawChunk[0] === 0x0a) startIdx = 1
-              try {
-                const unzippedBytes = fflate.unzlibSync(rawChunk.subarray(startIdx))
-                const unzipped = new TextDecoder('utf-8').decode(unzippedBytes)
-                const cmap = {}
-                for (const charMatch of unzipped.matchAll(/<([0-9a-fA-F]+)>\s+<([0-9a-fA-F]+)>/g)) {
-                  cmap[parseInt(charMatch[1], 16)] = String.fromCharCode(parseInt(charMatch[2], 16))
-                }
-                for (const rangeMatch of unzipped.matchAll(/<([0-9a-fA-F]+)>\s+<([0-9a-fA-F]+)>\s+<([0-9a-fA-F]+)>/g)) {
-                  const start = parseInt(rangeMatch[1], 16)
-                  const end = parseInt(rangeMatch[2], 16)
-                  let uStart = parseInt(rangeMatch[3], 16)
-                  for (let c = start; c <= end; c++) {
-                    cmap[c] = String.fromCharCode(uStart++)
-                  }
-                }
-                fontToCMap[id] = cmap
-              } catch (e) {}
+          const cmapObj = objects[toUnicodeMatch[1]]
+          if (cmapObj && cmapObj.stream) {
+            const cmapStr = new TextDecoder('utf-8').decode(cmapObj.stream)
+            const cmap = {}
+            for (const charMatch of cmapStr.matchAll(/<([0-9a-fA-F]+)>\s+<([0-9a-fA-F]+)>/g)) {
+              cmap[charMatch[1].toLowerCase()] = String.fromCharCode(parseInt(charMatch[2], 16))
             }
+            for (const rangeMatch of cmapStr.matchAll(/<([0-9a-fA-F]+)>\s+<([0-9a-fA-F]+)>\s+<([0-9a-fA-F]+)>/g)) {
+              const start = parseInt(rangeMatch[1], 16)
+              const end = parseInt(rangeMatch[2], 16)
+              let uStart = parseInt(rangeMatch[3], 16)
+              for (let c = start; c <= end; c++) {
+                cmap[c.toString(16).padStart(4, '0').toLowerCase()] = String.fromCharCode(uStart++)
+              }
+            }
+            fontToCMap[id] = cmap
           }
         }
       }
     }
 
     // Extrai o conteúdo textual de cada página
-    const textLines = []
-    for (const [id, body] of Object.entries(objects)) {
-      if (body.includes('/Type /Page') || body.includes('/Type/Page')) {
-        const fontDictMatch = body.match(/\/Font\s*<<([\s\S]*?)>>/)
+    let pageText = ''
+    for (const [id, obj] of Object.entries(objects)) {
+      if (obj.header.includes('/Type /Page') || obj.header.includes('/Type/Page')) {
         const fontNames = {}
-        if (fontDictMatch) {
-          for (const fm of fontDictMatch[1].matchAll(/\/(\w+)\s+(\d+)\s+0\s+R/g)) {
-            fontNames[fm[1]] = fm[2]
-          }
+        for (const fm of obj.header.matchAll(/\/(\w+)\s+(\d+)\s+0\s+R/g)) {
+          fontNames[fm[1]] = fm[2]
         }
-        const contentsMatch = body.match(/\/Contents\s+(\d+)\s+0\s+R/)
+        const contentsMatch = obj.header.match(/\/Contents\s+(\d+)\s+0\s+R/)
         if (contentsMatch) {
-          const contentBody = objects[contentsMatch[1]]
-          if (contentBody) {
-            const streamStart = contentBody.indexOf('stream')
-            const streamEnd = contentBody.indexOf('endstream')
-            if (streamStart !== -1 && streamEnd !== -1) {
-              const bodyPos = pdfStr.indexOf(contentBody)
-              if (bodyPos !== -1) {
-                const absStreamStart = bodyPos + streamStart + 6
-                const absStreamEnd = bodyPos + streamEnd
-                let rawChunk = uint8Array.subarray(absStreamStart, absStreamEnd)
-                let startIdx = 0
-                if (rawChunk[0] === 0x0d && rawChunk[1] === 0x0a) startIdx = 2
-                else if (rawChunk[0] === 0x0a) startIdx = 1
-                try {
-                  const unzippedBytes = fflate.unzlibSync(rawChunk.subarray(startIdx))
-                  const content = new TextDecoder('latin1').decode(unzippedBytes)
-                  let currentFont = null
-                  let currentLine = ''
-                  const tokens = content.split(/\s+/)
-                  for (let i = 0; i < tokens.length; i++) {
-                    if (tokens[i] === 'Tf' && i >= 2) {
-                      const fontTag = tokens[i - 2].replace('/', '')
-                      currentFont = fontNames[fontTag]
-                    } else if (tokens[i] === 'Tj') {
-                      const arg = tokens[i - 1]
-                      if (arg && arg.startsWith('<') && arg.endsWith('>')) {
-                        const hex = arg.slice(1, -1)
-                        const cmap = fontToCMap[currentFont] || {}
-                        for (let h = 0; h < hex.length; h += 4) {
-                          const code = parseInt(hex.slice(h, h + 4), 16)
-                          currentLine += cmap[code] || '?'
-                        }
-                      }
-                    } else if (tokens[i] === 'ET' || tokens[i] === 'T*') {
-                      if (currentLine.trim()) textLines.push(currentLine.trim())
-                      currentLine = ''
-                    }
+          const contentObj = objects[contentsMatch[1]]
+          if (contentObj && contentObj.stream) {
+            const contentStr = new TextDecoder('latin1').decode(contentObj.stream)
+            let currentFont = null
+            let line = ''
+            const tokens = contentStr.split(/\s+/)
+            for (let i = 0; i < tokens.length; i++) {
+              if (tokens[i] === 'Tf' && i >= 2) {
+                const fTag = tokens[i - 2].replace('/', '')
+                currentFont = fontNames[fTag]
+              } else if (tokens[i] === 'Tj') {
+                const arg = tokens[i - 1]
+                if (arg && arg.startsWith('<') && arg.endsWith('>')) {
+                  const hex = arg.slice(1, -1)
+                  const cmap = fontToCMap[currentFont] || {}
+                  for (let h = 0; h < hex.length; h += 4) {
+                    const charHex = hex.slice(h, h + 4).toLowerCase()
+                    line += cmap[charHex] || ' '
                   }
-                  if (currentLine.trim()) textLines.push(currentLine.trim())
-                } catch (e) {}
+                }
+              } else if (tokens[i] === 'ET' || tokens[i] === 'T*') {
+                if (line.trim()) pageText += line.trim() + '\n'
+                line = ''
               }
             }
+            if (line.trim()) pageText += line.trim() + '\n'
           }
         }
       }
     }
-    fullText = textLines.join('\n')
+    fullText = pageText
   } catch (err) {
     console.warn('Erro ao processar streams internos do PDF:', err)
   }
@@ -196,25 +201,24 @@ function extractBoletoPdfData(uint8Array, fileName = '', cotaPadraoNum = 265) {
     .replace(/[-_]/g, ' ')
     .trim()
 
-  // 1. EXTRAÇÃO DO VALOR REAL (independe do valor padrão cadastrado no condomínio)
+  // 1. EXTRAÇÃO DO VALOR REAL
   let valor = 0
 
-  // Método A: Linha digitável / Código de barras FEBRABAN (últimos 10 dígitos do bloco de 14 contêm centavos)
-  // Ex: 16260000028200 -> 28200 centavos = R$ 282,00 | 16260000012200 -> 12200 centavos = R$ 122,00
   if (fullText) {
-    const linhaDigitavelMatch = fullText.match(/\b\d{4}(\d{10})\b/) || fullText.match(/\b\d{14}\b/)
-    if (linhaDigitavelMatch) {
-      const rawDigits = linhaDigitavelMatch[0]
-      const centavos = parseInt(rawDigits.slice(-10), 10)
-      if (!isNaN(centavos) && centavos > 0) {
+    // Método A: Linha digitável ou código de barras FEBRABAN
+    // Ex: "40390.00007 59902.212022 06789.877013 5 16260000012200" -> 122,00 ou 16260000028200 -> 282,00
+    const mBarcode = fullText.match(/(?:[1-9]\s+|[\s_])(\d{4})(\d{10})/i) || fullText.match(/\b\d{4}(\d{10})/i)
+    if (mBarcode) {
+      const centavosStr = mBarcode[2] || mBarcode[1]
+      const centavos = parseInt(centavosStr, 10)
+      if (!isNaN(centavos) && centavos > 0 && centavos < 10000000) {
         valor = centavos / 100
       }
     }
 
-    // Método B: Rótulos "Valor do Documento", "Valor Cobrado", "Valor R$", "Valor" no texto do PDF
+    // Método B: Rótulo "Valor do Documento", "Valor Cobrado", "Valor R$", "Valor"
     if (valor <= 0) {
-      const valDocMatch = fullText.match(/(?:Valor\s+do\s+Documento|Valor\s+Cobrado|Valor\s+R\$)[^\d\n]*R?\$?[\s,]*(\d{1,5}[,\.]\d{2})/i) ||
-                          fullText.match(/Valor[^\d\n]*R?\$?[\s,]*(\d{1,5}[,\.]\d{2})/i)
+      const valDocMatch = fullText.match(/(?:Valor\s+do\s+Documento|Valor\s+Cobrado|Valor\s+R\$|Valor)[^\d\n]*R?\$?[\s,]*(\d{1,5}[,\.]\d{2})/i)
       if (valDocMatch) {
         const cleanVal = valDocMatch[1].replace(',', '.')
         const num = parseFloat(cleanVal)
@@ -223,13 +227,9 @@ function extractBoletoPdfData(uint8Array, fileName = '', cotaPadraoNum = 265) {
     }
   }
 
-  // Método C: Sufixo FEBRABAN do nome do arquivo
-  if (valor <= 0 && nossoNumero && nossoNumero.length >= 10) {
-    const last10 = nossoNumero.slice(-10)
-    const centavos = parseInt(last10, 10)
-    if (!isNaN(centavos) && centavos > 0) {
-      valor = centavos / 100
-    }
+  // Se não extraiu valor legível do PDF, usa a cota padrão cadastrada como base segura
+  if (valor <= 0) {
+    valor = Number(cotaPadraoNum) || 265
   }
 
   // 2. EXTRAÇÃO DA DATA DE VENCIMENTO
@@ -251,9 +251,9 @@ function extractBoletoPdfData(uint8Array, fileName = '', cotaPadraoNum = 265) {
   // 3. IDENTIFICAÇÃO DO SACADO / PAGADOR NO CORPO DO BOLETO
   let pagador = ''
   if (fullText) {
-    const pagadorMatch = fullText.match(/(?:Pagador|Sacado)[^\n]*\n([^\n]+)/i)
+    const pagadorMatch = fullText.match(/(?:Pagador|Sacado)[\s\n\r]*([^\-\n]+)/i)
     if (pagadorMatch) {
-      pagador = pagadorMatch[1].split('-')[0].replace(/[^a-zA-ZÀ-ÿ\s]/g, '').trim()
+      pagador = pagadorMatch[1].replace(/[^a-zA-ZÀ-ÿ\s]/g, '').trim()
     }
   }
 
@@ -268,7 +268,7 @@ function extractBoletoPdfData(uint8Array, fileName = '', cotaPadraoNum = 265) {
 
   const lower = (descricao + ' ' + fullText).toLowerCase()
   const temOrdinaria = lower.includes('condominial') || lower.includes('condom') || lower.includes('ordinária') || lower.includes('cota')
-  const temExtra = lower.includes('extraordin') || lower.includes('taxa extra') || lower.includes('extra')
+  const temExtra = lower.includes('extraordin') || lower.includes('taxa extra') || lower.includes('extra') || lower.includes('ebtraordin')
   const temAgua = lower.includes('agua') || lower.includes('água') || lower.includes('hidro') || lower.includes('consumo')
 
   let tipoCobranca = 'Taxa Condominial'
@@ -276,42 +276,35 @@ function extractBoletoPdfData(uint8Array, fileName = '', cotaPadraoNum = 265) {
   let valorExtra = 0
   const cota = Number(cotaPadraoNum) || 0
 
-  if (valor > 0) {
-    if (cota > 0 && Math.abs(valor - cota) < 0.05) {
-      tipoCobranca = 'Taxa Condominial'
-      detalhe = `Cota Ordinária Padrão (R$ ${valor.toFixed(2).replace('.', ',')})`
-      valorExtra = 0
-    } else if (cota > 0 && valor > cota) {
-      valorExtra = Math.round((valor - cota) * 100) / 100
-      if (temExtra) {
-        tipoCobranca = 'Taxa Condominial + Taxa Extraordinária'
-        detalhe = `Cota Ordinária (R$ ${cota.toFixed(2).replace('.', ',')}) + Taxa Extra (R$ ${valorExtra.toFixed(2).replace('.', ',')})`
-      } else if (temAgua) {
-        tipoCobranca = 'Taxa Condominial + Água'
-        detalhe = `Cota Ordinária (R$ ${cota.toFixed(2).replace('.', ',')}) + Consumo de Água (R$ ${valorExtra.toFixed(2).replace('.', ',')})`
-      } else {
-        tipoCobranca = 'Taxa Condominial + Extras'
-        detalhe = `Cota Ordinária (R$ ${cota.toFixed(2).replace('.', ',')}) + Adicional (R$ ${valorExtra.toFixed(2).replace('.', ',')})`
-      }
+  if (cota > 0 && Math.abs(valor - cota) < 0.05) {
+    tipoCobranca = 'Taxa Condominial'
+    detalhe = `Cota Ordinária Padrão (R$ ${valor.toFixed(2).replace('.', ',')})`
+    valorExtra = 0
+  } else if (cota > 0 && valor > cota) {
+    valorExtra = Math.round((valor - cota) * 100) / 100
+    if (temExtra) {
+      tipoCobranca = 'Taxa Condominial + Taxa Extraordinária'
+      detalhe = `Cota Ordinária (R$ ${cota.toFixed(2).replace('.', ',')}) + Taxa Extra (R$ ${valorExtra.toFixed(2).replace('.', ',')})`
+    } else if (temAgua) {
+      tipoCobranca = 'Taxa Condominial + Água'
+      detalhe = `Cota Ordinária (R$ ${cota.toFixed(2).replace('.', ',')}) + Consumo de Água (R$ ${valorExtra.toFixed(2).replace('.', ',')})`
     } else {
-      // Valor menor que a cota do condomínio (ex: boleto isolado de Taxa Extra R$ 122,00 ou Água R$ 20,00)
-      valorExtra = valor
-      if (temExtra) {
-        tipoCobranca = 'Taxa Extraordinária'
-        detalhe = `Taxa Extraordinária (R$ ${valor.toFixed(2).replace('.', ',')})`
-      } else if (temAgua) {
-        tipoCobranca = 'Consumo de Água'
-        detalhe = `Consumo Individual de Água (R$ ${valor.toFixed(2).replace('.', ',')})`
-      } else {
-        tipoCobranca = 'Taxa Extraordinária'
-        detalhe = `Taxa Extraordinária / Avulso (R$ ${valor.toFixed(2).replace('.', ',')})`
-      }
+      tipoCobranca = 'Taxa Condominial + Extras'
+      detalhe = `Cota Ordinária (R$ ${cota.toFixed(2).replace('.', ',')}) + Adicional (R$ ${valorExtra.toFixed(2).replace('.', ',')})`
     }
   } else {
-    // Caso de contingência absoluta onde não encontrou valor no PDF nem no nome
-    valor = cota > 0 ? cota : 265
-    tipoCobranca = 'Taxa Condominial'
-    detalhe = `Cota Padrão (R$ ${valor.toFixed(2).replace('.', ',')})`
+    // Valor menor que a cota do condomínio (ex: boleto isolado de Taxa Extra R$ 122,00 ou Água R$ 20,00)
+    valorExtra = valor
+    if (temExtra) {
+      tipoCobranca = 'Taxa Extraordinária'
+      detalhe = `Taxa Extraordinária (R$ ${valor.toFixed(2).replace('.', ',')})`
+    } else if (temAgua) {
+      tipoCobranca = 'Consumo de Água'
+      detalhe = `Consumo Individual de Água (R$ ${valor.toFixed(2).replace('.', ',')})`
+    } else {
+      tipoCobranca = 'Taxa Extraordinária'
+      detalhe = `Taxa Extraordinária (R$ ${valor.toFixed(2).replace('.', ',')})`
+    }
   }
 
   return {
