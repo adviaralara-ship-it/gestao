@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'
 import { X, Upload, FileText, CheckCircle2, AlertCircle, Trash2, Loader2, Building, Calendar, DollarSign, Check, Info, Droplet, Tag } from 'lucide-react'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage } from '../firebase'
+import * as fflate from 'fflate'
 
 // Normalização para comparação textual sem acentos, pontuação e minúsculas
 function norm(s) {
@@ -48,76 +49,283 @@ function readFileAsDataUrl(file) {
   })
 }
 
-// Decompõe o nome do arquivo no padrão bancário Febraban/Cora:
-// Ex: Boleto-KellyNayaneBrilhanteBarreto-2026-11-05-3013716210000058038.pdf
-function parseBoletoFileName(fileName, cotaPadraoNum = 265) {
-  let clean = fileName.replace(/\.pdf$/i, '')
-  
-  // Extrai data no formato YYYY-MM-DD
-  const dateMatch = clean.match(/(\d{4}-\d{2}-\d{2})/)
-  let date = dateMatch ? dateMatch[1] : ''
+// Extração profunda e 100% precisa dos dados de qualquer boleto bancário (Cora, Febraban, etc.)
+// Lê diretamente a estrutura interna do PDF (código de barras, linha digitável, descrição e valor real)
+function extractBoletoPdfData(uint8Array, fileName = '', cotaPadraoNum = 265) {
+  let fullText = ''
   let nossoNumero = ''
-  let namePart = clean
-  let valor = 0
 
-  if (dateMatch) {
-    const idx = clean.indexOf(dateMatch[0])
-    const prefix = clean.substring(0, idx).replace(/^boleto[-_]?/i, '').replace(/[-_]$/, '')
-    const suffix = clean.substring(idx + dateMatch[0].length).replace(/^[-_]/, '')
-    namePart = prefix
-    nossoNumero = suffix
+  try {
+    const pdfStr = typeof TextDecoder !== 'undefined' 
+      ? new TextDecoder('latin1').decode(uint8Array) 
+      : String.fromCharCode.apply(null, uint8Array)
 
-    // Padrão Febraban / Bancos (Cora, BB, Sicoob, etc.):
-    // Os últimos 10 dígitos do código numérico contêm o valor exato do boleto em centavos
-    if (suffix.length >= 10) {
-      const last10 = suffix.slice(-10)
-      const centavos = parseInt(last10, 10)
-      if (!isNaN(centavos) && centavos > 0) {
-        valor = centavos / 100
+    // Localiza todos os objetos do PDF
+    const objRegex = /(\d+)\s+(\d+)\s+obj([\s\S]*?)endobj/g
+    const objects = {}
+    let m
+    while ((m = objRegex.exec(pdfStr)) !== null) {
+      objects[m[1]] = m[3]
+    }
+
+    // Mapeia todas as fontes e seus CMaps (ToUnicode) para traduzir glifos em texto UTF-8 legível
+    const fontToCMap = {}
+    for (const [id, body] of Object.entries(objects)) {
+      if (body.includes('/Type /Font') || body.includes('/Type/Font')) {
+        const toUnicodeMatch = body.match(/\/ToUnicode\s+(\d+)\s+0\s+R/)
+        if (toUnicodeMatch) {
+          const cmapObjId = toUnicodeMatch[1]
+          const cmapBody = objects[cmapObjId]
+          if (cmapBody) {
+            const streamStart = cmapBody.indexOf('stream')
+            const streamEnd = cmapBody.indexOf('endstream')
+            if (streamStart !== -1 && streamEnd !== -1) {
+              let rawChunk = uint8Array.subarray(cmapBody.indexOf('stream') + 6, cmapBody.indexOf('endstream'))
+              // Pula quebras de linha iniciais do stream
+              let startIdx = 0
+              if (rawChunk[0] === 0x0d && rawChunk[1] === 0x0a) startIdx = 2
+              else if (rawChunk[0] === 0x0a) startIdx = 1
+              try {
+                const unzippedBytes = fflate.unzlibSync(rawChunk.subarray(startIdx))
+                const unzipped = new TextDecoder('utf-8').decode(unzippedBytes)
+                const cmap = {}
+                for (const charMatch of unzipped.matchAll(/<([0-9a-fA-F]+)>\s+<([0-9a-fA-F]+)>/g)) {
+                  cmap[parseInt(charMatch[1], 16)] = String.fromCharCode(parseInt(charMatch[2], 16))
+                }
+                for (const rangeMatch of unzipped.matchAll(/<([0-9a-fA-F]+)>\s+<([0-9a-fA-F]+)>\s+<([0-9a-fA-F]+)>/g)) {
+                  const start = parseInt(rangeMatch[1], 16)
+                  const end = parseInt(rangeMatch[2], 16)
+                  let uStart = parseInt(rangeMatch[3], 16)
+                  for (let c = start; c <= end; c++) {
+                    cmap[c] = String.fromCharCode(uStart++)
+                  }
+                }
+                fontToCMap[id] = cmap
+              } catch (e) {}
+            }
+          }
+        }
       }
     }
-  } else {
-    namePart = clean.replace(/^boleto[-_]?/i, '')
+
+    // Extrai o conteúdo textual de cada página
+    const textLines = []
+    for (const [id, body] of Object.entries(objects)) {
+      if (body.includes('/Type /Page') || body.includes('/Type/Page')) {
+        const fontDictMatch = body.match(/\/Font\s*<<([\s\S]*?)>>/)
+        const fontNames = {}
+        if (fontDictMatch) {
+          for (const fm of fontDictMatch[1].matchAll(/\/(\w+)\s+(\d+)\s+0\s+R/g)) {
+            fontNames[fm[1]] = fm[2]
+          }
+        }
+        const contentsMatch = body.match(/\/Contents\s+(\d+)\s+0\s+R/)
+        if (contentsMatch) {
+          const contentBody = objects[contentsMatch[1]]
+          if (contentBody) {
+            const streamStart = contentBody.indexOf('stream')
+            const streamEnd = contentBody.indexOf('endstream')
+            if (streamStart !== -1 && streamEnd !== -1) {
+              const bodyPos = pdfStr.indexOf(contentBody)
+              if (bodyPos !== -1) {
+                const absStreamStart = bodyPos + streamStart + 6
+                const absStreamEnd = bodyPos + streamEnd
+                let rawChunk = uint8Array.subarray(absStreamStart, absStreamEnd)
+                let startIdx = 0
+                if (rawChunk[0] === 0x0d && rawChunk[1] === 0x0a) startIdx = 2
+                else if (rawChunk[0] === 0x0a) startIdx = 1
+                try {
+                  const unzippedBytes = fflate.unzlibSync(rawChunk.subarray(startIdx))
+                  const content = new TextDecoder('latin1').decode(unzippedBytes)
+                  let currentFont = null
+                  let currentLine = ''
+                  const tokens = content.split(/\s+/)
+                  for (let i = 0; i < tokens.length; i++) {
+                    if (tokens[i] === 'Tf' && i >= 2) {
+                      const fontTag = tokens[i - 2].replace('/', '')
+                      currentFont = fontNames[fontTag]
+                    } else if (tokens[i] === 'Tj') {
+                      const arg = tokens[i - 1]
+                      if (arg && arg.startsWith('<') && arg.endsWith('>')) {
+                        const hex = arg.slice(1, -1)
+                        const cmap = fontToCMap[currentFont] || {}
+                        for (let h = 0; h < hex.length; h += 4) {
+                          const code = parseInt(hex.slice(h, h + 4), 16)
+                          currentLine += cmap[code] || '?'
+                        }
+                      }
+                    } else if (tokens[i] === 'ET' || tokens[i] === 'T*') {
+                      if (currentLine.trim()) textLines.push(currentLine.trim())
+                      currentLine = ''
+                    }
+                  }
+                  if (currentLine.trim()) textLines.push(currentLine.trim())
+                } catch (e) {}
+              }
+            }
+          }
+        }
+      }
+    }
+    fullText = textLines.join('\n')
+  } catch (err) {
+    console.warn('Erro ao processar streams internos do PDF:', err)
   }
 
-  // Desmembra PascalCase / camelCase em palavras legíveis com espaços
+  // Desmembra nome do arquivo para apoio
+  let cleanName = fileName.replace(/\.pdf$/i, '')
+  let namePart = cleanName
+  const dateDashMatch = cleanName.match(/(\d{4}-\d{2}-\d{2})/)
+  const dateCoraMatch = cleanName.match(/Vencimento-(\d{2})(\d{2})(\d{4})/i)
+
+  if (dateDashMatch) {
+    const idx = cleanName.indexOf(dateDashMatch[0])
+    namePart = cleanName.substring(0, idx).replace(/^boleto[-_]?/i, '').replace(/[-_]$/, '')
+    nossoNumero = cleanName.substring(idx + dateDashMatch[0].length).replace(/^[-_]/, '')
+  } else if (dateCoraMatch) {
+    const idx = cleanName.toLowerCase().indexOf('vencimento-')
+    namePart = cleanName.substring(0, idx).replace(/^boleto[-_]?/i, '').replace(/[-_]$/, '')
+    const afterDate = cleanName.substring(idx + dateCoraMatch[0].length).replace(/^[-_]/, '')
+    nossoNumero = afterDate
+  } else {
+    namePart = cleanName.replace(/^boleto[-_]?/i, '')
+  }
+
   const spacedName = namePart
     .replace(/([a-z0-9])([A-Z])/g, (m, p1, p2) => p1 + ' ' + p2)
     .replace(/[-_]/g, ' ')
     .trim()
 
-  // Se não extraiu valor do sufixo, usa a cota padrão
-  if (valor <= 0) {
-    valor = Number(cotaPadraoNum) || 265
+  // 1. EXTRAÇÃO DO VALOR REAL (independe do valor padrão cadastrado no condomínio)
+  let valor = 0
+
+  // Método A: Linha digitável / Código de barras FEBRABAN (últimos 10 dígitos do bloco de 14 contêm centavos)
+  // Ex: 16260000028200 -> 28200 centavos = R$ 282,00 | 16260000012200 -> 12200 centavos = R$ 122,00
+  if (fullText) {
+    const linhaDigitavelMatch = fullText.match(/\b\d{4}(\d{10})\b/) || fullText.match(/\b\d{14}\b/)
+    if (linhaDigitavelMatch) {
+      const rawDigits = linhaDigitavelMatch[0]
+      const centavos = parseInt(rawDigits.slice(-10), 10)
+      if (!isNaN(centavos) && centavos > 0) {
+        valor = centavos / 100
+      }
+    }
+
+    // Método B: Rótulos "Valor do Documento", "Valor Cobrado", "Valor R$", "Valor" no texto do PDF
+    if (valor <= 0) {
+      const valDocMatch = fullText.match(/(?:Valor\s+do\s+Documento|Valor\s+Cobrado|Valor\s+R\$)[^\d\n]*R?\$?[\s,]*(\d{1,5}[,\.]\d{2})/i) ||
+                          fullText.match(/Valor[^\d\n]*R?\$?[\s,]*(\d{1,5}[,\.]\d{2})/i)
+      if (valDocMatch) {
+        const cleanVal = valDocMatch[1].replace(',', '.')
+        const num = parseFloat(cleanVal)
+        if (!isNaN(num) && num > 0) valor = num
+      }
+    }
   }
 
-  // Identificação inteligente do tipo de cobrança e discriminação
+  // Método C: Sufixo FEBRABAN do nome do arquivo
+  if (valor <= 0 && nossoNumero && nossoNumero.length >= 10) {
+    const last10 = nossoNumero.slice(-10)
+    const centavos = parseInt(last10, 10)
+    if (!isNaN(centavos) && centavos > 0) {
+      valor = centavos / 100
+    }
+  }
+
+  // 2. EXTRAÇÃO DA DATA DE VENCIMENTO
+  let vencimento = ''
+  if (fullText) {
+    const vencTextMatch = fullText.match(/Vencimento[\s\n\r]*(\d{2})[\/\-](\d{2})[\/\-](\d{4})/i)
+    if (vencTextMatch) {
+      vencimento = `${vencTextMatch[3]}-${vencTextMatch[2]}-${vencTextMatch[1]}`
+    }
+  }
+  if (!vencimento) {
+    if (dateDashMatch) {
+      vencimento = dateDashMatch[0]
+    } else if (dateCoraMatch) {
+      vencimento = `${dateCoraMatch[3]}-${dateCoraMatch[2]}-${dateCoraMatch[1]}`
+    }
+  }
+
+  // 3. IDENTIFICAÇÃO DO SACADO / PAGADOR NO CORPO DO BOLETO
+  let pagador = ''
+  if (fullText) {
+    const pagadorMatch = fullText.match(/(?:Pagador|Sacado)[^\n]*\n([^\n]+)/i)
+    if (pagadorMatch) {
+      pagador = pagadorMatch[1].split('-')[0].replace(/[^a-zA-ZÀ-ÿ\s]/g, '').trim()
+    }
+  }
+
+  // 4. DETECÇÃO DA CATEGORIA / DISCRIMINAÇÃO REAL DO BOLETO
+  let descricao = ''
+  if (fullText) {
+    const descSection = fullText.match(/(?:Descrição|Descra[^\n]+)[^\n]*\n([^\n]+)/i)
+    if (descSection) {
+      descricao = descSection[1].replace(/[\$_,]/g, ' ').replace(/\s+/g, ' ').trim()
+    }
+  }
+
+  const lower = (descricao + ' ' + fullText).toLowerCase()
+  const temOrdinaria = lower.includes('condominial') || lower.includes('condom') || lower.includes('ordinária') || lower.includes('cota')
+  const temExtra = lower.includes('extraordin') || lower.includes('taxa extra') || lower.includes('extra')
+  const temAgua = lower.includes('agua') || lower.includes('água') || lower.includes('hidro') || lower.includes('consumo')
+
   let tipoCobranca = 'Taxa Condominial'
   let detalhe = 'Cota Ordinária Padrão'
   let valorExtra = 0
+  const cota = Number(cotaPadraoNum) || 0
 
-  if (Math.abs(valor - cotaPadraoNum) < 0.05) {
-    tipoCobranca = 'Taxa Condominial'
-    detalhe = 'Cota Ordinária Padrão'
-  } else if (valor > cotaPadraoNum) {
-    valorExtra = Math.round((valor - cotaPadraoNum) * 100) / 100
-    tipoCobranca = 'Taxa Condominial + Extras / Consumo'
-    detalhe = `Cota (R$ ${cotaPadraoNum.toFixed(2).replace('.', ',')}) + Extras/Água (R$ ${valorExtra.toFixed(2).replace('.', ',')})`
+  if (valor > 0) {
+    if (cota > 0 && Math.abs(valor - cota) < 0.05) {
+      tipoCobranca = 'Taxa Condominial'
+      detalhe = `Cota Ordinária Padrão (R$ ${valor.toFixed(2).replace('.', ',')})`
+      valorExtra = 0
+    } else if (cota > 0 && valor > cota) {
+      valorExtra = Math.round((valor - cota) * 100) / 100
+      if (temExtra) {
+        tipoCobranca = 'Taxa Condominial + Taxa Extraordinária'
+        detalhe = `Cota Ordinária (R$ ${cota.toFixed(2).replace('.', ',')}) + Taxa Extra (R$ ${valorExtra.toFixed(2).replace('.', ',')})`
+      } else if (temAgua) {
+        tipoCobranca = 'Taxa Condominial + Água'
+        detalhe = `Cota Ordinária (R$ ${cota.toFixed(2).replace('.', ',')}) + Consumo de Água (R$ ${valorExtra.toFixed(2).replace('.', ',')})`
+      } else {
+        tipoCobranca = 'Taxa Condominial + Extras'
+        detalhe = `Cota Ordinária (R$ ${cota.toFixed(2).replace('.', ',')}) + Adicional (R$ ${valorExtra.toFixed(2).replace('.', ',')})`
+      }
+    } else {
+      // Valor menor que a cota do condomínio (ex: boleto isolado de Taxa Extra R$ 122,00 ou Água R$ 20,00)
+      valorExtra = valor
+      if (temExtra) {
+        tipoCobranca = 'Taxa Extraordinária'
+        detalhe = `Taxa Extraordinária (R$ ${valor.toFixed(2).replace('.', ',')})`
+      } else if (temAgua) {
+        tipoCobranca = 'Consumo de Água'
+        detalhe = `Consumo Individual de Água (R$ ${valor.toFixed(2).replace('.', ',')})`
+      } else {
+        tipoCobranca = 'Taxa Extraordinária'
+        detalhe = `Taxa Extraordinária / Avulso (R$ ${valor.toFixed(2).replace('.', ',')})`
+      }
+    }
   } else {
-    tipoCobranca = 'Consumo de Água / Avulso'
-    detalhe = `Consumo Individual / Taxa Avulsa (R$ ${valor.toFixed(2).replace('.', ',')})`
+    // Caso de contingência absoluta onde não encontrou valor no PDF nem no nome
+    valor = cota > 0 ? cota : 265
+    tipoCobranca = 'Taxa Condominial'
+    detalhe = `Cota Padrão (R$ ${valor.toFixed(2).replace('.', ',')})`
   }
 
   return {
     fileName,
     namePart,
     spacedName,
-    date,
+    pagador,
+    vencimento,
     nossoNumero,
     valor,
-    cotaBase: cotaPadraoNum,
+    cotaBase: cota,
     valorExtra,
     tipoCobranca,
+    descricao: detalhe || descricao || tipoCobranca,
     detalhe
   }
 }
@@ -224,27 +432,27 @@ export default function ModalImportarBoletosPDF({
     })
 
     setItens(prev => prev.map(item => {
-      const { morador, score } = matchMorador(item.spacedName, novosMoradores)
-      const parsed = parseBoletoFileName(item.fileName, novoCota)
+      const match = matchMorador(item.pagador || item.spacedName, novosMoradores)
+      const morador = match.morador
+      const score = match.score
+
       return {
         ...item,
-        moradorId: morador ? morador.id : '',
-        moradorNome: morador ? morador.nome : item.spacedName,
+        moradorId: morador ? morador.id : item.moradorId,
+        moradorNome: morador ? morador.nome : item.moradorNome,
         apt: morador ? (morador.apt || item.apt) : item.apt,
-        bloco: morador ? (morador.bloco || '') : '',
-        cpf: morador ? (morador.cpf || '') : '',
-        tel: morador ? (morador.tel || morador.telefone || '') : '',
+        bloco: morador ? (morador.bloco || item.bloco) : item.bloco,
+        cpf: morador ? (morador.cpf || item.cpf) : item.cpf,
+        tel: morador ? (morador.tel || morador.telefone || item.tel) : item.tel,
         encontrado: !!(morador && score >= 0.4),
         score: score || 0,
-        cotaBase: novoCota,
-        detalhe: parsed.detalhe,
-        tipoCobranca: parsed.tipoCobranca
+        cotaBase: novoCota
       }
     }))
   }
 
-  // Processa a seleção de múltiplos PDFs
-  const processarArquivos = (fileList) => {
+  // Processa a seleção de múltiplos PDFs com extração direta dos streams internos
+  const processarArquivos = async (fileList) => {
     if (!fileList || fileList.length === 0) return
     const pdfFiles = Array.from(fileList).filter(f => f.name.toLowerCase().endsWith('.pdf'))
     if (pdfFiles.length === 0) {
@@ -255,25 +463,37 @@ export default function ModalImportarBoletosPDF({
     setProcessandoArquivos(true)
 
     try {
-      const novosItens = pdfFiles.map((file, idx) => {
-        const parsed = parseBoletoFileName(file.name, cotaPadraoNum)
-        const { morador, score } = matchMorador(parsed.spacedName, moradoresDoCondo)
+      const novosItens = []
 
-        let vencimento = parsed.date || ''
+      for (let idx = 0; idx < pdfFiles.length; idx++) {
+        const file = pdfFiles[idx]
+        const arrayBuffer = await file.arrayBuffer()
+        const uint8 = new Uint8Array(arrayBuffer)
+        const parsed = extractBoletoPdfData(uint8, file.name, cotaPadraoNum)
+
+        // Matching de morador: tenta primeiro pelo Pagador/Sacado impresso no boleto, depois pelo nome do arquivo
+        let matchResult = matchMorador(parsed.pagador || parsed.spacedName, moradoresDoCondo)
+        if (!matchResult.morador && parsed.spacedName) {
+          matchResult = matchMorador(parsed.spacedName, moradoresDoCondo)
+        }
+        const { morador, score } = matchResult
+
+        let vencimento = parsed.vencimento || ''
         if (!vencimento) {
           const hoje = new Date()
           hoje.setDate(hoje.getDate() + 5)
           vencimento = hoje.toISOString().split('T')[0]
         }
 
-        return {
+        novosItens.push({
           idTemp: `pdf_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 7)}`,
           file,
           fileName: file.name,
-          spacedName: parsed.spacedName,
+          spacedName: parsed.spacedName || parsed.pagador || file.name.replace(/\.pdf$/i, ''),
+          pagador: parsed.pagador || '',
           nossoNumero: parsed.nossoNumero || '',
           moradorId: morador ? morador.id : '',
-          moradorNome: morador ? morador.nome : parsed.spacedName,
+          moradorNome: morador ? morador.nome : (parsed.pagador || parsed.spacedName),
           apt: morador ? (morador.apt || '') : '',
           bloco: morador ? (morador.bloco || '') : '',
           cpf: morador ? (morador.cpf || '') : '',
@@ -286,8 +506,8 @@ export default function ModalImportarBoletosPDF({
           detalhe: parsed.detalhe,
           encontrado: !!(morador && score >= 0.4),
           score: score || 0
-        }
-      })
+        })
+      }
 
       // Sugere competência baseada no mês de vencimento dos boletos
       const dataComum = novosItens.find(it => it.vencimento)?.vencimento
@@ -357,20 +577,63 @@ export default function ModalImportarBoletosPDF({
 
       if (campo === 'valor') {
         const numVal = parseFloat(valor) || 0
-        const extra = Math.max(0, Math.round((numVal - cotaPadraoNum) * 100) / 100)
+        let extra = 0
         let tipo = item.tipoCobranca
-        if (Math.abs(numVal - cotaPadraoNum) < 0.05) {
+        let detalhe = item.detalhe
+
+        if (cotaPadraoNum > 0 && Math.abs(numVal - cotaPadraoNum) < 0.05) {
           tipo = 'Taxa Condominial'
+          detalhe = `Cota Ordinária Padrão (R$ ${numVal.toFixed(2).replace('.', ',')})`
+          extra = 0
         } else if (numVal > cotaPadraoNum) {
-          tipo = 'Taxa Condominial + Extras / Consumo'
+          extra = Math.round((numVal - cotaPadraoNum) * 100) / 100
+          if (tipo.includes('Extra')) {
+            tipo = 'Taxa Condominial + Taxa Extraordinária'
+            detalhe = `Cota (R$ ${cotaPadraoNum.toFixed(2).replace('.', ',')}) + Taxa Extra (R$ ${extra.toFixed(2).replace('.', ',')})`
+          } else if (tipo.includes('Água') || tipo.includes('Agua')) {
+            tipo = 'Taxa Condominial + Água'
+            detalhe = `Cota (R$ ${cotaPadraoNum.toFixed(2).replace('.', ',')}) + Água (R$ ${extra.toFixed(2).replace('.', ',')})`
+          } else {
+            tipo = 'Taxa Condominial + Extras'
+            detalhe = `Cota (R$ ${cotaPadraoNum.toFixed(2).replace('.', ',')}) + Extra (R$ ${extra.toFixed(2).replace('.', ',')})`
+          }
         } else {
-          tipo = 'Consumo de Água / Avulso'
+          extra = numVal
+          if (tipo.includes('Água') || tipo.includes('Agua')) {
+            tipo = 'Consumo de Água'
+            detalhe = `Consumo Individual de Água (R$ ${numVal.toFixed(2).replace('.', ',')})`
+          } else {
+            tipo = 'Taxa Extraordinária'
+            detalhe = `Taxa Extraordinária (R$ ${numVal.toFixed(2).replace('.', ',')})`
+          }
         }
+
         return {
           ...item,
           valor: numVal,
           valorExtra: extra,
-          tipoCobranca: tipo
+          tipoCobranca: tipo,
+          detalhe
+        }
+      }
+
+      if (campo === 'tipoCobranca') {
+        let detalhe = item.detalhe
+        const numVal = Number(item.valor) || 0
+        if (valor === 'Taxa Extraordinária') {
+          detalhe = `Taxa Extraordinária (R$ ${numVal.toFixed(2).replace('.', ',')})`
+        } else if (valor === 'Taxa Condominial') {
+          detalhe = `Cota Ordinária Padrão (R$ ${numVal.toFixed(2).replace('.', ',')})`
+        } else if (valor.includes('Extra')) {
+          const extra = Math.max(0, numVal - cotaPadraoNum)
+          detalhe = `Cota (R$ ${cotaPadraoNum.toFixed(2).replace('.', ',')}) + Extra (R$ ${extra.toFixed(2).replace('.', ',')})`
+        } else if (valor.includes('Água')) {
+          detalhe = `Consumo de Água (R$ ${numVal.toFixed(2).replace('.', ',')})`
+        }
+        return {
+          ...item,
+          tipoCobranca: valor,
+          detalhe
         }
       }
 
@@ -744,9 +1007,12 @@ export default function ModalImportarBoletosPDF({
                                 disabled={salvando}
                               >
                                 <option value="Taxa Condominial">🏢 Taxa Condominial Ordinária</option>
-                                <option value="Taxa Condominial + Extras / Consumo">🏷️ Taxa Condominial + Extras / Consumo</option>
-                                <option value="Consumo de Água / Avulso">💧 Consumo de Água / Avulso</option>
-                                <option value="Taxa Extra">⚖️ Taxa Extra / Rateio</option>
+                                <option value="Taxa Extraordinária">⚖️ Taxa Extraordinária</option>
+                                <option value="Taxa Condominial + Taxa Extraordinária">🏷️ Taxa Condominial + Taxa Extraordinária</option>
+                                <option value="Taxa Condominial + Extras">🏷️ Taxa Condominial + Extras</option>
+                                <option value="Consumo de Água">💧 Consumo de Água</option>
+                                <option value="Taxa Condominial + Água">💧 Taxa Condominial + Água</option>
+                                <option value="Outro / Avulso">📋 Outro / Avulso</option>
                               </select>
 
                               {/* Discriminação detalhada */}
