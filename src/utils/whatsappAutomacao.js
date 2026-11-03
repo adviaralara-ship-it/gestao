@@ -232,20 +232,25 @@ export async function enviarEnqueteWhatsAppGrupo(enquete, condoDoc) {
  */
 
 /**
- * Gera o texto formatado para envio de nova reserva no grupo de WhatsApp do condomínio
+ * Gera o texto formatado para envio de agendamento ou cancelamento de reserva no grupo de WhatsApp do condomínio
  */
 export function gerarTextoReservaWhatsApp(reserva, condoNome) {
-  const espaco = reserva.espaco || 'Área Comum'
-  const morador = reserva.morador || 'Morador'
-  const apt = reserva.apt ? `Apt ${reserva.apt}` : ''
-  const dataFmt = reserva.data
+  const isCancelada = reserva?.status === 'Cancelada'
+  const espaco = reserva?.espaco || 'Área Comum'
+  const morador = reserva?.morador || 'Morador'
+  const apt = reserva?.apt ? `Apt ${reserva.apt}` : ''
+  const dataFmt = reserva?.data
     ? (String(reserva.data).includes('-') ? String(reserva.data).split('-').reverse().join('/') : String(reserva.data))
     : 'A definir'
-  const horario = reserva.horario || 'Horário a combinar'
-  const pessoas = reserva.pessoas ? `${reserva.pessoas} pessoas` : 'Não informado'
-  const status = reserva.status || 'Pendente'
+  const horario = reserva?.horario || 'Horário a combinar'
+  const pessoas = reserva?.pessoas ? `${reserva.pessoas} pessoas` : 'Não informado'
 
-  return `📅 *NOVA RESERVA REGISTRADA!*\n\n🏢 *Condomínio:* ${condoNome || reserva.condominio || '—'}\n🎈 *Espaço:* ${espaco}\n👤 *Morador:* ${morador} ${apt ? `(${apt})` : ''}\n🗓️ *Data:* ${dataFmt}\n⏰ *Horário:* ${horario}\n👥 *Convidados:* ${pessoas}\n📌 *Status:* ${status}\n\n_Para consultar o calendário completo de áreas comuns, acesse o painel Alpha Gestão._\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+  if (isCancelada) {
+    return `🚫 *AVISO DE CANCELAMENTO DE RESERVA*\n\n🏢 *Condomínio:* ${condoNome || reserva?.condominio || '—'}\n🎈 *Espaço Liberado:* ${espaco}\n👤 *Morador:* ${morador} ${apt ? `(${apt})` : ''}\n🗓️ *Data:* ${dataFmt}\n⏰ *Horário:* ${horario}\n📌 *Status:* CANCELADA (Espaço disponível para novo agendamento)\n\n_Caso deseje reservar este espaço nesta data/horário, acesse o painel Alpha Gestão._\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+  }
+
+  const status = reserva?.status || 'Pendente'
+  return `📅 *NOVA RESERVA REGISTRADA!*\n\n🏢 *Condomínio:* ${condoNome || reserva?.condominio || '—'}\n🎈 *Espaço:* ${espaco}\n👤 *Morador:* ${morador} ${apt ? `(${apt})` : ''}\n🗓️ *Data:* ${dataFmt}\n⏰ *Horário:* ${horario}\n👥 *Convidados:* ${pessoas}\n📌 *Status:* ${status}\n\n_Para consultar o calendário completo de áreas comuns, acesse o painel Alpha Gestão._\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
 }
 
 /**

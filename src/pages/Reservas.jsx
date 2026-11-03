@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { CalendarCheck, Plus, Search, Edit2, Trash2, ChevronLeft, ChevronRight, X, MessageSquare, DollarSign } from 'lucide-react'
+import { CalendarCheck, Plus, Search, Edit2, Trash2, ChevronLeft, ChevronRight, X, MessageSquare, DollarSign, XCircle } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
@@ -9,7 +9,7 @@ import { enviarReservaWhatsAppGrupo, gerarTextoReservaWhatsApp } from '../utils/
 const espacos = ['Salão de Festas','Churrasqueira','Piscina','Quadra Esportiva','Espaço Gourmet','Brinquedoteca','Coworking']
 const spaceIcons = {'Salão de Festas':'🎉','Churrasqueira':'🔥','Piscina':'🏊','Quadra Esportiva':'⚽','Espaço Gourmet':'🍽️','Brinquedoteca':'🎮','Coworking':'💻'}
 
-function Modal({ data, user, condominios = [], onClose, onSave, onDelete, onNotificarWhatsApp, enviandoZap }) {
+function Modal({ data, user, condominios = [], onClose, onSave, onDelete, onNotificarWhatsApp, onCancelarReserva, enviandoZap }) {
   const [form, setForm] = useState(() => ({
     notificarWhatsapp: true,
     ...data
@@ -73,7 +73,7 @@ function Modal({ data, user, condominios = [], onClose, onSave, onDelete, onNoti
                 onChange={e => set('notificarWhatsapp', e.target.checked)}
                 className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer"
               />
-              <span>Notificar automaticamente no grupo de WhatsApp do condomínio</span>
+              <span>Notificar automaticamente no grupo de WhatsApp do condomínio (agendamento ou cancelamento)</span>
             </label>
             <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">Automático</span>
           </div>
@@ -91,12 +91,24 @@ function Modal({ data, user, condominios = [], onClose, onSave, onDelete, onNoti
               {enviandoZap ? 'Disparando...' : 'Disparar no WhatsApp'}
             </button>
           )}
+          {data.id && form.status !== 'Cancelada' && (
+            <button
+              type="button"
+              onClick={() => onCancelarReserva(form)}
+              disabled={enviandoZap}
+              className="btn-secondary text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+              title="Cancelar esta reserva e avisar o grupo no WhatsApp"
+            >
+              <XCircle size={14} className="text-amber-600" />
+              Cancelar Reserva
+            </button>
+          )}
           {data.id && data.status === 'Cancelada' && (
             <button onClick={() => { if(window.confirm('Excluir esta reserva?')) onDelete(data.id) }} className="btn-secondary text-red-500 hover:bg-red-50 border-red-200 text-xs">
               <Trash2 size={14}/> Excluir Permanente
             </button>
           )}
-          <button onClick={onClose} className="btn-secondary text-xs">Cancelar</button>
+          <button onClick={onClose} className="btn-secondary text-xs">Fechar</button>
           <button onClick={()=>onSave(form)} className="btn-primary text-xs">Salvar</button>
         </div>
       </div>
@@ -132,7 +144,7 @@ export default function Reservas() {
     }
   }, [isAdm, user])
 
-  // Disparo manual ou sob demanda no WhatsApp
+  // Disparo manual ou sob demanda no WhatsApp (agendamento ou cancelamento)
   const handleDispararWhatsApp = async (reserva) => {
     const norm = s => String(s || '').trim().toLowerCase()
     const cNome = norm(reserva.condominio || user?.condominio || '')
@@ -141,12 +153,14 @@ export default function Reservas() {
       return cn === cNome || (cn && cNome && (cn.includes(cNome) || cNome.includes(cn)))
     })
 
+    const isCancelada = reserva.status === 'Cancelada'
+    const acaoTipo = isCancelada ? 'CANCELAMENTO' : 'AGENDAMENTO'
     const textoMsg = gerarTextoReservaWhatsApp(reserva, condoDoc?.nome || reserva.condominio)
 
     if (condoDoc && condoDoc.grupoWhatsapp) {
       const querEnviar = window.confirm(
-        `Deseja enviar a notificação desta reserva para o grupo do WhatsApp do condomínio "${condoDoc.nome}"?\n\n` +
-        `📅 Espaço: ${reserva.espaco}\n` +
+        `Deseja enviar a notificação de ${acaoTipo} desta reserva para o grupo do WhatsApp do condomínio "${condoDoc.nome}"?\n\n` +
+        `🎈 ${isCancelada ? 'Espaço Liberado' : 'Espaço'}: ${reserva.espaco}\n` +
         `👤 Morador: ${reserva.morador} (Apt ${reserva.apt || '—'})\n` +
         `🗓️ Data: ${reserva.data} · ${reserva.horario}`
       )
@@ -156,7 +170,7 @@ export default function Reservas() {
       try {
         const res = await enviarReservaWhatsAppGrupo(reserva, condoDoc)
         if (res.success) {
-          alert(`✅ Notificação disparada com sucesso para o grupo "${condoDoc.nome}" no WhatsApp!`)
+          alert(`✅ Notificação de ${acaoTipo.toLowerCase()} disparada com sucesso para o grupo "${condoDoc.nome}" no WhatsApp!`)
         } else {
           const abrirWeb = window.confirm(
             `⚠️ Não foi possível enviar diretamente via API (${res.error || 'Erro de conexão'}).\n\nDeseja abrir o WhatsApp Web para disparar a mensagem pronta manualmente?`
@@ -177,6 +191,77 @@ export default function Reservas() {
       if (abrirWeb) {
         window.open(`https://wa.me/?text=${encodeURIComponent(textoMsg)}`, '_blank')
       }
+    }
+  }
+
+  // Cancelamento de reserva com disparo automático de liberação no grupo do WhatsApp
+  const handleCancelarReserva = async (reserva) => {
+    if (!reserva || !reserva.id) return
+    const espaco = reserva.espaco || 'Espaço Comum'
+    const dataFmt = reserva.data || ''
+    const confirma = window.confirm(
+      `Deseja realmente CANCELAR a reserva de "${espaco}" no dia ${dataFmt}?\n\n` +
+      `Uma mensagem de cancelamento será enviada automaticamente para o grupo do condomínio no WhatsApp informando que o espaço foi liberado.`
+    )
+    if (!confirma) return
+
+    setEnviandoZap(true)
+    try {
+      const finalCondominio = reserva.condominio || user?.condominio || ''
+      const updatedData = {
+        ...reserva,
+        status: 'Cancelada',
+        canceladoEm: new Date().toISOString(),
+        canceladoPor: user?.nome || user?.email || 'Administração'
+      }
+
+      await updateItem(reserva.id, updatedData)
+
+      // Notificação interna no sistema
+      await addDoc(collection(db, 'notificacoes'), {
+        text: `[${finalCondominio}] Reserva CANCELADA: ${reserva.espaco} – ${reserva.morador} (Apt ${reserva.apt || '—'} | ${reserva.data})`,
+        time: new Date().toISOString(),
+        tipo: 'reserva_cancelada',
+        lida: false,
+        condominio: finalCondominio,
+        _createdAt: serverTimestamp()
+      })
+
+      // Envia notificação no grupo do WhatsApp
+      const norm = s => String(s || '').trim().toLowerCase()
+      const cNome = norm(finalCondominio)
+      const condoDoc = condominios.find(c => {
+        const cn = norm(c.nome)
+        return cn === cNome || (cn && cNome && (cn.includes(cNome) || cNome.includes(cn)))
+      })
+
+      if (condoDoc && condoDoc.grupoWhatsapp) {
+        const res = await enviarReservaWhatsAppGrupo(updatedData, condoDoc)
+        if (res && res.success) {
+          alert(`✅ Reserva cancelada com sucesso!\n\nAviso de cancelamento enviado para o grupo do WhatsApp do condomínio "${condoDoc.nome}".`)
+        } else {
+          const abrirWeb = window.confirm(
+            `⚠️ Reserva cancelada no sistema, mas houve instabilidade no envio automático (${res?.error || 'Erro de conexão'}).\n\nDeseja abrir o WhatsApp Web para disparar a mensagem de cancelamento manualmente?`
+          )
+          if (abrirWeb) {
+            const textoMsg = gerarTextoReservaWhatsApp(updatedData, condoDoc?.nome || finalCondominio)
+            window.open(`https://wa.me/?text=${encodeURIComponent(textoMsg)}`, '_blank')
+          }
+        }
+      } else {
+        const abrirWeb = window.confirm(
+          `ℹ️ Reserva cancelada no sistema.\n\nO condomínio não possui ID de grupo cadastrado. Deseja abrir no WhatsApp para compartilhar o cancelamento manualmente?`
+        )
+        if (abrirWeb) {
+          const textoMsg = gerarTextoReservaWhatsApp(updatedData, condoDoc?.nome || finalCondominio)
+          window.open(`https://wa.me/?text=${encodeURIComponent(textoMsg)}`, '_blank')
+        }
+      }
+    } catch (err) {
+      alert(`Erro ao cancelar reserva: ${err.message}`)
+    } finally {
+      setEnviandoZap(false)
+      setModal(null)
     }
   }
 
@@ -239,13 +324,22 @@ export default function Reservas() {
         criadoEm: new Date().toISOString()
       }
       const docRef = await addItem(finalForm)
+
+      const isCancelada = finalForm.status === 'Cancelada'
+
       // notificação sistema
       await addDoc(collection(db,'notificacoes'),{
-        text:`[${finalCondominio}] Nova reserva: ${finalForm.espaco} – ${finalForm.morador} (Apt ${finalForm.apt} | ${finalForm.data})`,
-        time:new Date().toISOString(),tipo:'reserva',lida:false, condominio: finalCondominio, _createdAt:serverTimestamp()
+        text: isCancelada
+          ? `[${finalCondominio}] Reserva CANCELADA: ${finalForm.espaco} – ${finalForm.morador} (Apt ${finalForm.apt || '—'} | ${finalForm.data})`
+          : `[${finalCondominio}] Nova reserva: ${finalForm.espaco} – ${finalForm.morador} (Apt ${finalForm.apt || '—'} | ${finalForm.data})`,
+        time: new Date().toISOString(),
+        tipo: isCancelada ? 'reserva_cancelada' : 'reserva',
+        lida: false,
+        condominio: finalCondominio,
+        _createdAt: serverTimestamp()
       })
 
-      // Envio AUTOMÁTICO no grupo do WhatsApp do residencial
+      // Envio AUTOMÁTICO no grupo do WhatsApp do residencial (agendamento ou cancelamento)
       if (form.notificarWhatsapp !== false) {
         const norm = s => String(s || '').trim().toLowerCase()
         const cNome = norm(finalCondominio)
@@ -257,7 +351,7 @@ export default function Reservas() {
         if (condoDoc && condoDoc.grupoWhatsapp) {
           enviarReservaWhatsAppGrupo({ ...finalForm, id: docRef?.id }, condoDoc).then(res => {
             if (res && res.success) {
-              console.log('✅ Notificação de reserva enviada no grupo do WhatsApp:', condoDoc.nome)
+              console.log(`✅ Notificação de ${isCancelada ? 'cancelamento' : 'agendamento'} enviada no grupo do WhatsApp:`, condoDoc.nome)
             } else {
               console.warn('⚠️ Falha no disparo automático no grupo de WhatsApp:', res?.error)
             }
@@ -267,7 +361,52 @@ export default function Reservas() {
         }
       }
     } else {
-      await updateItem(form.id, form)
+      const prevItem = items.find(i => i.id === form.id)
+      const isNowCancelada = form.status === 'Cancelada' && prevItem?.status !== 'Cancelada'
+      const finalCondominio = form.condominio || prevItem?.condominio || user?.condominio || ''
+
+      const finalForm = {
+        ...form,
+        condominio: finalCondominio,
+        atualizadoEm: new Date().toISOString(),
+        ...(isNowCancelada ? { canceladoEm: new Date().toISOString(), canceladoPor: user?.nome || user?.email || 'Administração' } : {})
+      }
+
+      await updateItem(form.id, finalForm)
+
+      // Notificação interna no sistema se cancelada
+      if (isNowCancelada) {
+        await addDoc(collection(db, 'notificacoes'), {
+          text: `[${finalCondominio}] Reserva CANCELADA: ${finalForm.espaco} – ${finalForm.morador} (Apt ${finalForm.apt || '—'} | ${finalForm.data})`,
+          time: new Date().toISOString(),
+          tipo: 'reserva_cancelada',
+          lida: false,
+          condominio: finalCondominio,
+          _createdAt: serverTimestamp()
+        })
+      }
+
+      // Envio AUTOMÁTICO no grupo do WhatsApp do condomínio (se foi cancelada ou se marcou para notificar)
+      if (isNowCancelada || form.notificarWhatsapp !== false) {
+        const norm = s => String(s || '').trim().toLowerCase()
+        const cNome = norm(finalCondominio)
+        const condoDoc = condominios.find(c => {
+          const cn = norm(c.nome)
+          return cn === cNome || (cn && cNome && (cn.includes(cNome) || cNome.includes(cn)))
+        })
+
+        if (condoDoc && condoDoc.grupoWhatsapp) {
+          enviarReservaWhatsAppGrupo(finalForm, condoDoc).then(res => {
+            if (res && res.success) {
+              console.log(`✅ Notificação de ${isNowCancelada ? 'cancelamento' : 'atualização'} enviada no WhatsApp:`, condoDoc.nome)
+            } else {
+              console.warn('⚠️ Falha no disparo de atualização/cancelamento no WhatsApp:', res?.error)
+            }
+          }).catch(err => {
+            console.error('Erro ao enviar notificação de reserva no grupo:', err)
+          })
+        }
+      }
     }
     setModal(null)
   }
@@ -409,6 +548,17 @@ export default function Reservas() {
                       <MessageSquare size={13} className="text-emerald-600" />
                       <span className="hidden sm:inline">Disparar WhatsApp</span>
                     </button>
+                    {r.status !== 'Cancelada' && (
+                      <button
+                        onClick={() => handleCancelarReserva(r)}
+                        disabled={enviandoZap}
+                        className="p-1.5 px-2.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer shadow-sm"
+                        title="Cancelar reserva e avisar o grupo no WhatsApp"
+                      >
+                        <XCircle size={13} className="text-amber-600" />
+                        <span className="hidden sm:inline">Cancelar</span>
+                      </button>
+                    )}
                     <button onClick={()=>setModal(r)} className="p-1.5 rounded-lg bg-cream-100 hover:bg-brand-100 text-gray-400 hover:text-brand-600 transition-all cursor-pointer"><Edit2 size={12}/></button>
                     {r.status==='Cancelada' && (
                       <button onClick={()=>deleteItem(r.id)} className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 transition-all cursor-pointer" title="Excluir reserva cancelada"><Trash2 size={12}/></button>
@@ -421,7 +571,7 @@ export default function Reservas() {
         }
       </div>
 
-      {modal&&<Modal data={modal} user={user} condominios={condominios} onClose={()=>setModal(null)} onSave={handleSave} onDelete={async id => { await deleteItem(id); setModal(null) }} onNotificarWhatsApp={handleDispararWhatsApp} enviandoZap={enviandoZap}/>}
+      {modal&&<Modal data={modal} user={user} condominios={condominios} onClose={()=>setModal(null)} onSave={handleSave} onDelete={async id => { await deleteItem(id); setModal(null) }} onNotificarWhatsApp={handleDispararWhatsApp} onCancelarReserva={handleCancelarReserva} enviandoZap={enviandoZap}/>}
     </div>
   )
 }
