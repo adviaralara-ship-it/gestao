@@ -6,13 +6,10 @@ import { db } from '../firebase'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import QRCode from 'react-qr-code'
 import { format } from 'date-fns'
+import { sanitizeUserPrompt, extractSafeActions } from '../utils/promptSecurity'
 
 // Chave da API e Instância do Gemini com redundância
-const API_KEYS = [
-  import.meta.env?.VITE_GEMINI_API_KEY,
-  "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA",
-  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
-].filter(Boolean)
+const API_KEYS = [ import.meta.env?.VITE_GEMINI_API_KEY ].filter(Boolean)
 
 const GEMINI_MODELS = [
   "gemini-2.5-flash",
@@ -469,7 +466,8 @@ REGRAS ESPECIAIS DE AÇÃO (TOOL CALLING):
               ]
             })
 
-            const result = await chat.sendMessage(input)
+            const { cleanInput } = sanitizeUserPrompt(input)
+            const result = await chat.sendMessage(cleanInput)
             aiResponse = result?.response?.text()
             if (aiResponse) break
           } catch (err) {
@@ -478,13 +476,10 @@ REGRAS ESPECIAIS DE AÇÃO (TOOL CALLING):
         }
       }
 
-      // Se a resposta da IA externa contiver tag de criação de ocorrência, já registra no banco na hora
-      if (aiResponse && aiResponse.includes('[CRIAR_OCORRENCIA:')) {
-        const match = aiResponse.match(/\[CRIAR_OCORRENCIA:(.*?)\]/)
-        if (match) {
-          const queixa = match[1].trim() || input.trim()
-          await autoCriarOcorrenciaDireta(queixa, user)
-        }
+      // Validação estrita contra Prompt Injection antes de registrar ações
+      const { validOcorrencia } = extractSafeActions(aiResponse)
+      if (validOcorrencia) {
+        await autoCriarOcorrenciaDireta(validOcorrencia, user)
       }
 
       if (!aiResponse) {

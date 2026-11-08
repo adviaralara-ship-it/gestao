@@ -7,12 +7,9 @@ import { db } from '../firebase'
 import { enviarEmail } from '../emailjs.config'
 import { enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { sanitizeUserPrompt } from '../utils/promptSecurity'
 
-const API_KEYS = [
-  import.meta.env?.VITE_GEMINI_API_KEY,
-  "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA",
-  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
-].filter(Boolean)
+const API_KEYS = [ import.meta.env?.VITE_GEMINI_API_KEY ].filter(Boolean)
 
 const GEMINI_MODELS = [
   "gemini-2.5-flash",
@@ -22,13 +19,14 @@ const GEMINI_MODELS = [
 ]
 
 async function gerarTextoComunicado(prompt) {
+  const { cleanInput } = sanitizeUserPrompt(prompt, 3000)
   let lastError = null
   for (const modelName of GEMINI_MODELS) {
     for (const key of API_KEYS) {
       try {
         const genAI = new GoogleGenerativeAI(key)
         const model = genAI.getGenerativeModel({ model: modelName })
-        const result = await model.generateContent(prompt)
+        const result = await model.generateContent(cleanInput)
         const text = result?.response?.text()?.trim()
         if (text) return text
       } catch (err) {

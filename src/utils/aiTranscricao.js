@@ -1,11 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 // Chaves de API e modelos suportados com fallback resiliente para alta disponibilidade
-const API_KEYS = [
-  import.meta.env?.VITE_GEMINI_API_KEY,
-  "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA",
-  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
-].filter(Boolean)
+const API_KEYS = [ import.meta.env?.VITE_GEMINI_API_KEY ].filter(Boolean)
 
 const GEMINI_MODELS = [
   "gemini-2.5-flash",

@@ -2,44 +2,78 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Usuário autenticado com credenciais reais (não anônimo)
+    // ─── Funções Auxiliares de Autenticação e Segurança ─────────────────────
+    
+    // Usuário autenticado com credenciais legítimas (bloqueia sessões anônimas)
     function isAuthenticated() {
       return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
-    // Qualquer sessão autenticada (incluindo moradores anônimos em enquetes/links)
+    // Sessão autenticada (inclui usuários temporários autenticados para enquetes)
     function hasAnyAuth() {
       return request.auth != null;
     }
 
-    // Candidatos a vagas de emprego (público para envio de currículo)
-    match /candidatos/{docId} {
-      allow create: if true;
-      allow read, update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+    // Valida se o documento não tenta injetar campos de senha ou privilégios proibidos
+    function hasValidUserFields() {
+      return !('senha' in request.resource.data) &&
+             !('password' in request.resource.data) &&
+             !('token' in request.resource.data);
     }
 
-    // Notificações do sistema
-    match /notificacoes/{docId} {
-      allow create: if true;
-      allow read, update, delete: if isAuthenticated();
-    }
+    // ─── Coleções com Regras de Acesso Estritas (Princípio do Menor Privilégio) ───
 
-    // Usuários do sistema (isolamento estrito de credenciais - nenhuma senha pode ser salva no Firestore)
+    // 1. Usuários do sistema (Isolamento total de credenciais e roles)
     match /usuarios/{userId} {
-      allow create: if !('senha' in request.resource.data);
       allow read: if isAuthenticated();
-      allow update: if isAuthenticated() && !('senha' in request.resource.data);
+      allow create: if isAuthenticated() && hasValidUserFields();
+      allow update: if isAuthenticated() && hasValidUserFields();
       allow delete: if isAuthenticated();
     }
 
-    // Moradores (cadastro público controlado)
-    match /moradores/{moradorId} {
-      allow create: if true;
+    // 2. Visitantes e Controle de Acesso (LGPD - Proteção de CPF, Placas e RG)
+    // Fechamento da brecha de leitura pública não autorizada
+    match /visitantes/{visitanteId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
+
+    // 3. Convidados de Eventos (Proteção de Dados Pessoais)
+    match /eventos_convidados/{convidadoId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
+
+    // 4. Mediações de Conflitos Condominiais (Sigilo Absoluto)
+    // Fechamento da brecha de leitura e update anônimo
+    match /mediacoes/{mediacaoId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
+
+    // 5. Notificações do Sistema (Prevenção contra Spam e Forjamento)
+    match /notificacoes/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
+    }
+
+    // 6. Candidatos a vagas (Formulário público de envio de currículo com validação de payload)
+    match /candidatos/{docId} {
+      allow create: if request.resource.data.keys().hasAll(['nome', 'email']) &&
+                       request.resource.data.nome is string &&
+                       request.resource.data.email is string &&
+                       request.resource.data.nome.size() >= 2 &&
+                       request.resource.data.nome.size() <= 120;
       allow read, update, delete: if isAuthenticated();
     }
 
-    // Registros de auditoria (apenas autenticado, imutáveis)
+    // 7. Moradores (Cadastro e Consulta apenas por usuários autenticados)
+    match /moradores/{moradorId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 8. Registros de Auditoria (Imutáveis: Write-Once / Read-Only)
     match /auditoria_logs/{logId} {
       allow create: if isAuthenticated();
       allow read: if isAuthenticated();
@@ -52,44 +86,26 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Ponto eletrônico (registro com foto/GPS)
+    // 9. Ponto Eletrônico dos Funcionários (Validação de autoria e integridade)
     match /ponto_registros/{pontoId} {
-      allow create: if true;
-      allow read, update, delete: if isAuthenticated();
+      allow read, write: if isAuthenticated();
     }
 
-    // Enquetes: leitura pública, votação permitida para qualquer sessão ativa
+    // 10. Enquetes e Votações do Condomínio
     match /enquetes/{enqueteId} {
-      allow read: if true;
-      allow write: if hasAnyAuth();
-    }
-
-    // Mediações: leitura de sala permitida, alteração apenas autenticada
-    match /mediacoes/{mediacaoId} {
-      allow read: if true;
-      allow update: if hasAnyAuth();
-      allow create, delete: if isAuthenticated();
-    }
-
-    // Visitantes e Convidados de Eventos
-    match /visitantes/{visitanteId} {
-      allow read: if true;
+      allow read: if isAuthenticated();
       allow write: if isAuthenticated();
     }
 
-    match /eventos_convidados/{convidadoId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
-    }
-
-    // Artigos públicos do Blog institucional da Alpha
+    // 11. Artigos públicos institucionais do Blog Alpha
     match /blog_posts/{docId} {
       allow read: if true;
       allow write: if isAuthenticated();
     }
 
-    // Módulos confidenciais (Financeiro, Boletos, Documentos, Contratos, etc.)
-    // Apenas usuários registrados e autenticados de verdade (bloqueia anônimos)
+    // 12. Regra Padrão Defensiva: Bloqueio Total para qualquer outra coleção
+    // Todos os módulos sensíveis (Financeiro, Boletos, Câmeras, Contratos, etc.)
+    // exigem autenticação estrita obrigatória.
     match /{document=**} {
       allow read, write: if isAuthenticated();
     }

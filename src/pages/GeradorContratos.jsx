@@ -2,13 +2,11 @@ import React, { useState, useRef } from 'react'
 import { FileText, Printer, CheckCircle, Bot, Zap, Loader2, Sparkles, AlertCircle, FileEdit, Download } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { sanitizeHtml } from '../utils/sanitize'
+import { sanitizeUserPrompt } from '../utils/promptSecurity'
 
-// Chaves de API e Instâncias com Fallback Resiliente
-const API_KEYS = [
-  import.meta.env?.VITE_GEMINI_API_KEY,
-  "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA",
-  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
-].filter(Boolean)
+// Chaves de API obtidas estritamente das variáveis de ambiente (.env)
+const GEMINI_API_KEY = (import.meta.env?.VITE_GEMINI_API_KEY || '').trim()
 
 const GEMINI_MODELS = [
   "gemini-2.5-flash",
@@ -18,24 +16,28 @@ const GEMINI_MODELS = [
 ]
 
 async function gerarDocumentoIA(systemPrompt, userPrompt) {
+  if (!GEMINI_API_KEY) {
+    throw new Error("Chave da API Gemini (VITE_GEMINI_API_KEY) não configurada no ambiente.")
+  }
+
+  const { cleanInput } = sanitizeUserPrompt(userPrompt, 4000)
   let lastError = null
+
   for (const modelName of GEMINI_MODELS) {
-    for (const key of API_KEYS) {
-      try {
-        const genAI = new GoogleGenerativeAI(key)
-        const model = genAI.getGenerativeModel({ model: modelName })
-        const chat = model.startChat({
-          history: [
-            { role: 'user', parts: [{ text: systemPrompt }] },
-            { role: 'model', parts: [{ text: "<div style='font-family: Arial;'>Entendido. Enviarei apenas código HTML pronto para impressão.</div>" }] }
-          ],
-        })
-        const result = await chat.sendMessage(userPrompt)
-        const text = result?.response?.text()
-        if (text) return text
-      } catch (err) {
-        lastError = err
-      }
+    try {
+      const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
+      const model = genAI.getGenerativeModel({ model: modelName })
+      const chat = model.startChat({
+        history: [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          { role: 'model', parts: [{ text: "<div style='font-family: Arial;'>Entendido. Enviarei apenas código HTML pronto para impressão.</div>" }] }
+        ],
+      })
+      const result = await chat.sendMessage(cleanInput)
+      const text = result?.response?.text()
+      if (text) return text
+    } catch (err) {
+      lastError = err
     }
   }
   throw lastError || new Error("Falha ao conectar com o serviço de IA.")
@@ -378,7 +380,7 @@ REGRAS DE FORMATAÇÃO:
               suppressContentEditableWarning={true}
               className="bg-white shadow-2xl p-10 md:p-16 print:shadow-none print:p-0 transition-all outline-none rounded-sm"
               style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
-              dangerouslySetInnerHTML={{ __html: tab === 'modelos' ? modeloAtivo.template(form) : (iaDocHtml || `<div style="font-family: Arial; color: #999; text-align: center; margin-top: 80px;"><p style="font-size: 16px;">O documento gerado pela IA aparecerá aqui.</p><p style="font-size: 12px; margin-top: 8px;">Digite o que você precisa no campo ao lado e clique em <strong>✨ Gerar Documento com IA</strong>.</p></div>`) }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(tab === 'modelos' ? modeloAtivo.template(form) : (iaDocHtml || `<div style="font-family: Arial; color: #999; text-align: center; margin-top: 80px;"><p style="font-size: 16px;">O documento gerado pela IA aparecerá aqui.</p><p style="font-size: 12px; margin-top: 8px;">Digite o que você precisa no campo ao lado e clique em <strong>✨ Gerar Documento com IA</strong>.</p></div>`)) }}
             />
           </div>
         </div>

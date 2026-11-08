@@ -1,10 +1,16 @@
 import { applyCors } from '../_middleware/auth.js';
+import { applyRateLimit } from '../_middleware/rateLimit.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'POST, OPTIONS')) return;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  // Rate Limiting anti-bruteforce (30 requisições por minuto por IP)
+  if (applyRateLimit(req, res, { limit: 30, windowMs: 60 * 1000, prefix: 'turnstile_verify' })) {
+    return;
   }
 
   const { token, remoteip } = req.body || {};

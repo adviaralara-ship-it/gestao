@@ -10,13 +10,10 @@ import { storage } from '../firebase'
 import { gerarAtaPorAudio } from '../utils/aiTranscricao'
 import { jsPDF } from 'jspdf'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { sanitizeUserPrompt } from '../utils/promptSecurity'
 
 // Chaves de API suportadas (variáveis de ambiente Vite + fallbacks seguros)
-const API_KEYS = [
-  import.meta.env?.VITE_GEMINI_API_KEY,
-  "AQ.Ab8RN6KdJTQzq73dAmBYqMifqbyYBO58ewLnP57zgB49j1xPYA",
-  "AQ.Ab8RN6Ik8r-5xXO62z8qMO7Ne9Qxf8jUNTLpuWN4Ou2SPJAhXA"
-].filter(Boolean)
+const API_KEYS = [ import.meta.env?.VITE_GEMINI_API_KEY ].filter(Boolean)
 
 // Modelos suportados em ordem de preferência e estabilidade
 const GEMINI_MODELS = [
@@ -28,6 +25,7 @@ const GEMINI_MODELS = [
 
 // Função utilitária para gerar texto com Gemini utilizando fallback de chaves e modelos
 async function gerarConteudoGemini(prompt) {
+  const { cleanInput } = sanitizeUserPrompt(prompt, 4000)
   let lastError = null
 
   for (const modelName of GEMINI_MODELS) {
@@ -35,7 +33,7 @@ async function gerarConteudoGemini(prompt) {
       try {
         const genAI = new GoogleGenerativeAI(key)
         const genModel = genAI.getGenerativeModel({ model: modelName })
-        const res = await genModel.generateContent(prompt)
+        const res = await genModel.generateContent(cleanInput)
         const texto = res?.response?.text()?.trim()
         if (texto) {
           return texto

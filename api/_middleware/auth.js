@@ -1,8 +1,9 @@
 // api/_middleware/auth.js
-// Middleware unificado de segurança, CORS e autenticação para Serverless Functions
+// Middleware unificado de segurança, CORS estrito, autenticação criptográfica e RBAC
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import crypto from 'crypto';
 
 // Inicialização segura do Firebase Admin
 export function getFirebaseAdmin() {
@@ -45,18 +46,26 @@ export const ALLOWED_ORIGINS = [
 ];
 
 /**
- * Aplica cabeçalhos CORS restritos
+ * Compara duas strings em tempo constante prevenindo ataques de temporização (Timing Attacks)
+ */
+export function safeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Aplica cabeçalhos CORS estritos baseados em allowlist
  */
 export function applyCors(req, res, allowedMethods = 'GET, POST, OPTIONS') {
   const origin = req.headers.origin;
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-  } else if (!origin) {
-    // Permite chamadas server-to-server / curl sem origin
-    res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS[0]);
   }
   res.setHeader('Access-Control-Allow-Methods', allowedMethods);
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Role, X-Cron-Secret, X-Turnstile-Token');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Cron-Secret, X-Turnstile-Token');
   res.setHeader('Vary', 'Origin');
 
   if (req.method === 'OPTIONS') {
@@ -67,55 +76,82 @@ export function applyCors(req, res, allowedMethods = 'GET, POST, OPTIONS') {
 }
 
 /**
- * Valida autenticação por Bearer Token (JWT do Firebase Auth ou API_SECRET_KEY)
- * e permite requisições legítimas do frontend oficial
+ * Valida autenticação estrita por Bearer Token (JWT do Firebase Auth ou API_SECRET_KEY)
+ * NUNCA confia em headers de Origin/Referer para autenticação.
  */
 export async function verifyUserAuth(req, res) {
   const authHeader = req.headers.authorization || '';
-  const origin = req.headers.origin || '';
-  const referer = req.headers.referer || '';
-
-  // 1. Permite requisições internas originadas dos domínios oficiais da aplicação
-  const isAllowedOrigin = ALLOWED_ORIGINS.some(o => 
-    (origin && origin.startsWith(o)) || (referer && referer.startsWith(o))
-  );
-
-  if (isAllowedOrigin) {
-    return { uid: 'app_session', role: 'Administrador', verifiedByOrigin: true };
-  }
 
   if (!authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Unauthorized: Cabeçalho Authorization ausente ou inválido.' });
+    res.status(401).json({ error: 'Unauthorized', message: 'Cabeçalho Authorization ausente ou inválido.' });
     return null;
   }
 
   const token = authHeader.split('Bearer ')[1]?.trim();
   if (!token) {
-    res.status(401).json({ error: 'Unauthorized: Token não fornecido.' });
+    res.status(401).json({ error: 'Unauthorized', message: 'Token de autenticação não fornecido.' });
     return null;
   }
 
-  // 2. Chave de API de integração backend direta
+  // 1. Chave de API de integração backend direta (comparação em tempo constante)
   const secretKey = process.env.API_SECRET_KEY;
-  if (secretKey && token === secretKey) {
+  if (secretKey && safeCompare(token, secretKey)) {
     return { uid: 'system_service', role: 'Administrador', isServiceKey: true };
   }
 
-  // 3. Validação de ID Token (JWT) do Firebase Authentication
+  // 2. Validação criptográfica do Firebase ID Token (JWT)
   try {
     const { getAuth } = await import('firebase-admin/auth');
     getFirebaseAdmin();
     const decoded = await getAuth().verifyIdToken(token);
+    
+    // Obtenção do perfil e role verificado diretamente no Firestore
+    try {
+      const db = getFirestore();
+      const userDoc = await db.collection('usuarios').doc(decoded.uid).get();
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        decoded.role = userData.role || 'Morador';
+        decoded.condominio = userData.condominio || '';
+      } else {
+        decoded.role = decoded.role || 'Morador';
+      }
+    } catch (e) {
+      decoded.role = decoded.role || 'Morador';
+    }
+
     return decoded;
   } catch (err) {
     console.warn('Falha na validação do Firebase Token:', err.message);
-    res.status(401).json({ error: 'Unauthorized: Token de autenticação expirado ou inválido.' });
+    res.status(401).json({ error: 'Unauthorized', message: 'Token de autenticação expirado ou inválido.' });
     return null;
   }
 }
 
 /**
- * Valida chamadas agendadas de Cron Jobs
+ * Validação de Autorização Baseada em Papéis (RBAC) no Servidor
+ */
+export function requireRole(user, allowedRoles, res) {
+  if (!user) {
+    if (res) res.status(401).json({ error: 'Unauthorized', message: 'Usuário não autenticado.' });
+    return false;
+  }
+
+  const userRole = user.role || 'Morador';
+  if (!allowedRoles.includes(userRole)) {
+    if (res) {
+      res.status(403).json({
+        error: 'Forbidden',
+        message: `Acesso negado: Perfil '${userRole}' não possui privilégios para executar esta ação.`
+      });
+    }
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Valida chamadas agendadas de Cron Jobs com segredo timing-safe
  */
 export function verifyCronAuth(req, res) {
   const cronSecret = process.env.CRON_SECRET;
@@ -125,13 +161,13 @@ export function verifyCronAuth(req, res) {
   }
 
   const authHeader = req.headers.authorization || '';
-  const headerSecret = req.headers['x-cron-secret'];
+  const headerSecret = req.headers['x-cron-secret'] || '';
 
   const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.split('Bearer ')[1]?.trim() : '';
   const provided = bearerToken || headerSecret;
 
-  if (!provided || provided !== cronSecret) {
-    res.status(401).json({ error: 'Unauthorized: Acesso exclusivo ao agendador de tarefas (Cron).' });
+  if (!provided || !safeCompare(provided, cronSecret)) {
+    res.status(401).json({ error: 'Unauthorized', message: 'Acesso exclusivo ao agendador de tarefas (Cron).' });
     return false;
   }
   return true;

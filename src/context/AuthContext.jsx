@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react'
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -194,12 +194,28 @@ export function AuthProvider({ children }) {
     return unsubscribe
   }, [])
 
+  // Rate limiting de autenticação contra ataques de força bruta
+  const loginAttemptsRef = useRef(new Map())
+  const MAX_LOGIN_ATTEMPTS = 5
+  const LOCKOUT_DURATION_MS = 60 * 1000
+
   const login = async (email, senha) => {
     const emailLower = email.toLowerCase().trim()
+    const now = Date.now()
+
+    // Verificação de bloqueio ativo por tentativas excessivas
+    const attemptInfo = loginAttemptsRef.current.get(emailLower)
+    if (attemptInfo && attemptInfo.lockedUntil && now < attemptInfo.lockedUntil) {
+      const remainingSeconds = Math.ceil((attemptInfo.lockedUntil - now) / 1000)
+      return `Muitas tentativas incorretas consecutivas. Por segurança, aguarde ${remainingSeconds} segundo(s) antes de tentar novamente.`
+    }
 
     try {
       // Tenta login normal no Firebase Auth
       const credential = await signInWithEmailAndPassword(auth, emailLower, senha)
+      // Login bem-sucedido: zera contador de tentativas
+      loginAttemptsRef.current.delete(emailLower)
+
       // Busca perfil imediatamente para evitar race condition na navegação
       const profile = await fetchUserProfile(credential.user)
       if (profile) {
@@ -258,6 +274,22 @@ export function AuthProvider({ children }) {
         } catch (migrationErr) {
           console.warn('Erro na migração do Firestore:', migrationErr)
         }
+      }
+
+      // Incrementa falha de login e aplica lockout defensivo se atingir limite
+      const prevAttempt = loginAttemptsRef.current.get(emailLower) || { count: 0, lockedUntil: 0 }
+      const newCount = prevAttempt.count + 1
+      if (newCount >= MAX_LOGIN_ATTEMPTS) {
+        loginAttemptsRef.current.set(emailLower, {
+          count: newCount,
+          lockedUntil: Date.now() + LOCKOUT_DURATION_MS
+        })
+        return `Limite de 5 tentativas atingido. Por segurança, aguarde 60 segundos antes de tentar novamente.`
+      } else {
+        loginAttemptsRef.current.set(emailLower, {
+          count: newCount,
+          lockedUntil: 0
+        })
       }
 
       return false

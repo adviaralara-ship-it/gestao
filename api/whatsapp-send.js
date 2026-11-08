@@ -1,4 +1,5 @@
-import { applyCors, verifyUserAuth } from './_middleware/auth.js';
+import { applyCors, verifyUserAuth, requireRole } from './_middleware/auth.js';
+import { applyRateLimit } from './_middleware/rateLimit.js';
 
 export const config = {
   api: {
@@ -34,9 +35,20 @@ function isSafeUrl(urlStr) {
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, POST, OPTIONS')) return;
 
-  // Autenticação obrigatória
+  // Rate limit rigoroso para disparo de WhatsApp (15 requisições por minuto por IP)
+  if (applyRateLimit(req, res, { limit: 15, windowMs: 60 * 1000, prefix: 'whatsapp_api' })) {
+    return;
+  }
+
+  // Autenticação obrigatória (JWT ou API_SECRET_KEY)
   const user = await verifyUserAuth(req, res);
   if (!user) return;
+
+  // RBAC: apenas administradores, síndicos e funcionários autorizados podem disparar mensagens
+  const ROLES_WHATSAPP = ['Administrador', 'Síndico', 'Financeiro', 'Porteiro'];
+  if (!requireRole(user, ROLES_WHATSAPP, res)) {
+    return;
+  }
 
   // Consulta de Grupos via GET
   if (req.method === 'GET') {

@@ -1,4 +1,5 @@
-import { applyCors, verifyUserAuth } from '../_middleware/auth.js'
+import { applyCors, verifyUserAuth, requireRole } from '../_middleware/auth.js'
+import { applyRateLimit } from '../_middleware/rateLimit.js'
 
 export default async function handler(req, res) {
   // CORS configuration restrito
@@ -8,9 +9,20 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  // Rate Limiting estrito para emissão bancária (10 requisições por minuto por IP)
+  if (applyRateLimit(req, res, { limit: 10, windowMs: 60 * 1000, prefix: 'cora_emitir' })) {
+    return;
+  }
+
   // Autenticação obrigatória (JWT ou API Secret Key)
   const authUser = await verifyUserAuth(req, res);
   if (!authUser) return;
+
+  // RBAC: apenas Administrador, Financeiro e Síndico podem emitir boletos
+  const ROLES_BOLETO = ['Administrador', 'Financeiro', 'Síndico'];
+  if (!requireRole(authUser, ROLES_BOLETO, res)) {
+    return;
+  }
 
   const clientId = process.env.CORA_CLIENT_ID
   const clientSecret = process.env.CORA_CLIENT_SECRET

@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { applyCors, verifyUserAuth } from './_middleware/auth.js';
+import { applyRateLimit } from './_middleware/rateLimit.js';
 
 export const config = {
   api: {
@@ -18,7 +19,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // Autenticação obrigatória
+  // Rate Limiting para OCR / Gemini (20 requisições por minuto por IP)
+  if (applyRateLimit(req, res, { limit: 20, windowMs: 60 * 1000, prefix: 'gemini_extract' })) {
+    return;
+  }
+
+  // Autenticação obrigatória (JWT ou API Secret Key)
   const user = await verifyUserAuth(req, res);
   if (!user) return;
 

@@ -1,84 +1,55 @@
 // api/condomino/[telefone].js
-// Endpoint para buscar condômino por telefone
+// Endpoint seguro para buscar condômino por telefone com RBAC e Rate Limiting
 
-const admin = require('firebase-admin');
+import { getFirebaseAdmin, applyCors, verifyUserAuth, requireRole } from '../_middleware/auth.js';
+import { applyRateLimit } from '../_middleware/rateLimit.js';
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-    })
-  });
-}
-
-const db = admin.firestore();
-
-// ─── Roles com permissão de buscar dados de condôminos ────────────────────
 const ROLES_PERMITIDOS = ['Administrador', 'Financeiro', 'Síndico', 'Porteiro'];
 
-// ─── Domínios permitidos (CORS restrito) ──────────────────────────────────
-const ALLOWED_ORIGINS = [
-  'https://app.alphaadmsc.com.br',
-  'https://alphaadmsc.com.br',
-  'https://alphaadmsc.vercel.app',
-  'https://alpha-gestao.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:3000',
-];
+export default async function handler(req, res) {
+  if (applyCors(req, res, 'GET, OPTIONS')) return;
 
-module.exports = async (req, res) => {
-  // CORS restrito — apenas origens autorizadas
-  const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, X-User-Role');
-  res.setHeader('Vary', 'Origin');
-
-  if (req.method === 'OPTIONS') return res.status(200).end();
-
-  // ─── Autenticação por token ──────────────────────────────────────────────
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const token = authHeader.split('Bearer ')[1]?.trim();
-  const secretKey = process.env.API_SECRET_KEY;
-  if (!secretKey || token !== secretKey) {
-    return res.status(401).json({ error: 'Invalid token' });
+  // 1. Rate Limiting por IP (20 requisições por minuto)
+  if (applyRateLimit(req, res, { limit: 20, windowMs: 60 * 1000, prefix: 'condomino_busca' })) {
+    return;
   }
 
-  // ─── Validação de escopo/role (CVE-08) ──────────────────────────────────
-  const userRole = req.headers['x-user-role'] || '';
-  if (!ROLES_PERMITIDOS.includes(userRole)) {
-    return res.status(403).json({
-      error: 'Forbidden',
-      message: 'Acesso negado: seu perfil não tem permissão para buscar dados de condôminos.'
+  // 2. Autenticação obrigatória (JWT Firebase ou API Secret Key)
+  const user = await verifyUserAuth(req, res);
+  if (!user) return;
+
+  // 3. Autorização estrita baseada em papéis (RBAC verificado no servidor, não por header de cliente)
+  if (!requireRole(user, ROLES_PERMITIDOS, res)) {
+    return;
+  }
+
+  // 4. Validação e sanitização estrita do parâmetro (Defesa contra NoSQL Injection)
+  const telefoneParam = String(req.query?.telefone || '').trim();
+  const telefoneLimpo = telefoneParam.replace(/\D/g, '');
+
+  if (!/^\d{8,15}$/.test(telefoneLimpo)) {
+    return res.status(400).json({
+      error: 'Bad Request',
+      message: 'Telefone inválido. O parâmetro deve conter entre 8 e 15 dígitos numéricos.'
     });
   }
 
-  const { telefone } = req.query;
-
-  if (!telefone) {
-    return res.status(400).json({ error: 'Telefone não fornecido' });
-  }
-
-  // Limpar telefone (apenas dígitos)
-  const telefoneLimpo = telefone.replace(/\D/g, '');
-
   try {
-    // Buscar condômino pelo telefone
+    const adminInst = getFirebaseAdmin();
+    const db = adminInst.firestore();
+
+    // Busca parametrizada segura
     let snapshot = await db.collection('condominos')
       .where('telefone', '==', telefoneLimpo)
       .limit(1)
       .get();
 
-    // Tenta com código do país se não encontrar
-    if (snapshot.empty) {
+    // Tenta com código do país (55) se não encontrar inicialmente
+    if (snapshot.empty && !telefoneLimpo.startsWith('55')) {
       snapshot = await db.collection('condominos')
         .where('telefone', '==', '55' + telefoneLimpo)
         .limit(1)
@@ -86,25 +57,38 @@ module.exports = async (req, res) => {
     }
 
     if (snapshot.empty) {
-      return res.status(404).json({ error: 'Condômino não encontrado' });
+      return res.status(404).json({ error: 'NotFound', message: 'Condômino não localizado.' });
     }
 
     const docSnap = snapshot.docs[0];
     const condomino = docSnap.data();
 
-    // Buscar apenas débitos vencidos
+    // Restrição por condomínio se o usuário for Síndico ou Porteiro
+    if (user.role !== 'Administrador' && user.role !== 'Financeiro') {
+      if (user.condominio && condomino.condominio && user.condominio !== condomino.condominio) {
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'Acesso negado: Condômino pertence a outro condomínio.'
+        });
+      }
+    }
+
+    // Buscar débitos vencidos do condômino
     const debitosSnapshot = await db.collection('boletos')
       .where('condomino_id', '==', docSnap.id)
-      .where('pago', '==', false)
+      .where('status', '!=', 'Pago')
+      .limit(50)
       .get();
 
     const debitos = [];
+    const agora = new Date();
+
     debitosSnapshot.forEach(d => {
       const debito = d.data();
-      if (debito.data_vencimento) {
-        const vencimento = debito.data_vencimento.toDate ?
-          debito.data_vencimento.toDate() : new Date(debito.data_vencimento);
-        if (vencimento < new Date()) {
+      if (debito.data_vencimento || debito.vencimento) {
+        const rawDate = debito.data_vencimento || debito.vencimento;
+        const vencimento = rawDate.toDate ? rawDate.toDate() : new Date(rawDate);
+        if (vencimento < agora) {
           debitos.push({ id: d.id, ...debito });
         }
       }
@@ -115,9 +99,8 @@ module.exports = async (req, res) => {
       ...condomino,
       debitos
     });
-
   } catch (error) {
-    console.error('Erro:', error);
-    return res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('Erro ao buscar condômino:', error.message);
+    return res.status(500).json({ error: 'Internal Server Error', message: 'Erro interno ao processar a consulta.' });
   }
-};
+}

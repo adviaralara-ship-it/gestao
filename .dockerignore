@@ -1,0 +1,30 @@
+# .dockerignore - Alpha Gestão
+.git
+.github
+node_modules
+dist
+dist-ssr
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Segredos e variáveis de ambiente
+.env
+.env.*
+!.env.example
+.env*.local
+credentials.json
+service-account*.json
+
+# Logs e arquivos de runtime
+logs
+*.log
+.vercel
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
