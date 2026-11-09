@@ -1892,6 +1892,7 @@ function ModalImportarPlanilha({ condominios, moradores, initialCondo = '', onCl
   const [nomeArquivo, setNomeArquivo] = useState('')
   const [processando, setProcessando] = useState(false)
   const [salvando, setSalvando] = useState(false)
+  const [isExtratoBancario, setIsExtratoBancario] = useState(false)
 
   // Moradores filtrados pelo condomínio selecionado
   const moradoresDoCondo = React.useMemo(() => {
@@ -1933,6 +1934,9 @@ function ModalImportarPlanilha({ condominios, moradores, initialCondo = '', onCl
         const idxLink = getIdx(['link', 'url', 'pdf', 'arquivo'])
         const idxPix = getIdx(['pix', 'emv', 'copia'])
         const idxLinha = getIdx(['linha', 'digitavel', 'codigo', 'barras', 'barcode'])
+
+        const isExtrato = idxTipo !== -1 || headers.some(h => h.includes('extrato') || h.includes('saldo') || h.includes('transacao') || h.includes('transação')) || file.name.toLowerCase().includes('extrato');
+        setIsExtratoBancario(isExtrato);
 
         if (idxValor === -1) {
           alert("Não conseguimos identificar a coluna de 'Valor' na planilha.")
@@ -2142,6 +2146,19 @@ function ModalImportarPlanilha({ condominios, moradores, initialCondo = '', onCl
             </div>
           ) : (
             <div className="flex flex-col gap-3">
+              {isExtratoBancario && (
+                <div className="bg-amber-50 border border-amber-300 p-3.5 rounded-xl text-xs text-amber-900 flex items-start gap-2.5 shadow-sm">
+                  <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-amber-950">⚠️ Atenção: Este arquivo parece ser um Extrato Bancário!</p>
+                    <p className="text-[11px] text-amber-800 mt-1 leading-relaxed">
+                      Se seu objetivo é <strong>dar baixa nos boletos que os moradores já pagaram</strong>, feche esta janela e utilize o botão <strong>'Conciliar Extrato (OFX / CSV)'</strong> no topo da página.<br />
+                      Esta janela atual ('Importar Planilha') serve apenas para <em>cadastrar novas cobranças / faturas a receber</em>.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-xs">
                 <div className="flex items-center gap-2 text-emerald-900 font-bold">
                   <CheckCircle2 size={16} className="text-emerald-600" />
@@ -3095,7 +3112,7 @@ export default function Boletos() {
         const text = event.target.result;
         const fileName = file.name.toLowerCase();
         let baixados = 0;
-        const pendentes = allBoletos.filter(b => b.status === 'Pendente');
+        const pendentes = allBoletos.filter(b => b.status !== 'Pago');
 
         if (fileName.endsWith('.ofx')) {
           // Parser nativo de arquivo bancário OFX (Padrão Bancos Brasileiros)
@@ -3238,13 +3255,41 @@ export default function Boletos() {
               return nNum.length >= 6 && lineRaw.includes(nNum);
             });
 
-            // 2º Match por valor + nome
+            // 2º Match por valor + nome ou tolerância de juros/multas
             if (!boletoMatch) {
+              const normMatch = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+              const nomeNorm = normMatch(nome);
+
               boletoMatch = pendentes.find(b => {
+                const bNomeNorm = normMatch(b.morador);
                 const mesmoValor = Math.abs(Number(b.valor) - valorLido) < 0.1;
-                const matchNome = nome ? (b.morador.toLowerCase().includes(nome.toLowerCase()) || nome.toLowerCase().includes(b.morador.toLowerCase())) : true;
-                return mesmoValor && matchNome;
+
+                let matchNome = false;
+                if (nomeNorm && bNomeNorm) {
+                  if (bNomeNorm.includes(nomeNorm) || nomeNorm.includes(bNomeNorm)) {
+                    matchNome = true;
+                  } else {
+                    const partes = bNomeNorm.split(/\s+/).filter(p => p.length > 2);
+                    if (partes.length >= 2 && nomeNorm.includes(partes[0]) && nomeNorm.includes(partes[partes.length - 1])) {
+                      matchNome = true;
+                    }
+                  }
+                }
+
+                if (mesmoValor && matchNome) return true;
+                if (matchNome && valorLido >= Number(b.valor) * 0.98 && valorLido <= Number(b.valor) * 1.15) {
+                  return true;
+                }
+                return false;
               });
+            }
+
+            // 3º Match unívoco por valor se houver apenas um boleto com o valor exato
+            if (!boletoMatch) {
+              const candidatosValor = pendentes.filter(b => Math.abs(Number(b.valor) - valorLido) < 0.05);
+              if (candidatosValor.length === 1) {
+                boletoMatch = candidatosValor[0];
+              }
             }
 
             if (boletoMatch) {
