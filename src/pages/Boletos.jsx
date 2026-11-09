@@ -1923,12 +1923,13 @@ function ModalImportarPlanilha({ condominios, moradores, initialCondo = '', onCl
         const headers = lines[0].toLowerCase().split(/[;,]/).map(h => h.trim())
         const getIdx = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)))
 
-        const idxMorador = getIdx(['nome', 'morador', 'pagador', 'sacado', 'cliente'])
+        const idxMorador = getIdx(['nome', 'morador', 'pagador', 'sacado', 'cliente', 'identificacao', 'identificação', 'ident', 'descricao', 'descrição', 'favorecido', 'titular', 'pessoa'])
         const idxApt = getIdx(['apt', 'unidade', 'lote', 'apto', 'casa', 'sala'])
         const idxBloco = getIdx(['bloco', 'torre', 'bl'])
         const idxCpf = getIdx(['cpf', 'cnpj', 'documento', 'doc'])
         const idxVencimento = getIdx(['venc', 'data', 'vencimento'])
-        const idxValor = getIdx(['valor', 'total', 'cota', 'taxa'])
+        const idxValor = getIdx(['valor', 'total', 'cota', 'taxa', 'recebido', 'pago', 'credito'])
+        const idxTipo = getIdx(['tipo transacao', 'tipo transação', 'tipo', 'operacao', 'natureza'])
         const idxLink = getIdx(['link', 'url', 'pdf', 'arquivo'])
         const idxPix = getIdx(['pix', 'emv', 'copia'])
         const idxLinha = getIdx(['linha', 'digitavel', 'codigo', 'barras', 'barcode'])
@@ -1944,9 +1945,15 @@ function ModalImportarPlanilha({ condominios, moradores, initialCondo = '', onCl
         const lista = []
         for (let i = 1; i < lines.length; i++) {
           const cols = lines[i].split(/[;,]/).map(c => c.trim().replace(/^"|"$/g, ''))
+          
+          // Se for extrato bancário com indicação de débito, ignora lançamentos de saída
+          if (idxTipo !== -1) {
+            const tipoStr = normStr(cols[idxTipo])
+            if (tipoStr.includes('debito')) continue
+          }
+
           let valorBruto = idxValor !== -1 ? cols[idxValor] || '0' : '0'
-          let valor = parseFloat(valorBruto.replace(/\./g, '').replace(',', '.')) || 0
-          if (isNaN(valor)) valor = parseFloat(valorBruto.replace(',', '.')) || 0
+          let valor = parseCurrency(valorBruto)
           if (valor <= 0) continue
 
           const rawNome = idxMorador !== -1 ? (cols[idxMorador] || '') : ''
@@ -1976,10 +1983,12 @@ function ModalImportarPlanilha({ condominios, moradores, initialCondo = '', onCl
           // 3º Cruzamento: Nome aproximado
           if (!moradorEncontrado && rawNome) {
             const nNorm = normStr(rawNome)
-            moradorEncontrado = moradoresDoCondo.find(m => {
-              const mnNorm = normStr(m.nome)
-              return mnNorm === nNorm || mnNorm.includes(nNorm) || nNorm.includes(mnNorm)
-            })
+            if (nNorm.length > 2) {
+              moradorEncontrado = moradoresDoCondo.find(m => {
+                const mnNorm = normStr(m.nome)
+                return mnNorm === nNorm || mnNorm.includes(nNorm) || nNorm.includes(mnNorm)
+              })
+            }
           }
 
           let venc = idxVencimento !== -1 ? (cols[idxVencimento] || '') : ''
@@ -1988,8 +1997,8 @@ function ModalImportarPlanilha({ condominios, moradores, initialCondo = '', onCl
             if (parts.length === 3) venc = `${parts[2]}-${parts[1]}-${parts[0]}`
           }
 
-          const finalNome = moradorEncontrado?.nome || rawNome || `Morador Apt ${rawApt || i}`
-          const finalApt = moradorEncontrado?.apt || rawApt || '1'
+          const finalNome = moradorEncontrado?.nome || rawNome || `Lançamento ${i}`
+          const finalApt = moradorEncontrado?.apt || moradorEncontrado?.unidade || (rawApt ? `Apt ${rawApt}` : '—')
           const finalBloco = moradorEncontrado?.bloco || rawBloco || ''
           const finalCpf = moradorEncontrado?.cpf || rawCpf || ''
           const finalTel = moradorEncontrado?.tel || moradorEncontrado?.telefone || ''
@@ -2158,7 +2167,7 @@ function ModalImportarPlanilha({ condominios, moradores, initialCondo = '', onCl
                     {parsedBoletos.map(b => (
                       <tr key={b.idTemp} className="hover:bg-gray-50/60">
                         <td className="p-2.5 font-black text-gray-800">
-                          Apt {b.apt} {b.bloco ? `(${b.bloco})` : ''}
+                          {b.apt.startsWith('Apt') || b.apt === '—' ? b.apt : `Apt ${b.apt}`} {b.bloco ? `(${b.bloco})` : ''}
                         </td>
                         <td className="p-2.5 font-bold text-gray-700">
                           {b.morador}
@@ -3198,8 +3207,9 @@ export default function Boletos() {
           const headers = lines[0].toLowerCase().split(/[;,]/).map(h => h.trim());
           const getIdx = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)));
 
-          const idxMorador = getIdx(['nome', 'morador', 'pagador', 'sacado', 'cliente', 'descricao', 'historico']);
+          const idxMorador = getIdx(['nome', 'morador', 'pagador', 'sacado', 'cliente', 'identificacao', 'identificação', 'ident', 'descricao', 'descrição', 'historico', 'favorecido', 'titular']);
           const idxValor = getIdx(['valor', 'total', 'recebido', 'pago', 'credito']);
+          const idxTipo = getIdx(['tipo transacao', 'tipo transação', 'tipo', 'operacao', 'natureza']);
           
           if (idxValor === -1) {
             alert("Não conseguimos identificar a coluna de 'Valor' na sua planilha. Verifique se está presente.");
@@ -3209,10 +3219,15 @@ export default function Boletos() {
           for (let i = 1; i < lines.length; i++) {
             const lineRaw = lines[i].toLowerCase();
             const cols = lines[i].split(/[;,]/).map(c => c.trim().replace(/^"|"$/g, ''));
+            
+            if (idxTipo !== -1) {
+              const tipoStr = String(cols[idxTipo] || '').toLowerCase();
+              if (tipoStr.includes('debito') || tipoStr.includes('débito')) continue;
+            }
+
             const nome = idxMorador !== -1 ? cols[idxMorador] : '';
             let valorBruto = cols[idxValor] || '0';
-            let valorLido = parseFloat(valorBruto.replace(/\./g, '').replace(',', '.')) || 0;
-            if (isNaN(valorLido)) valorLido = parseFloat(valorBruto.replace(',', '.')) || 0;
+            let valorLido = parseCurrency(valorBruto);
 
             if (valorLido <= 0) continue;
 

@@ -38,10 +38,41 @@ export function maskCurrency(value) {
  * Extrai o valor float numérico a partir da máscara
  */
 export function parseCurrency(value) {
-  if (typeof value === 'number') return value
+  if (typeof value === 'number') return isNaN(value) ? 0 : value
   if (!value) return 0
-  const cleanStr = String(value).replace(/\./g, '').replace(',', '.')
-  return parseFloat(cleanStr) || 0
+
+  let str = String(value).trim().replace(/[^\d.,+-]/g, '')
+  if (!str) return 0
+
+  const hasComma = str.includes(',')
+  const hasDot = str.includes('.')
+
+  if (hasComma && hasDot) {
+    if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+      // Padrão brasileiro: "1.234,56"
+      str = str.replace(/\./g, '').replace(',', '.')
+    } else {
+      // Padrão internacional: "1,234.56"
+      str = str.replace(/,/g, '')
+    }
+  } else if (hasComma) {
+    // Apenas vírgula: "616,51" ou "20,00"
+    str = str.replace(',', '.')
+  } else if (hasDot) {
+    // Apenas ponto: "616.51", "89.01", "12255.00" ou "1.000"
+    const parts = str.split('.')
+    if (parts.length > 2) {
+      // Múltiplos pontos: "1.234.567" -> milhares
+      str = str.replace(/\./g, '')
+    } else if (parts.length === 2) {
+      if (parts[1].length === 3 && parts[0].length >= 1 && parts[0].length <= 3) {
+        str = str.replace(/\./g, '')
+      }
+    }
+  }
+
+  const num = parseFloat(str)
+  return isNaN(num) ? 0 : num
 }
 
 /**
