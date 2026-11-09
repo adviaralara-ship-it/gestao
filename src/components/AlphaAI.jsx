@@ -3,20 +3,13 @@ import { Plus, X, Search, FileText, Download, Copy, RefreshCw, Scale, Lightbulb,
 import { useAuth } from '../context/AuthContext'
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp, collection, addDoc, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { requestSecureAI } from '../utils/aiClient'
 import QRCode from 'react-qr-code'
 import { format } from 'date-fns'
 import { sanitizeUserPrompt, extractSafeActions } from '../utils/promptSecurity'
 
-// Chave da API e Instância do Gemini com redundância
-const API_KEYS = [ import.meta.env?.VITE_GEMINI_API_KEY ].filter(Boolean)
-
-const GEMINI_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-flash-latest",
-  "gemini-1.5-flash",
-  "gemini-2.0-flash"
-]
+// Integração com IA segura através do backend Alpha
+// (elimina exposição de chaves privadas no navegador)
 
 // Função auxiliar para registrar ocorrência no Firestore imediatamente
 async function autoCriarOcorrenciaDireta(descricaoTexto, user, tituloCustom = null, categoriaCustom = null) {
@@ -429,14 +422,7 @@ export default function AlphaAI() {
 
       let aiResponse = ''
 
-      for (const modelName of GEMINI_MODELS) {
-        if (aiResponse) break
-        for (const key of API_KEYS) {
-          try {
-            const genAI = new GoogleGenerativeAI(key)
-            const model = genAI.getGenerativeModel({ model: modelName })
-
-            const systemPrompt = `
+      const systemPrompt = `
 Você é o "Alpha AI", o Concierge Virtual extremamente educado e inteligente do condomínio "${user.condominio || 'ALPHA CONDOMINIOS'}".
 O morador com quem você está falando se chama "${user.nome}" (Apartamento ${user.apt || user.unidade || 'Unidade'}).
 Seja amigável, direto, e use português brasileiro formal e acolhedor.
@@ -455,25 +441,14 @@ REGRAS ESPECIAIS DE AÇÃO (TOOL CALLING):
 2. Se o morador quiser agendar ou reservar uma área comum (ex: salão de festas, churrasqueira), inclua no final:
 [CRIAR_RESERVA: Espaço - Data - Horário]
 `
-            const chat = model.startChat({
-              history: [
-                { role: 'user', parts: [{ text: systemPrompt }] },
-                { role: 'model', parts: [{ text: `Olá! Sou o assistente virtual do condomínio ${user.condominio}. Como posso ajudar?` }] },
-                ...messages.slice(-8).map(m => ({
-                  role: m.role,
-                  parts: [{ text: m.text }]
-                }))
-              ]
-            })
-
-            const { cleanInput } = sanitizeUserPrompt(input)
-            const result = await chat.sendMessage(cleanInput)
-            aiResponse = result?.response?.text()
-            if (aiResponse) break
-          } catch (err) {
-            console.warn(`Gemini (${modelName}) indisponível no widget:`, err.message)
-          }
-        }
+      try {
+        aiResponse = await requestSecureAI({
+          prompt: input,
+          systemPrompt,
+          history: messages.slice(-8)
+        })
+      } catch (aiErr) {
+        console.warn('Backend seguro de IA falhou no widget:', aiErr.message)
       }
 
       // Validação estrita contra Prompt Injection antes de registrar ações

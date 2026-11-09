@@ -7,7 +7,7 @@ import { getFirestore, collection, getDocs, addDoc, serverTimestamp, doc, update
 import { applyCors, verifyCronAuth } from '../_middleware/auth.js';
 
 const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDj6CNYCaNSWv_tQYVjCdqFElcuG9lA1LE',
+  apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY,
   authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'alphaadmsc-fdc4e.firebaseapp.com',
   projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'alphaadmsc-fdc4e',
   storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'alphaadmsc-fdc4e.appspot.com',
@@ -16,7 +16,7 @@ const firebaseConfig = {
 };
 
 const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://runningfly-evolution.cloudfy.live';
-const API_KEY = process.env.EVOLUTION_API_KEY || 'WHNRTDYyTpv4ze45wUUU5qN9ri3da1Oy';
+const API_KEY = process.env.EVOLUTION_API_KEY;
 const INSTANCE = 'InstanciaAlpha';
 
 export default async function handler(req, res) {

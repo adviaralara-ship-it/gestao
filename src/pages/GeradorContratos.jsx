@@ -1,46 +1,17 @@
 import React, { useState, useRef } from 'react'
 import { FileText, Printer, CheckCircle, Bot, Zap, Loader2, Sparkles, AlertCircle, FileEdit, Download } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { requestSecureAI } from '../utils/aiClient'
 import { sanitizeHtml } from '../utils/sanitize'
 import { sanitizeUserPrompt } from '../utils/promptSecurity'
 
-// Chaves de API obtidas estritamente das variáveis de ambiente (.env)
-const GEMINI_API_KEY = (import.meta.env?.VITE_GEMINI_API_KEY || '').trim()
-
-const GEMINI_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-flash-latest",
-  "gemini-1.5-flash",
-  "gemini-2.0-flash"
-]
-
 async function gerarDocumentoIA(systemPrompt, userPrompt) {
-  if (!GEMINI_API_KEY) {
-    throw new Error("Chave da API Gemini (VITE_GEMINI_API_KEY) não configurada no ambiente.")
-  }
-
   const { cleanInput } = sanitizeUserPrompt(userPrompt, 4000)
-  let lastError = null
-
-  for (const modelName of GEMINI_MODELS) {
-    try {
-      const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
-      const model = genAI.getGenerativeModel({ model: modelName })
-      const chat = model.startChat({
-        history: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: "<div style='font-family: Arial;'>Entendido. Enviarei apenas código HTML pronto para impressão.</div>" }] }
-        ],
-      })
-      const result = await chat.sendMessage(cleanInput)
-      const text = result?.response?.text()
-      if (text) return text
-    } catch (err) {
-      lastError = err
-    }
-  }
-  throw lastError || new Error("Falha ao conectar com o serviço de IA.")
+  return await requestSecureAI({
+    prompt: cleanInput,
+    systemPrompt: systemPrompt + "\nRetorne estritamente código HTML pronto para visualização e impressão, sem blocos markdown extras.",
+    temperature: 0.2
+  })
 }
 
 const modelos = [

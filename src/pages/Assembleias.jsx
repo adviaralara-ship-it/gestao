@@ -9,44 +9,13 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { storage } from '../firebase'
 import { gerarAtaPorAudio } from '../utils/aiTranscricao'
 import { jsPDF } from 'jspdf'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { generateSecureContent } from '../utils/aiClient'
 import { sanitizeUserPrompt } from '../utils/promptSecurity'
 
-// Chaves de API suportadas (variáveis de ambiente Vite + fallbacks seguros)
-const API_KEYS = [ import.meta.env?.VITE_GEMINI_API_KEY ].filter(Boolean)
-
-// Modelos suportados em ordem de preferência e estabilidade
-const GEMINI_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-flash-latest",
-  "gemini-1.5-flash",
-  "gemini-2.0-flash"
-]
-
-// Função utilitária para gerar texto com Gemini utilizando fallback de chaves e modelos
+// Geração de conteúdo assistida por IA via backend seguro Alpha
 async function gerarConteudoGemini(prompt) {
   const { cleanInput } = sanitizeUserPrompt(prompt, 4000)
-  let lastError = null
-
-  for (const modelName of GEMINI_MODELS) {
-    for (const key of API_KEYS) {
-      try {
-        const genAI = new GoogleGenerativeAI(key)
-        const genModel = genAI.getGenerativeModel({ model: modelName })
-        const res = await genModel.generateContent(cleanInput)
-        const texto = res?.response?.text()?.trim()
-        if (texto) {
-          return texto
-        }
-      } catch (err) {
-        lastError = err
-        console.warn(`[Gemini fallback] Falha no modelo ${modelName} com chave terminada em ${key.slice(-4)}:`, err?.message || err)
-      }
-    }
-  }
-
-  console.error('[Gemini] Todas as tentativas de conexão falharam:', lastError)
-  throw lastError || new Error('Não foi possível conectar com o serviço de IA.')
+  return await generateSecureContent(cleanInput)
 }
 
 function ModalAssembleia({ onClose, onSave }) {

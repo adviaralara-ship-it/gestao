@@ -6,35 +6,13 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { enviarEmail } from '../emailjs.config'
 import { enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { generateSecureContent } from '../utils/aiClient'
 import { sanitizeUserPrompt } from '../utils/promptSecurity'
 
-const API_KEYS = [ import.meta.env?.VITE_GEMINI_API_KEY ].filter(Boolean)
-
-const GEMINI_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-flash-latest",
-  "gemini-1.5-flash",
-  "gemini-2.0-flash"
-]
-
+// Geração de texto assistida por IA via backend seguro Alpha
 async function gerarTextoComunicado(prompt) {
   const { cleanInput } = sanitizeUserPrompt(prompt, 3000)
-  let lastError = null
-  for (const modelName of GEMINI_MODELS) {
-    for (const key of API_KEYS) {
-      try {
-        const genAI = new GoogleGenerativeAI(key)
-        const model = genAI.getGenerativeModel({ model: modelName })
-        const result = await model.generateContent(cleanInput)
-        const text = result?.response?.text()?.trim()
-        if (text) return text
-      } catch (err) {
-        lastError = err
-      }
-    }
-  }
-  throw lastError || new Error("Falha ao conectar com o serviço de IA.")
+  return await generateSecureContent(cleanInput)
 }
 
 const tipoBadge = t=>({Aviso:'badge-blue',Comunicado:'badge-green',Convocação:'badge-purple',Urgente:'badge-red'}[t]||'badge-blue')

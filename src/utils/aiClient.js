@@ -1,76 +1,84 @@
 /**
  * src/utils/aiClient.js
  * Cliente seguro de Inteligência Artificial (Google Gemini)
- * Elimina credenciais hardcoded e centraliza modelos e chamadas resilientes.
+ * Roteia chamadas prioritariamente via backend seguro (/api/ai/chat)
+ * eliminando a exposição de chaves privadas no bundle do cliente.
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { auth } from '../firebase'
 import { sanitizeUserPrompt } from './promptSecurity'
 
-// Obtenção estrita da chave via variáveis de ambiente
-export function getGeminiApiKey() {
-  const envKey = import.meta.env?.VITE_GEMINI_API_KEY || ''
-  return String(envKey).trim()
-}
-
-export const CANONICAL_GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-flash-latest',
-  'gemini-1.5-flash',
-  'gemini-2.0-flash'
-]
-
 /**
- * Cria instância autenticada do GoogleGenerativeAI
- * Lança erro explícito se a chave não estiver configurada no .env
- */
-export function getGenAIClient() {
-  const key = getGeminiApiKey()
-  if (!key) {
-    throw new Error('Chave VITE_GEMINI_API_KEY não configurada nas variáveis de ambiente (.env).')
-  }
-  return new GoogleGenerativeAI(key)
-}
-
-/**
- * Executa geração de conteúdo com fallback resiliente de modelos e sanitização de prompt.
+ * Envia prompt para processamento seguro no backend
  * 
- * @param {string} prompt - Prompt seguro a ser enviado
- * @param {object} [options] - Opções de geração (temperatura, maxTokens)
+ * @param {object} params
+ * @param {string} params.prompt - Entrada do usuário
+ * @param {string} [params.systemPrompt] - Diretrizes de persona e regras do sistema
+ * @param {Array} [params.history] - Histórico prévio de mensagens [{ role, text }]
+ * @param {number} [params.temperature=0.4] - Temperatura de criatividade
+ * @param {string} [params.model] - Modelo preferencial
  * @returns {Promise<string>} Resposta gerada pela IA
  */
-export async function generateSecureContent(prompt, options = {}) {
-  const genAI = getGenAIClient()
-  let lastError = null
+export async function requestSecureAI({ prompt, systemPrompt, history = [], temperature = 0.4, model }) {
+  const { cleanInput } = sanitizeUserPrompt(prompt, 6000)
 
-  for (const modelName of CANONICAL_GEMINI_MODELS) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          temperature: options.temperature ?? 0.4,
-          maxOutputTokens: options.maxTokens ?? 2048,
-          ...options.generationConfig
-        }
-      })
-
-      const result = await model.generateContent(prompt)
-      const text = result?.response?.text()
-      if (text) {
-        return text
-      }
-    } catch (err) {
-      lastError = err
-      console.warn(`Tentativa com modelo ${modelName} falhou:`, err.message)
+  // 1. Obtenção do ID Token (JWT) do usuário logado
+  let token = ''
+  try {
+    if (auth?.currentUser) {
+      token = await auth.currentUser.getIdToken(false)
     }
+  } catch (err) {
+    console.warn('[aiClient] Falha ao obter token do usuário:', err.message)
   }
 
-  throw new Error(`Falha na geração de conteúdo com todos os modelos disponíveis: ${lastError?.message || 'Erro desconhecido'}`)
+  // 2. Requisição para o endpoint serverless seguro
+  try {
+    const res = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({
+        prompt: cleanInput,
+        systemPrompt,
+        history,
+        temperature,
+        model
+      })
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      if (data.success && data.text) {
+        return data.text
+      }
+    } else {
+      const errData = await res.json().catch(() => ({}))
+      console.warn('[aiClient] Rota de backend retornou erro:', errData.message || res.status)
+    }
+  } catch (fetchErr) {
+    console.warn('[aiClient] Erro ao conectar com /api/ai/chat:', fetchErr.message)
+  }
+
+  throw new Error('Serviço de Inteligência Artificial temporariamente indisponível. Tente novamente em instantes.')
+}
+
+/**
+ * Função utilitária direta para geração de texto simples
+ */
+export async function generateSecureContent(prompt, options = {}) {
+  return requestSecureAI({
+    prompt,
+    systemPrompt: options.systemPrompt,
+    history: options.history || [],
+    temperature: options.temperature,
+    model: options.model
+  })
 }
 
 export default {
-  getGeminiApiKey,
-  getGenAIClient,
-  generateSecureContent,
-  CANONICAL_GEMINI_MODELS
+  requestSecureAI,
+  generateSecureContent
 }

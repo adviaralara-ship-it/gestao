@@ -1,4 +1,21 @@
 import { gerarBoletoPdfBase64 } from './boletoPdf'
+import { auth } from '../firebase'
+
+async function getAuthHeaders() {
+  const headers = { 'Content-Type': 'application/json' }
+  try {
+    if (auth?.currentUser) {
+      const token = await auth.currentUser.getIdToken(false)
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+    }
+  } catch (err) {
+    console.warn('[whatsappAutomacao] Falha ao obter JWT do usuário:', err?.message)
+  }
+  return headers
+}
+
 
 /**
  * Envia um boleto em PDF diretamente via WhatsApp para o morador utilizando Base64 direto
@@ -36,7 +53,7 @@ export async function enviarBoletoWhatsAppAuto(boleto, morador, condoDoc, custom
     try {
       const res = await fetch('/api/whatsapp-send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({
           number: finalNumber,
           text: textoFinal,
@@ -51,51 +68,16 @@ export async function enviarBoletoWhatsAppAuto(boleto, morador, condoDoc, custom
         data = await res.json()
       } else {
         const errJson = await res.json().catch(() => ({}))
-        console.warn('Rota /api/whatsapp-send retornou status', res.status, errJson)
+        return { success: false, error: errJson?.error || errJson?.message || 'Falha no envio de WhatsApp pelo servidor seguro' }
       }
     } catch (routeErr) {
-      console.warn('Falha ao chamar /api/whatsapp-send, acionando fallback direto Evolution:', routeErr)
+      console.warn('Falha na requisição para /api/whatsapp-send:', routeErr)
+      return { success: false, error: routeErr.message || 'Erro de conexão com o servidor de mensagens' }
     } finally {
       clearTimeout(timeoutId)
     }
 
-    // Fallback direto Evolution API (caso a serverless na Vercel não tenha credencial ou dê 401/500)
-    if (!data || !data.success) {
-      try {
-        const EVOLUTION_URL = 'https://runningfly-evolution.cloudfy.live'
-        const API_KEY = import.meta.env?.VITE_EVOLUTION_API_KEY || ''
-        const rawMedia = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data
-
-        const resDirect = await fetch(`${EVOLUTION_URL}/message/sendMedia/InstanciaAlpha`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': API_KEY
-          },
-          body: JSON.stringify({
-            number: finalNumber,
-            mediatype: 'document',
-            mimetype: 'application/pdf',
-            caption: textoFinal,
-            media: rawMedia.replace(/\s+/g, ''),
-            fileName: fileName
-          })
-        })
-
-        if (resDirect.ok) {
-          const directData = await resDirect.json()
-          return { success: true, data: directData }
-        } else {
-          const directErr = await resDirect.json().catch(() => ({}))
-          return { success: false, error: directErr?.response?.message || directErr?.message || 'Falha no envio via Evolution API' }
-        }
-      } catch (errDirect) {
-        console.error('Erro no fallback Evolution:', errDirect)
-        return { success: false, error: errDirect.message || 'Erro de conexão com o WhatsApp' }
-      }
-    }
-
-    return data
+    return data || { success: false, error: 'Resposta indefinida do servidor de WhatsApp' }
   } catch (err) {
     console.error('Erro no envio de boleto via WhatsApp:', err)
     return { success: false, error: err.message || 'Tempo limite esgotado no envio' }
@@ -115,16 +97,14 @@ export async function enviarMensagemWhatsApp({ number, text, mediaBase64, fileNa
     return { success: false, error: 'Número de WhatsApp inválido.' }
   }
 
-  const EVOLUTION_URL = 'https://runningfly-evolution.cloudfy.live'
-  const API_KEY = import.meta.env?.VITE_EVOLUTION_API_KEY || ''
-
-  // 1. Tenta rota do backend serverless
+  // Roteamento exclusivo pelo backend serverless seguro
   try {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 18000)
+    const timeoutId = setTimeout(() => controller.abort(), 20000)
+    const headers = await getAuthHeaders()
     const res = await fetch('/api/whatsapp-send', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         number: finalNumber,
         text,
@@ -138,60 +118,14 @@ export async function enviarMensagemWhatsApp({ number, text, mediaBase64, fileNa
     if (res.ok) {
       const data = await res.json()
       if (data && data.success) return data
+      return { success: false, error: data?.error || 'Erro no envio' }
+    } else {
+      const errJson = await res.json().catch(() => ({}))
+      return { success: false, error: errJson?.error || errJson?.message || `Erro HTTP ${res.status} no servidor de mensagens` }
     }
   } catch (errServerless) {
-    console.warn('Backend serverless falhou, acionando Evolution direto:', errServerless)
-  }
-
-  // 2. Fallback direto Evolution API
-  try {
-    if (mediaBase64) {
-      const rawMedia = mediaBase64.includes(',') ? mediaBase64.split(',')[1] : mediaBase64
-      const resDirect = await fetch(`${EVOLUTION_URL}/message/sendMedia/${instance}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': API_KEY
-        },
-        body: JSON.stringify({
-          number: finalNumber,
-          mediatype: 'document',
-          mimetype: 'application/pdf',
-          caption: text || '',
-          media: rawMedia.replace(/\s+/g, ''),
-          fileName: fileName || 'Documento.pdf'
-        })
-      })
-      if (resDirect.ok) {
-        const directData = await resDirect.json()
-        return { success: true, data: directData }
-      } else {
-        const errJson = await resDirect.json().catch(() => ({}))
-        return { success: false, error: errJson?.response?.message || errJson?.message || 'Falha no envio da mídia via Evolution' }
-      }
-    } else {
-      const resDirect = await fetch(`${EVOLUTION_URL}/message/sendText/${instance}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': API_KEY
-        },
-        body: JSON.stringify({
-          number: finalNumber,
-          text: text || ''
-        })
-      })
-      if (resDirect.ok) {
-        const directData = await resDirect.json()
-        return { success: true, data: directData }
-      } else {
-        const errJson = await resDirect.json().catch(() => ({}))
-        return { success: false, error: errJson?.response?.message || errJson?.message || 'Falha no envio de texto via Evolution' }
-      }
-    }
-  } catch (errDirect) {
-    console.error('Erro na conexão direta com a Evolution API:', errDirect)
-    return { success: false, error: errDirect.message || 'Erro de conexão com o WhatsApp' }
+    console.warn('Erro ao conectar com /api/whatsapp-send:', errServerless)
+    return { success: false, error: errServerless.message || 'Falha de comunicação com o serviço de WhatsApp' }
   }
 }
 
@@ -268,37 +202,18 @@ export async function enviarReservaWhatsAppGrupo(reserva, condoDoc) {
 
 export async function buscarGruposWhatsApp(instance = 'InstanciaAlpha') {
   try {
-    // 1. Tenta rota serverless /api/whatsapp-send
-    const res = await fetch(`/api/whatsapp-send?instance=${encodeURIComponent(instance)}`)
+    const headers = await getAuthHeaders()
+    const res = await fetch(`/api/whatsapp-send?instance=${encodeURIComponent(instance)}`, {
+      headers
+    })
     if (res.ok) {
       const data = await res.json()
-      if (data.success && Array.isArray(data.groups) && data.groups.length > 0) {
+      if (data.success && Array.isArray(data.groups)) {
         return data.groups
       }
     }
   } catch (e) {
-    console.warn('Tentando fallback direto na Evolution API para buscar grupos:', e)
-  }
-
-  // 2. Fallback direto para Evolution API
-  try {
-    const EVOLUTION_URL = 'https://runningfly-evolution.cloudfy.live'
-    const API_KEY = import.meta.env?.VITE_EVOLUTION_API_KEY || ''
-    const resDirect = await fetch(`${EVOLUTION_URL}/group/fetchAllGroups/${instance}?getParticipants=false`, {
-      method: 'GET',
-      headers: { 'apikey': API_KEY }
-    })
-    if (resDirect.ok) {
-      const raw = await resDirect.json()
-      if (Array.isArray(raw)) {
-        return raw.map(g => ({
-          id: g.id,
-          subject: g.subject || g.name || 'Grupo sem nome'
-        }))
-      }
-    }
-  } catch (errDirect) {
-    console.error('Erro no fallback da Evolution API ao listar grupos:', errDirect)
+    console.warn('Erro ao consultar grupos via rota segura /api/whatsapp-send:', e)
   }
 
   return []

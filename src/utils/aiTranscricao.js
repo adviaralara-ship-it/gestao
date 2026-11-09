@@ -1,36 +1,41 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
-
-// Chaves de API e modelos suportados com fallback resiliente para alta disponibilidade
-const API_KEYS = [ import.meta.env?.VITE_GEMINI_API_KEY ].filter(Boolean)
-
-const GEMINI_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-flash-latest",
-  "gemini-1.5-flash",
-  "gemini-2.0-flash"
-]
+import { auth } from '../firebase'
 
 async function generateContentWithFallback(contents) {
-  let lastError = null
-
-  for (const modelName of GEMINI_MODELS) {
-    for (const key of API_KEYS) {
-      try {
-        const genAI = new GoogleGenerativeAI(key)
-        const model = genAI.getGenerativeModel({ model: modelName })
-        const result = await model.generateContent(contents)
-        if (result && result.response) {
-          return result
-        }
-      } catch (err) {
-        lastError = err
-        console.warn(`[aiTranscricao fallback] Falha no modelo ${modelName} com chave (...${key ? key.slice(-4) : ''}):`, err?.message || err)
-      }
+  let token = ''
+  try {
+    if (auth?.currentUser) {
+      token = await auth.currentUser.getIdToken(false)
     }
+  } catch (err) {
+    console.warn('[aiTranscricao] Falha ao obter JWT:', err?.message)
   }
 
-  console.error('[aiTranscricao] Falha em todas as chaves/modelos:', lastError)
-  throw lastError || new Error('Falha ao conectar com o serviço de IA.')
+  // 1. Processamento via backend seguro
+  try {
+    const res = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ contents })
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      if (data.success && data.text) {
+        return {
+          response: {
+            text: () => data.text
+          }
+        }
+      }
+    }
+  } catch (fetchErr) {
+    console.warn('[aiTranscricao] Falha na rota /api/ai/chat:', fetchErr?.message)
+  }
+
+  throw new Error('Falha ao conectar com o serviço de IA para transcrição de áudio.')
 }
 
 /**

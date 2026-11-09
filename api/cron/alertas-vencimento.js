@@ -4,10 +4,10 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, collection, getDocs, addDoc, serverTimestamp, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { applyCors, verifyCronAuth } from '../_middleware/auth.js';
+import { applyCors, verifyCronAuth, verifyUserAuth, requireRole } from '../_middleware/auth.js';
 
 const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDj6CNYCaNSWv_tQYVjCdqFElcuG9lA1LE',
+  apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY,
   authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'alphaadmsc-fdc4e.firebaseapp.com',
   projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'alphaadmsc-fdc4e',
   storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'alphaadmsc-fdc4e.appspot.com',
@@ -16,7 +16,7 @@ const firebaseConfig = {
 };
 
 const EVOLUTION_URL = process.env.EVOLUTION_URL || 'https://runningfly-evolution.cloudfy.live';
-const API_KEY = process.env.EVOLUTION_API_KEY || 'WHNRTDYyTpv4ze45wUUU5qN9ri3da1Oy';
+const API_KEY = process.env.EVOLUTION_API_KEY;
 const INSTANCE = 'InstanciaAlpha';
 
 const isAlphaInterno = (condo) => {
@@ -46,8 +46,20 @@ const normalizarParaIso = (val) => {
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, POST, OPTIONS')) return;
 
-  // Validação de autorização para execução de cron
-  if (!verifyCronAuth(req, res)) return;
+  // Validação de autorização: Aceita disparo via Cron Vercel ou via usuário Administrador/Síndico autenticado
+  const hasCronHeader = Boolean(req.headers['x-cron-secret'] || (req.headers.authorization && !req.headers.authorization.startsWith('Bearer ey')));
+  let isAuthorized = false;
+
+  if (hasCronHeader) {
+    isAuthorized = verifyCronAuth(req, res);
+  } else {
+    const user = await verifyUserAuth(req, res);
+    if (user && requireRole(user, ['Administrador', 'Síndico', 'Sindico', 'admin'], res)) {
+      isAuthorized = true;
+    }
+  }
+
+  if (!isAuthorized) return;
 
   try {
     const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];

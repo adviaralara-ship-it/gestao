@@ -24,8 +24,15 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
 
     try {
       // 1. Tenta acionar via backend cron endpoint passando secret
+      let token = ''
+      try {
+        if (auth?.currentUser) token = await auth.currentUser.getIdToken(false)
+      } catch (tErr) {}
       const resp = await fetch('/api/cron/alertas-vencimento', {
-        headers: { 'x-cron-secret': 'Cron_Alpha_Auth_Secret_2026_Secure_Key' }
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
       }).catch(() => null)
       if (resp && resp.ok) {
         const data = await resp.json()
