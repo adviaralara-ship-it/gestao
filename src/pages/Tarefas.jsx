@@ -3,7 +3,7 @@ import emailjs from '@emailjs/browser'
 import {
   CheckSquare, Plus, Trash2, Edit2, Calendar, User, X,
   LayoutGrid, List, Mail, Link2, Filter, Download, Clock,
-  AlertTriangle, Send, Inbox, CheckCircle, Eye, ChevronLeft, ChevronRight, CalendarDays, Bell,
+  AlertTriangle, Send, Inbox, CheckCircle, CheckCircle2, Eye, ChevronLeft, ChevronRight, CalendarDays, Bell,
   Building2, MapPin, Phone
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'

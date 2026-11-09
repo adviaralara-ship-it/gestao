@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { 
-  Wrench, Plus, CheckCircle, Clock, Trash2, Calendar, AlertCircle, 
+  Wrench, Plus, CheckCircle, CheckCircle2, Clock, Trash2, Calendar, AlertCircle, 
   ShoppingBag, ExternalLink, Briefcase, FileText, Printer, Bell, RefreshCw, Check,
   Send, CheckSquare, Square, Share2, ThumbsUp, X, Calculator
 } from 'lucide-react'
