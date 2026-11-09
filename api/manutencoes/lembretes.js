@@ -116,7 +116,7 @@ export default async function handler(req, res) {
           _createdAt: serverTimestamp()
         });
 
-        const msgWhats = `🚨 *ATENÇÃO - MANUTENÇÃO PROGRAMADA PARA HOJE!*\n\n🏢 *Condomínio:* ${manu.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${manu.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${manu.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${manu.status || 'Agendada'}${manu.descricao ? `\n📝 *Observações:* ${manu.descricao}` : ''}\n\n🔔 *Lembrete automático da Alpha Gestão.*\n🔗 *Acesse o painel:* https://app.alphaadmsc.com.br/manutencoes`;
+        const msgWhats = `🚨 *ATENÇÃO - MANUTENÇÃO PROGRAMADA PARA HOJE!*\n\n🏢 *Condomínio:* ${manu.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${manu.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${manu.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${manu.status || 'Agendada'}${manu.descricao ? `\n📝 *Observações:* ${manu.descricao}` : ''}\n\n✅ *Dar baixa / Concluir serviço em 1 clique:*\n👉 https://app.alphaadmsc.com.br/concluir/manutencao/${manu.id}\n\n🔔 *Lembrete automático da Alpha Gestão.*`;
 
         for (const numero of telefonesDestino) {
           try {

@@ -130,7 +130,7 @@ export async function verificarEDispararLembretesManutencao(isManual = false) {
 
         // 3. Mensagem de WhatsApp D-0
         const tipoLabel = m.tipo || 'Manutenção Preventiva'
-        const msgWhats = `🚨 *ATENÇÃO - ${tipoLabel.toUpperCase()} HOJE!*\n\n🏢 *Condomínio:* ${m.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${m.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${m.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${m.status || 'Agendada'}${m.descricao ? `\n📝 *Observações:* ${m.descricao}` : ''}\n\n🔔 *Lembrete automático da Alpha Gestão. Favor acompanhar a execução do serviço.*\n🔗 *Acesse o painel:* https://app.alphaadmsc.com.br/manutencoes`
+        const msgWhats = `🚨 *ATENÇÃO - ${tipoLabel.toUpperCase()} HOJE!*\n\n🏢 *Condomínio:* ${m.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${m.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${m.fornecedor || 'A definir'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n📌 *Status:* ${m.status || 'Agendada'}${m.descricao ? `\n📝 *Observações:* ${m.descricao}` : ''}\n\n✅ *Dar baixa / Concluir serviço em 1 clique:*\n👉 https://app.alphaadmsc.com.br/concluir/manutencao/${m.id}\n\n🔔 *Lembrete automático da Alpha Gestão.*`
 
         for (const numero of telefonesDestino) {
           try {

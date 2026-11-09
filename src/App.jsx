@@ -35,6 +35,7 @@ import ValidaVisitante from './pages/ValidaVisitante'
 import ValidaConvidado from './pages/ValidaConvidado'
 import Enquetes from './pages/Enquetes'
 import VotacaoPublica from './pages/VotacaoPublica'
+import ConcluirItem from './pages/ConcluirItem'
 import Classificados from './pages/Classificados'
 import Tarefas from './pages/Tarefas'
 import Cadastro from './pages/Cadastro'
@@ -167,6 +168,9 @@ function AppRoutes() {
         {/* Rotas públicas de votação isolada (blank layout) para WhatsApp */}
         <Route path="/votacao/:id" element={<VotacaoPublica />} />
         <Route path="/enquetes/:id" element={<VotacaoPublica />} />
+        {/* Rota pública para baixa rápida de manutenção ou tarefa via WhatsApp */}
+        <Route path="/concluir/:tipo/:id" element={<ConcluirItem />} />
+        <Route path="/concluir/:id" element={<ConcluirItem />} />
         
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<AuthorizedRoute module=""><span /></AuthorizedRoute>} />

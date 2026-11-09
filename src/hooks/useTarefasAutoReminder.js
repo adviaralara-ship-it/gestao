@@ -114,6 +114,7 @@ export async function verificarEDispararLembretesTarefas(isManual = false) {
       msgTexto += `${i + 1}. *${t.titulo}*${horaStr}${prioStr}\n`
       if (t.descricao) msgTexto += `   📝 ${t.descricao.trim()}\n`
       if (t.responsavel) msgTexto += `   👤 Resp: ${t.responsavel}\n`
+      if (t.id) msgTexto += `   👉 *Concluir:* https://app.alphaadmsc.com.br/concluir/tarefa/${t.id}\n`
       msgTexto += `\n`
     })
 

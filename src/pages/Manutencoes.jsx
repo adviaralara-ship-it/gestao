@@ -342,6 +342,24 @@ export default function Manutencoes() {
   const [tab, setTab] = useState('cronograma') // cronograma, cotacoes
   
   const { items: manutencoes, addItem, updateItem, deleteItem } = useFirestore('manutencoes')
+
+  const handleConcluirRapido = async (m) => {
+    const quem = window.prompt(`Confirmar conclusão da manutenção "${m.titulo}"?\n\nInforme quem conferiu ou realizou o serviço:`, user?.nome || 'Administração Alpha')
+    if (quem === null) return
+    try {
+      const hojeIso = new Date().toISOString().split('T')[0]
+      await updateItem(m.id, {
+        status: 'Concluída',
+        dataConclusao: hojeIso,
+        concluidoPor: quem.trim() || user?.nome || 'Administração Alpha',
+        concluidoEm: new Date().toISOString()
+      })
+      alert(`✅ Manutenção "${m.titulo}" marcada como Concluída com sucesso!`)
+    } catch(err) {
+      console.error(err)
+      alert('Erro ao marcar manutenção como concluída: ' + err.message)
+    }
+  }
   const { items: demandas, addItem: addDemanda, updateItem: updateDemanda, deleteItem: delDemanda } = useFirestore('demandas_cotacao')
   const { items: propostas, updateItem: updateProposta, deleteItem: delProposta } = useFirestore('propostas_fornecedores')
   const { addItem: addNotificacao } = useFirestore('notificacoes')
@@ -490,7 +508,7 @@ export default function Manutencoes() {
           }
 
           const custoFmt = form.custoEstimado ? Number(form.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'
-          const msgWhats = `🚨 *${tipoLabel.toUpperCase()} HOJE - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${form.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${form.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${form.fornecedor || 'Não informado'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n🔄 *Recorrência:* ${form.recorrencia || 'Nenhuma'}\n📌 *Status:* ${form.status || 'Agendada'}${form.descricao ? `\n📝 *Observações:* ${form.descricao}` : ''}\n\n🔗 *Acesse o cronograma completo:*\nhttps://alpha-solucoes-condominiais.vercel.app/manutencoes`
+          const msgWhats = `🚨 *${tipoLabel.toUpperCase()} HOJE - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${form.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${form.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${form.fornecedor || 'Não informado'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n🔄 *Recorrência:* ${form.recorrencia || 'Nenhuma'}\n📌 *Status:* ${form.status || 'Agendada'}${form.descricao ? `\n📝 *Observações:* ${form.descricao}` : ''}\n\n✅ *Dar baixa / Concluir serviço:*\n👉 https://app.alphaadmsc.com.br/concluir/manutencao/${form.id || ''}\n\n🔗 *Acesse o cronograma completo:* https://app.alphaadmsc.com.br/manutencoes`
 
           for (const numero of telefonesDestino) {
             try {
@@ -791,6 +809,17 @@ export default function Manutencoes() {
                       <span className="text-gray-500 flex items-center gap-1.5"><AlertCircle size={14}/> Custo Previsto</span>
                       <span className="font-semibold text-gray-700">R$ {Number(m.custoEstimado).toLocaleString('pt-BR', {minimumFractionDigits:2})}</span>
                     </div>
+                  )}
+
+                  {m.status !== 'Concluída' && (
+                    <button
+                      type="button"
+                      onClick={() => handleConcluirRapido(m)}
+                      className="mt-2 w-full btn-secondary text-xs font-bold py-1.5 flex items-center justify-center gap-1.5 bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 transition-all cursor-pointer shadow-sm"
+                      title="Marcar como concluída rapidamente"
+                    >
+                      <CheckCircle2 size={13} className="text-emerald-600" /> Marcar como Concluída
+                    </button>
                   )}
 
                   {/* Badges de Lembretes Automáticos */}
