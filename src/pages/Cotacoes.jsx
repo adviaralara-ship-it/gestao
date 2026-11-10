@@ -47,11 +47,11 @@ const STATUS_COLORS = {
 
 export default function Cotacoes() {
   const { user } = useAuth()
-  const { items: cotacoes, add: addCotacao, update: updateCotacao, remove: removeCotacao } = useFirestore('cotacoes')
+  const { items: cotacoes, addItem: addCotacao, updateItem: updateCotacao, deleteItem: removeCotacao } = useFirestore('cotacoes')
   const { items: condominios } = useFirestore('condominios')
   const { items: prestadores } = useFirestore('prestadores')
-  const { add: addFinanceiro } = useFirestore('financeiro_lancamentos')
-  const { add: addTarefa } = useFirestore('tarefas')
+  const { addItem: addFinanceiro } = useFirestore('financeiro_lancamentos')
+  const { addItem: addTarefa } = useFirestore('tarefas')
 
   // Filtros da listagem
   const isAdm = user?.role === 'Administrador'
@@ -124,66 +124,95 @@ export default function Cotacoes() {
     return `COT-${ano}-${seq}`
   }
 
-  // Abrir modal para nova cotação
+  // Abrir modal para nova cotação estilo Planilha
   const handleNovaCotacao = () => {
     setForm({
       numero: gerarNumeroCotacao(),
-      condominio: user?.condominio || (condominios[0]?.nome || 'Residencial Alpha'),
+      condominio: user?.condominio || (condominios[0]?.nome || 'Residencial Florence'),
       titulo: '',
       categoria: 'Manutenção',
-      tipo: 'Serviço',
-      descricao: '',
-      prazoDesejado: '',
-      orcamentoDisponivel: '',
       responsavel: user?.nome || 'Administrador',
-      status: 'Rascunho',
+      status: 'Em análise',
       observacoes: '',
-      itens: [
-        { id: '1', codigo: '001', descricao: '', unidade: 'Serviço', quantidade: 1, valorEstimado: 0, observacao: '' }
+      fornecedores: [
+        { id: '1', nome: '', valorTotal: '', prazo: 'Imediato', condicaoPagamento: 'À vista (Pix)', observacoes: '', nota: '10', vencedor: true },
+        { id: '2', nome: '', valorTotal: '', prazo: 'A combinar', condicaoPagamento: 'Boleto 30d', observacoes: '', nota: '8', vencedor: false },
+        { id: '3', nome: '', valorTotal: '', prazo: 'A combinar', condicaoPagamento: 'Boleto 30d', observacoes: '', nota: '7', vencedor: false }
       ],
-      fornecedores: [],
-      pesosCriterios: { preco: 50, prazo: 20, garantia: 15, pagamento: 10, historico: 5 },
-      fornecedorEscolhidoId: null,
-      motivoEscolha: 'Menor preço',
-      justificativaEscolha: '',
-      calcTipo: 'Acrescimo',
-      calcPercentual: 0,
+      fornecedorEscolhidoId: '1',
       valorFinalAprovado: 0,
       historico: [
-        { data: new Date().toISOString(), usuario: user?.nome || 'Administrador', acao: 'Cotação iniciada como Rascunho' }
+        { data: new Date().toISOString(), usuario: user?.nome || 'Administrador', acao: 'Orçamento criado em formato Planilha' }
       ]
     })
     setCotacaoSelecionada(null)
-    setFormTab('dados')
     setModalNovaAberto(true)
   }
 
   // Abrir cotação para edição
   const handleEditarCotacao = (cot) => {
+    const fornecedoresExistentes = (cot.fornecedores && cot.fornecedores.length > 0)
+      ? cot.fornecedores.map((f, i) => ({
+          id: f.id || String(i + 1),
+          nome: f.nome || f.fornecedor || '',
+          valorTotal: f.valorTotal || f.valor || '',
+          prazo: f.prazo || '',
+          condicaoPagamento: f.condicaoPagamento || '',
+          observacoes: f.observacoes || f.materiais || '',
+          nota: f.nota !== undefined ? String(f.nota) : '10',
+          vencedor: Boolean(f.vencedor)
+        }))
+      : [
+          { id: '1', nome: '', valorTotal: '', prazo: 'Imediato', condicaoPagamento: 'À vista (Pix)', observacoes: '', nota: '10', vencedor: true },
+          { id: '2', nome: '', valorTotal: '', prazo: 'A combinar', condicaoPagamento: 'Boleto', observacoes: '', nota: '8', vencedor: false }
+        ]
+
     setForm({
       ...cot,
-      itens: cot.itens || [],
-      fornecedores: cot.fornecedores || [],
-      pesosCriterios: cot.pesosCriterios || { preco: 50, prazo: 20, garantia: 15, pagamento: 10, historico: 5 },
+      fornecedores: fornecedoresExistentes,
       historico: cot.historico || []
     })
     setCotacaoSelecionada(cot)
-    setFormTab('dados')
     setModalNovaAberto(true)
   }
 
-  // Salvar cotação (criação ou edição)
+  // Salvar cotação (criação ou edição) direta estilo Planilha
   const handleSalvarCotacao = async () => {
     if (!form.condominio || !form.titulo) {
-      alert('Por favor, informe o Condomínio e o Título/Objeto da cotação.')
+      alert('Por favor, informe o Condomínio e o Título/Objeto do serviço.')
       return
     }
 
-    const valorEstimadoTotal = form.itens.reduce((acc, it) => acc + ((parseFloat(it.quantidade) || 0) * (parseFloat(it.valorEstimado) || 0)), 0)
+    const fornecedoresLimpos = (form.fornecedores || []).map((f, idx) => ({
+      id: f.id || String(idx + 1),
+      nome: (f.nome || '').trim(),
+      valorTotal: parseFloat(String(f.valorTotal).replace(/\./g, '').replace(',', '.')) || 0,
+      prazo: f.prazo || '',
+      condicaoPagamento: f.condicaoPagamento || '',
+      observacoes: f.observacoes || '',
+      nota: parseFloat(f.nota) || 10,
+      vencedor: Boolean(f.vencedor)
+    })).filter(f => f.nome || f.valorTotal > 0)
+
+    if (fornecedoresLimpos.length === 0) {
+      alert('Por favor, preencha pelo menos um fornecedor com nome e valor na planilha.')
+      return
+    }
+
+    // Se nenhum estiver marcado como vencedor, seleciona o primeiro
+    const temVencedor = fornecedoresLimpos.some(f => f.vencedor)
+    if (!temVencedor && fornecedoresLimpos.length > 0) {
+      fornecedoresLimpos[0].vencedor = true
+    }
+
+    const vencedor = fornecedoresLimpos.find(f => f.vencedor) || fornecedoresLimpos[0]
+    const valorAprovado = vencedor?.valorTotal || 0
 
     const payload = {
       ...form,
-      valorEstimadoTotal,
+      fornecedores: fornecedoresLimpos,
+      fornecedorEscolhidoId: vencedor?.id || vencedor?.nome,
+      valorFinalAprovado: valorAprovado,
       updatedAt: new Date().toISOString()
     }
 
@@ -191,19 +220,21 @@ export default function Cotacoes() {
       if (cotacaoSelecionada?.id) {
         const hist = [
           ...(form.historico || []),
-          { data: new Date().toISOString(), usuario: user?.nome || 'Administrador', acao: 'Cotação atualizada' }
+          { data: new Date().toISOString(), usuario: user?.nome || 'Administrador', acao: 'Orçamento atualizado na Planilha' }
         ]
         await updateCotacao(cotacaoSelecionada.id, { ...payload, historico: hist })
       } else {
         await addCotacao({
           ...payload,
+          status: form.status || 'Em análise',
           createdAt: new Date().toISOString()
         })
       }
       setModalNovaAberto(false)
+      alert('✅ Orçamento salvo com sucesso!')
     } catch (err) {
-      console.error(err)
-      alert('Erro ao salvar cotação.')
+      console.error('[Cotacoes] Erro ao salvar:', err)
+      alert('Erro ao salvar cotação: ' + (err.message || 'Verifique sua conexão.'))
     }
   }
 
@@ -262,13 +293,15 @@ export default function Cotacoes() {
   }, [cotacoesPermitidas, busca, filtroCondominio, filtroStatus, filtroCategoria])
 
   // Helpers de cálculo para o comparativo
+  const parseValor = (val) => typeof val === 'number' ? val : (parseFloat(String(val || 0).replace(/\./g, '').replace(',', '.')) || 0)
+
   const calcularComparativo = (cot) => {
     const fornecedores = cot?.fornecedores || []
     if (fornecedores.length === 0) return null
 
     // Ordenar por valor
     const comValor = fornecedores
-      .map(f => ({ ...f, vTotal: parseFloat(f.valorTotal) || 0 }))
+      .map(f => ({ ...f, vTotal: parseValor(f.valorTotal) }))
       .filter(f => f.vTotal > 0)
       .sort((a, b) => a.vTotal - b.vTotal)
 
@@ -286,15 +319,20 @@ export default function Cotacoes() {
     const somaPesos = (pesos.preco || 0) + (pesos.prazo || 0) + (pesos.garantia || 0) + (pesos.pagamento || 0) + (pesos.historico || 0) || 100
 
     const fornecedoresComNota = fornecedores.map(f => {
-      const nPreco = parseFloat(f.notaPreco) || (menorOrcamento && f.vTotal > 0 ? Math.max(0, 10 - ((f.vTotal - menorOrcamento.vTotal) / menorOrcamento.vTotal * 10)) : 5)
+      const vTot = parseValor(f.valorTotal)
+      const nPreco = parseFloat(f.notaPreco) || (menorOrcamento && vTot > 0 ? Math.max(0, 10 - ((vTot - menorOrcamento.vTotal) / (menorOrcamento.vTotal || 1) * 10)) : 5)
       const nPrazo = parseFloat(f.notaPrazo) || 5
       const nGarantia = parseFloat(f.notaGarantia) || 5
       const nPagto = parseFloat(f.notaPagamento) || 5
       const nHist = parseFloat(f.notaHistorico) || 5
 
-      const notaFinal = ((nPreco * pesos.preco) + (nPrazo * pesos.prazo) + (nGarantia * pesos.garantia) + (nPagto * pesos.pagamento) + (nHist * pesos.historico)) / somaPesos
+      const notaManual = parseFloat(f.nota)
+      const notaFinal = !isNaN(notaManual) && notaManual > 0 
+        ? (notaManual > 10 ? notaManual : notaManual * 10) 
+        : (((nPreco * pesos.preco) + (nPrazo * pesos.prazo) + (nGarantia * pesos.garantia) + (nPagto * pesos.pagamento) + (nHist * pesos.historico)) / somaPesos)
       return {
         ...f,
+        valorTotal: vTot,
         notaCalculada: Math.round(notaFinal * 10) / 10
       }
     })
@@ -964,659 +1002,334 @@ export default function Cotacoes() {
       </div>
 
       {/* ========================================================================= */}
-      {/* MODAL 1: CRIAÇÃO / EDIÇÃO DE COTAÇÃO                                     */}
+      {/* MODAL 1: PLANILHA SIMPLES & INTUITIVA DE COTAÇÃO / ORÇAMENTOS             */}
       {/* ========================================================================= */}
       {modalNovaAberto && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl animate-scale-in">
-            {/* Cabeçalho do Modal */}
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-slate-50 rounded-t-2xl">
-              <div>
-                <span className="text-xs font-bold text-brand-600 uppercase tracking-wider">{form.numero}</span>
-                <h3 className="font-bold text-lg text-gray-900">
-                  {cotacaoSelecionada ? 'Editar Cotação' : 'Nova Cotação de Compra / Serviço'}
-                </h3>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl animate-scale-in border border-gray-200 overflow-hidden">
+            {/* Cabeçalho do Modal estilo Planilha */}
+            <div className="p-4 sm:p-5 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-slate-900 to-slate-800 text-white shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-600/30 border border-purple-400/40 flex items-center justify-center text-purple-300">
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-purple-300">{form.numero}</span>
+                    <span className="text-[10px] font-bold bg-white/10 px-2 py-0.5 rounded-full text-slate-200">
+                      Planilha de Orçamentos
+                    </span>
+                  </div>
+                  <h3 className="font-black text-base sm:text-lg text-white">
+                    {cotacaoSelecionada ? 'Editar Planilha de Orçamentos' : 'Nova Planilha de Orçamentos & Comparativo'}
+                  </h3>
+                </div>
               </div>
               <button
                 onClick={() => setModalNovaAberto(false)}
-                className="p-2 text-gray-400 hover:text-gray-700 rounded-lg"
+                className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                title="Fechar"
               >
                 ✕
               </button>
             </div>
 
-            {/* Abas de Navegação */}
-            <div className="flex border-b border-gray-200 px-4 bg-gray-50 text-xs font-bold gap-2">
-              <button
-                onClick={() => setFormTab('dados')}
-                className={`py-3 px-3 border-b-2 transition-all ${formTab === 'dados' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
-              >
-                1. Dados Gerais
-              </button>
-              <button
-                onClick={() => setFormTab('itens')}
-                className={`py-3 px-3 border-b-2 transition-all ${formTab === 'itens' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
-              >
-                2. Itens & Quantidades ({form.itens.length})
-              </button>
-              <button
-                onClick={() => setFormTab('fornecedores')}
-                className={`py-3 px-3 border-b-2 transition-all ${formTab === 'fornecedores' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
-              >
-                3. Fornecedores & Propostas ({form.fornecedores.length})
-              </button>
-              <button
-                onClick={() => setFormTab('criterios')}
-                className={`py-3 px-3 border-b-2 transition-all ${formTab === 'criterios' ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
-              >
-                4. Critérios & Pesos
-              </button>
-            </div>
-
-            {/* Corpo do Formulário */}
-            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
-              {/* TAB 1: DADOS GERAIS */}
-              {formTab === 'dados' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <label className="label font-bold text-gray-700">Condomínio *</label>
-                    <select
-                      className="input font-medium"
-                      value={form.condominio}
-                      onChange={e => setForm({ ...form, condominio: e.target.value })}
-                    >
-                      {condominios.map(c => (
-                        <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="label font-bold text-gray-700">Título / Objeto da Cotação *</label>
-                    <input
-                      type="text"
-                      className="input font-medium"
-                      placeholder="Ex: Pintura das áreas comuns, Troca de bomba d'água..."
-                      value={form.titulo}
-                      onChange={e => setForm({ ...form, titulo: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label font-bold text-gray-700">Categoria</label>
-                    <select
-                      className="input font-medium"
-                      value={form.categoria}
-                      onChange={e => setForm({ ...form, categoria: e.target.value })}
-                    >
-                      {CATEGORIAS.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="label font-bold text-gray-700">Tipo de Contratação</label>
-                    <select
-                      className="input font-medium"
-                      value={form.tipo}
-                      onChange={e => setForm({ ...form, tipo: e.target.value })}
-                    >
-                      <option value="Produto">Produto / Material</option>
-                      <option value="Serviço">Serviço / Mão de Obra</option>
-                      <option value="Produto + Serviço">Produto + Serviço (Completo)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="label font-bold text-gray-700">Prazo Desejado de Conclusão</label>
-                    <input
-                      type="text"
-                      className="input font-medium"
-                      placeholder="Ex: 30 dias, Até 15/10/2026..."
-                      value={form.prazoDesejado}
-                      onChange={e => setForm({ ...form, prazoDesejado: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label font-bold text-gray-700">Orçamento Disponível Estimado (R$)</label>
-                    <input
-                      type="number"
-                      className="input font-medium"
-                      placeholder="Ex: 15000"
-                      value={form.orcamentoDisponivel}
-                      onChange={e => setForm({ ...form, orcamentoDisponivel: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label font-bold text-gray-700">Status do Processo</label>
-                    <select
-                      className="input font-medium"
-                      value={form.status}
-                      onChange={e => setForm({ ...form, status: e.target.value })}
-                    >
-                      {STATUS_LIST.map(st => (
-                        <option key={st} value={st}>{st}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="label font-bold text-gray-700">Responsável</label>
-                    <input
-                      type="text"
-                      className="input font-medium"
-                      value={form.responsavel}
-                      onChange={e => setForm({ ...form, responsavel: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="label font-bold text-gray-700">Descrição Detalhada do Escopo</label>
-                    <textarea
-                      rows={3}
-                      className="input font-medium"
-                      placeholder="Detalhes sobre marcas aceitas, locais de aplicação, especificações técnicas..."
-                      value={form.descricao}
-                      onChange={e => setForm({ ...form, descricao: e.target.value })}
-                    />
-                  </div>
+            {/* Corpo do Formulário / Planilha */}
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1 flex flex-col gap-5 custom-scrollbar bg-slate-50/50">
+              {/* Linha 1: Dados do Condomínio e Objeto */}
+              <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="label text-xs font-bold text-gray-700">Condomínio *</label>
+                  <select
+                    className="input font-bold text-xs"
+                    value={form.condominio}
+                    onChange={e => setForm({ ...form, condominio: e.target.value })}
+                  >
+                    {condominios.map(c => (
+                      <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                    ))}
+                  </select>
                 </div>
-              )}
 
-              {/* TAB 2: ITENS DA COTAÇÃO */}
-              {formTab === 'itens' && (
-                <div className="flex flex-col gap-4 text-xs">
-                  <div className="flex items-center justify-between">
-                    <p className="text-gray-600 font-medium">
-                      Especifique os itens que compõem o escopo para cálculo do valor estimado total.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const novo = {
-                          id: String(Date.now()),
-                          codigo: String(form.itens.length + 1).padStart(3, '0'),
-                          descricao: '',
-                          unidade: 'Unid',
-                          quantidade: 1,
-                          valorEstimado: 0,
-                          observacao: ''
-                        }
-                        setForm({ ...form, itens: [...form.itens, novo] })
-                      }}
-                      className="btn-secondary py-1.5 px-3 flex items-center gap-1 text-xs"
-                    >
-                      <Plus size={14} /> Adicionar Item
-                    </button>
-                  </div>
-
-                  <div className="border border-gray-200 rounded-xl overflow-hidden">
-                    <table className="w-full text-left">
-                      <thead className="bg-gray-100 text-gray-700 font-bold border-b border-gray-200">
-                        <tr>
-                          <th className="p-2.5">Código</th>
-                          <th className="p-2.5">Item / Descrição</th>
-                          <th className="p-2.5">Unidade</th>
-                          <th className="p-2.5 text-center">Qtd</th>
-                          <th className="p-2.5 text-right">Valor Estimado (R$)</th>
-                          <th className="p-2.5 text-right">Total Estimado</th>
-                          <th className="p-2.5 text-center">Ação</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {form.itens.map((it, idx) => {
-                          const subtotal = (parseFloat(it.quantidade) || 0) * (parseFloat(it.valorEstimado) || 0)
-                          return (
-                            <tr key={it.id || idx}>
-                              <td className="p-2">
-                                <input
-                                  type="text"
-                                  className="input py-1 px-2 text-xs w-16"
-                                  value={it.codigo}
-                                  onChange={e => {
-                                    const novo = [...form.itens]
-                                    novo[idx].codigo = e.target.value
-                                    setForm({ ...form, itens: novo })
-                                  }}
-                                />
-                              </td>
-                              <td className="p-2">
-                                <input
-                                  type="text"
-                                  className="input py-1 px-2 text-xs"
-                                  placeholder="Ex: Tinta acrílica fosca 18L"
-                                  value={it.descricao}
-                                  onChange={e => {
-                                    const novo = [...form.itens]
-                                    novo[idx].descricao = e.target.value
-                                    setForm({ ...form, itens: novo })
-                                  }}
-                                />
-                              </td>
-                              <td className="p-2">
-                                <select
-                                  className="input py-1 px-2 text-xs w-24"
-                                  value={it.unidade}
-                                  onChange={e => {
-                                    const novo = [...form.itens]
-                                    novo[idx].unidade = e.target.value
-                                    setForm({ ...form, itens: novo })
-                                  }}
-                                >
-                                  <option value="Unid">Unid</option>
-                                  <option value="Lata">Lata</option>
-                                  <option value="M²">M²</option>
-                                  <option value="Serviço">Serviço</option>
-                                  <option value="Horas">Horas</option>
-                                  <option value="Kg">Kg</option>
-                                  <option value="Pct">Pct</option>
-                                </select>
-                              </td>
-                              <td className="p-2 text-center">
-                                <input
-                                  type="number"
-                                  className="input py-1 px-2 text-xs w-16 text-center"
-                                  value={it.quantidade}
-                                  onChange={e => {
-                                    const novo = [...form.itens]
-                                    novo[idx].quantidade = e.target.value
-                                    setForm({ ...form, itens: novo })
-                                  }}
-                                />
-                              </td>
-                              <td className="p-2 text-right">
-                                <input
-                                  type="number"
-                                  className="input py-1 px-2 text-xs w-24 text-right"
-                                  value={it.valorEstimado}
-                                  onChange={e => {
-                                    const novo = [...form.itens]
-                                    novo[idx].valorEstimado = e.target.value
-                                    setForm({ ...form, itens: novo })
-                                  }}
-                                />
-                              </td>
-                              <td className="p-2 text-right font-bold text-gray-800">
-                                R$ {subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </td>
-                              <td className="p-2 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (form.itens.length > 1) {
-                                      setForm({ ...form, itens: form.itens.filter((_, i) => i !== idx) })
-                                    }
-                                  }}
-                                  className="text-rose-500 hover:text-rose-700 p-1"
-                                >
-                                  ✕
-                                </button>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                      <tfoot className="bg-gray-50 border-t border-gray-200 font-bold">
-                        <tr>
-                          <td colSpan={5} className="p-2.5 text-right text-gray-700">Valor Estimado Total:</td>
-                          <td className="p-2.5 text-right text-brand-700 font-black">
-                            R$ {form.itens.reduce((acc, it) => acc + ((parseFloat(it.quantidade) || 0) * (parseFloat(it.valorEstimado) || 0)), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                <div className="md:col-span-2">
+                  <label className="label text-xs font-bold text-gray-700">Título / Serviço / Produto *</label>
+                  <input
+                    type="text"
+                    className="input text-xs font-medium"
+                    placeholder="Ex: Troca e Manutenção das Bombas d'Água Principais"
+                    value={form.titulo || ''}
+                    onChange={e => setForm({ ...form, titulo: e.target.value })}
+                  />
                 </div>
-              )}
 
-              {/* TAB 3: FORNECEDORES & PROPOSTAS */}
-              {formTab === 'fornecedores' && (
-                <div className="flex flex-col gap-4 text-xs">
-                  <div className="flex items-center justify-between">
-                    <p className="text-gray-600 font-medium">
-                      Cadastre as empresas que enviaram propostas e anexe orçamentos.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const novoForn = {
+                <div>
+                  <label className="label text-xs font-bold text-gray-700">Categoria</label>
+                  <select
+                    className="input text-xs"
+                    value={form.categoria || 'Manutenção'}
+                    onChange={e => setForm({ ...form, categoria: e.target.value })}
+                  >
+                    {CATEGORIAS.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="label text-xs font-bold text-gray-700">Observações Gerais / Especificação (Opcional)</label>
+                  <input
+                    type="text"
+                    className="input text-xs"
+                    placeholder="Ex: Inclui substituição de rolamentos, selo mecânico e garantia de 12 meses"
+                    value={form.observacoes || ''}
+                    onChange={e => setForm({ ...form, observacoes: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Linha 2: A PLANILHA DE FORNECEDORES (Excel Style) */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+                <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Building2 size={16} className="text-purple-700" />
+                    <h4 className="font-black text-sm text-gray-800">
+                      Planilha de Propostas dos Fornecedores ({form.fornecedores?.length || 0})
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const novos = [
+                        ...(form.fornecedores || []),
+                        {
                           id: String(Date.now()),
                           nome: '',
-                          cnpj: '',
-                          contato: '',
-                          telefone: '',
-                          email: '',
-                          valorTotal: 0,
-                          prazo: '30 dias',
-                          garantia: 12,
-                          condicaoPagamento: '30 dias',
-                          validadeProposta: '',
-                          anexoNome: '',
-                          notaPreco: 8,
-                          notaPrazo: 8,
-                          notaGarantia: 8,
-                          notaPagamento: 8,
-                          notaHistorico: 8
+                          valorTotal: '',
+                          prazo: 'A combinar',
+                          condicaoPagamento: 'Boleto',
+                          observacoes: '',
+                          nota: '8',
+                          vencedor: false
                         }
-                        setForm({ ...form, fornecedores: [...form.fornecedores, novoForn] })
-                      }}
-                      className="btn-secondary py-1.5 px-3 flex items-center gap-1 text-xs"
-                    >
-                      <Plus size={14} /> Adicionar Fornecedor
-                    </button>
-                  </div>
+                      ]
+                      setForm({ ...form, fornecedores: novos })
+                    }}
+                    className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 font-bold cursor-pointer hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-colors"
+                  >
+                    <Plus size={14} /> Adicionar Linha / Empresa
+                  </button>
+                </div>
 
-                  {form.fornecedores.length === 0 ? (
-                    <div className="p-8 border border-dashed border-gray-300 rounded-xl text-center text-gray-400">
-                      Nenhum fornecedor adicionado. Clique em "+ Adicionar Fornecedor" para cadastrar as propostas recebidas.
-                    </div>
-                  ) : (
-                    form.fornecedores.map((f, fIdx) => (
-                      <div key={f.id || fIdx} className="border border-gray-200 rounded-xl p-4 bg-slate-50/50 flex flex-col gap-3">
-                        <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                          <span className="font-black text-brand-700 text-sm">Fornecedor #{fIdx + 1}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setForm({ ...form, fornecedores: form.fornecedores.filter((_, i) => i !== fIdx) })
-                            }}
-                            className="text-rose-500 hover:text-rose-700 font-bold"
-                          >
-                            Remover Fornecedor
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                          <div className="md:col-span-2">
-                            <label className="label font-bold text-gray-700">Razão Social / Nome Fantasia *</label>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-gray-700 font-black border-b border-gray-200 text-[11px] uppercase tracking-wider">
+                        <th className="p-3 text-center w-12">#</th>
+                        <th className="p-3 min-w-[180px]">Empresa / Fornecedor</th>
+                        <th className="p-3 w-36">Valor (R$)</th>
+                        <th className="p-3 w-32">Prazo</th>
+                        <th className="p-3 w-36">Cond. Pagto</th>
+                        <th className="p-3 min-w-[180px]">Notas / Detalhes</th>
+                        <th className="p-3 text-center w-20">Nota (0-10)</th>
+                        <th className="p-3 text-center w-28">Escolha</th>
+                        <th className="p-3 text-center w-12">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 font-medium">
+                      {(form.fornecedores || []).map((f, idx) => (
+                        <tr key={f.id || idx} className={`hover:bg-slate-50/80 transition-colors ${f.vencedor ? 'bg-emerald-50/40' : ''}`}>
+                          <td className="p-3 text-center font-bold text-gray-400">
+                            {idx + 1}
+                          </td>
+                          <td className="p-2">
                             <input
                               type="text"
-                              className="input font-medium"
-                              placeholder="Ex: Empresa Pinturas Silva Ltda"
-                              value={f.nome}
+                              className="input text-xs py-1.5 px-2 font-bold text-gray-900 bg-white"
+                              placeholder="Nome da Empresa..."
+                              value={f.nome || ''}
                               onChange={e => {
-                                const novo = [...form.fornecedores]
-                                novo[fIdx].nome = e.target.value
-                                setForm({ ...form, fornecedores: novo })
+                                const novos = [...form.fornecedores]
+                                novos[idx].nome = e.target.value
+                                setForm({ ...form, fornecedores: novos })
                               }}
                             />
-                          </div>
-
-                          <div>
-                            <label className="label font-bold text-gray-700">CNPJ / CPF</label>
+                          </td>
+                          <td className="p-2">
                             <input
                               type="text"
-                              className="input font-medium"
-                              placeholder="00.000.000/0001-00"
-                              value={f.cnpj}
+                              className="input text-xs py-1.5 px-2 font-black text-right text-slate-900 bg-white font-mono"
+                              placeholder="0,00"
+                              value={f.valorTotal || ''}
                               onChange={e => {
-                                const novo = [...form.fornecedores]
-                                novo[fIdx].cnpj = e.target.value
-                                setForm({ ...form, fornecedores: novo })
+                                const novos = [...form.fornecedores]
+                                novos[idx].valorTotal = e.target.value
+                                setForm({ ...form, fornecedores: novos })
                               }}
                             />
-                          </div>
-
-                          <div>
-                            <label className="label font-bold text-emerald-800">Valor Total Proposto (R$) *</label>
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              className="input text-xs py-1.5 px-2 bg-white"
+                              placeholder="Ex: 5 dias úteis"
+                              value={f.prazo || ''}
+                              onChange={e => {
+                                const novos = [...form.fornecedores]
+                                novos[idx].prazo = e.target.value
+                                setForm({ ...form, fornecedores: novos })
+                              }}
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              className="input text-xs py-1.5 px-2 bg-white"
+                              placeholder="Ex: À vista / 2x"
+                              value={f.condicaoPagamento || ''}
+                              onChange={e => {
+                                const novos = [...form.fornecedores]
+                                novos[idx].condicaoPagamento = e.target.value
+                                setForm({ ...form, fornecedores: novos })
+                              }}
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              className="input text-xs py-1.5 px-2 bg-white"
+                              placeholder="Ex: Garantia 12 meses, peças originais..."
+                              value={f.observacoes || ''}
+                              onChange={e => {
+                                const novos = [...form.fornecedores]
+                                novos[idx].observacoes = e.target.value
+                                setForm({ ...form, fornecedores: novos })
+                              }}
+                            />
+                          </td>
+                          <td className="p-2 text-center">
                             <input
                               type="number"
-                              className="input font-black text-emerald-800 bg-emerald-50/50 border-emerald-300"
-                              placeholder="Ex: 14200"
-                              value={f.valorTotal}
+                              min="0"
+                              max="10"
+                              step="0.5"
+                              className="input text-xs py-1.5 px-1 text-center font-bold bg-white w-16 mx-auto"
+                              value={f.nota || ''}
                               onChange={e => {
-                                const novo = [...form.fornecedores]
-                                novo[fIdx].valorTotal = e.target.value
-                                setForm({ ...form, fornecedores: novo })
+                                const novos = [...form.fornecedores]
+                                novos[idx].nota = e.target.value
+                                setForm({ ...form, fornecedores: novos })
                               }}
                             />
-                          </div>
+                          </td>
+                          <td className="p-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const novos = form.fornecedores.map((item, i) => ({
+                                  ...item,
+                                  vencedor: i === idx
+                                }))
+                                setForm({
+                                  ...form,
+                                  fornecedores: novos,
+                                  fornecedorEscolhidoId: f.id || f.nome,
+                                  valorFinalAprovado: parseFloat(String(f.valorTotal).replace(/\./g, '').replace(',', '.')) || 0
+                                })
+                              }}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 mx-auto ${
+                                f.vencedor
+                                  ? 'bg-emerald-600 text-white shadow-sm'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-emerald-50 hover:text-emerald-700'
+                              }`}
+                              title="Marcar esta proposta como a vencedora / recomendada"
+                            >
+                              {f.vencedor ? '★ Escolhida' : 'Marcar'}
+                            </button>
+                          </td>
+                          <td className="p-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (form.fornecedores.length <= 1) {
+                                  alert('Mantenha pelo menos um fornecedor na planilha.')
+                                  return
+                                }
+                                const novos = form.fornecedores.filter((_, i) => i !== idx)
+                                if (f.vencedor && novos.length > 0) novos[0].vencedor = true
+                                setForm({ ...form, fornecedores: novos })
+                              }}
+                              className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Remover Linha"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-                          <div>
-                            <label className="label font-bold text-gray-700">Prazo de Entrega/Execução</label>
-                            <input
-                              type="text"
-                              className="input font-medium"
-                              placeholder="Ex: 20 dias úteis"
-                              value={f.prazo}
-                              onChange={e => {
-                                const novo = [...form.fornecedores]
-                                novo[fIdx].prazo = e.target.value
-                                setForm({ ...form, fornecedores: novo })
-                              }}
-                            />
-                          </div>
-
-                          <div>
-                            <label className="label font-bold text-gray-700">Garantia (em meses)</label>
-                            <input
-                              type="number"
-                              className="input font-medium"
-                              placeholder="Ex: 12"
-                              value={f.garantia}
-                              onChange={e => {
-                                const novo = [...form.fornecedores]
-                                novo[fIdx].garantia = e.target.value
-                                setForm({ ...form, fornecedores: novo })
-                              }}
-                            />
-                          </div>
-
-                          <div>
-                            <label className="label font-bold text-gray-700">Condições de Pagamento</label>
-                            <input
-                              type="text"
-                              className="input font-medium"
-                              placeholder="Ex: 30/60 dias, À vista c/ desc"
-                              value={f.condicaoPagamento}
-                              onChange={e => {
-                                const novo = [...form.fornecedores]
-                                novo[fIdx].condicaoPagamento = e.target.value
-                                setForm({ ...form, fornecedores: novo })
-                              }}
-                            />
-                          </div>
-
-                          <div>
-                            <label className="label font-bold text-gray-700">Contato / Comercial</label>
-                            <input
-                              type="text"
-                              className="input font-medium"
-                              placeholder="Nome do vendedor / Fone"
-                              value={f.contato}
-                              onChange={e => {
-                                const novo = [...form.fornecedores]
-                                novo[fIdx].contato = e.target.value
-                                setForm({ ...form, fornecedores: novo })
-                              }}
-                            />
-                          </div>
-                        </div>
+                {/* Resumo da Escolha */}
+                {(() => {
+                  const escolhido = (form.fornecedores || []).find(f => f.vencedor) || form.fornecedores?.[0]
+                  const valNum = parseFloat(String(escolhido?.valorTotal || 0).replace(/\./g, '').replace(',', '.')) || 0
+                  return (
+                    <div className="p-3 bg-emerald-50/70 border-t border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Award className="text-emerald-700" size={16} />
+                        <span className="font-bold text-emerald-950">
+                          Proposta Recomendada: <strong>{escolhido?.nome || 'A definir'}</strong>
+                        </span>
+                        {escolhido?.prazo && <span className="text-emerald-800">({escolhido.prazo})</span>}
                       </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {/* TAB 4: CRITÉRIOS & PESOS */}
-              {formTab === 'criterios' && (
-                <div className="flex flex-col gap-4 text-xs">
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900">
-                    <p className="font-bold">🎯 Definição de Pesos para o Melhor Custo-Benefício</p>
-                    <p className="text-[11px] text-amber-700 mt-0.5">
-                      A soma dos pesos deve totalizar 100%. O sistema calculará a nota final de cada fornecedor automaticamente.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    <div>
-                      <label className="label font-bold text-gray-700">Preço (%)</label>
-                      <input
-                        type="number"
-                        className="input font-bold text-center"
-                        value={form.pesosCriterios.preco}
-                        onChange={e => setForm({ ...form, pesosCriterios: { ...form.pesosCriterios, preco: parseFloat(e.target.value) || 0 } })}
-                      />
+                      <div className="text-emerald-900 font-bold">
+                        Valor Selecionado: <span className="text-sm font-black text-emerald-700 font-mono">R$ {valNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
                     </div>
-                    <div>
-                      <label className="label font-bold text-gray-700">Prazo (%)</label>
-                      <input
-                        type="number"
-                        className="input font-bold text-center"
-                        value={form.pesosCriterios.prazo}
-                        onChange={e => setForm({ ...form, pesosCriterios: { ...form.pesosCriterios, prazo: parseFloat(e.target.value) || 0 } })}
-                      />
-                    </div>
-                    <div>
-                      <label className="label font-bold text-gray-700">Garantia (%)</label>
-                      <input
-                        type="number"
-                        className="input font-bold text-center"
-                        value={form.pesosCriterios.garantia}
-                        onChange={e => setForm({ ...form, pesosCriterios: { ...form.pesosCriterios, garantia: parseFloat(e.target.value) || 0 } })}
-                      />
-                    </div>
-                    <div>
-                      <label className="label font-bold text-gray-700">Cond. Pagto (%)</label>
-                      <input
-                        type="number"
-                        className="input font-bold text-center"
-                        value={form.pesosCriterios.pagamento}
-                        onChange={e => setForm({ ...form, pesosCriterios: { ...form.pesosCriterios, pagamento: parseFloat(e.target.value) || 0 } })}
-                      />
-                    </div>
-                    <div>
-                      <label className="label font-bold text-gray-700">Histórico/Reputação (%)</label>
-                      <input
-                        type="number"
-                        className="input font-bold text-center"
-                        value={form.pesosCriterios.historico}
-                        onChange={e => setForm({ ...form, pesosCriterios: { ...form.pesosCriterios, historico: parseFloat(e.target.value) || 0 } })}
-                      />
-                    </div>
-                  </div>
-
-                  {form.fornecedores.length > 0 && (
-                    <div className="mt-4 border border-gray-200 rounded-xl overflow-hidden">
-                      <p className="p-3 bg-gray-100 font-bold text-gray-800 border-b border-gray-200">
-                        Notas Individuais dos Fornecedores (0 a 10)
-                      </p>
-                      <table className="w-full text-left">
-                        <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold">
-                          <tr>
-                            <th className="p-2">Fornecedor</th>
-                            <th className="p-2 text-center">Preço</th>
-                            <th className="p-2 text-center">Prazo</th>
-                            <th className="p-2 text-center">Garantia</th>
-                            <th className="p-2 text-center">Cond. Pagto</th>
-                            <th className="p-2 text-center">Histórico</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {form.fornecedores.map((f, fIdx) => (
-                            <tr key={f.id || fIdx}>
-                              <td className="p-2 font-bold text-gray-800">{f.nome || `Fornecedor ${fIdx + 1}`}</td>
-                              <td className="p-2 text-center">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={10}
-                                  className="input py-1 px-2 w-16 text-center"
-                                  value={f.notaPreco || 8}
-                                  onChange={e => {
-                                    const novo = [...form.fornecedores]
-                                    novo[fIdx].notaPreco = e.target.value
-                                    setForm({ ...form, fornecedores: novo })
-                                  }}
-                                />
-                              </td>
-                              <td className="p-2 text-center">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={10}
-                                  className="input py-1 px-2 w-16 text-center"
-                                  value={f.notaPrazo || 8}
-                                  onChange={e => {
-                                    const novo = [...form.fornecedores]
-                                    novo[fIdx].notaPrazo = e.target.value
-                                    setForm({ ...form, fornecedores: novo })
-                                  }}
-                                />
-                              </td>
-                              <td className="p-2 text-center">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={10}
-                                  className="input py-1 px-2 w-16 text-center"
-                                  value={f.notaGarantia || 8}
-                                  onChange={e => {
-                                    const novo = [...form.fornecedores]
-                                    novo[fIdx].notaGarantia = e.target.value
-                                    setForm({ ...form, fornecedores: novo })
-                                  }}
-                                />
-                              </td>
-                              <td className="p-2 text-center">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={10}
-                                  className="input py-1 px-2 w-16 text-center"
-                                  value={f.notaPagamento || 8}
-                                  onChange={e => {
-                                    const novo = [...form.fornecedores]
-                                    novo[fIdx].notaPagamento = e.target.value
-                                    setForm({ ...form, fornecedores: novo })
-                                  }}
-                                />
-                              </td>
-                              <td className="p-2 text-center">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={10}
-                                  className="input py-1 px-2 w-16 text-center"
-                                  value={f.notaHistorico || 8}
-                                  onChange={e => {
-                                    const novo = [...form.fornecedores]
-                                    novo[fIdx].notaHistorico = e.target.value
-                                    setForm({ ...form, fornecedores: novo })
-                                  }}
-                                />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
+                  )
+                })()}
+              </div>
             </div>
 
-            {/* Rodapé do Modal */}
-            <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between rounded-b-2xl">
+            {/* Rodapé Fixo do Modal com Ações Diretas */}
+            <div className="p-4 sm:p-5 border-t border-gray-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => setModalNovaAberto(false)}
-                className="btn-secondary"
+                className="btn-secondary px-5 py-2.5 text-xs font-bold cursor-pointer w-full sm:w-auto"
               >
                 Cancelar
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => exportarComparativoPDF(form)}
+                  className="btn-secondary text-xs py-2.5 px-4 font-bold flex items-center gap-1.5 border-emerald-300 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 cursor-pointer"
+                  title="Gera o Relatório Comparativo em PDF imediatamente"
+                >
+                  <Download size={15} /> Baixar Relatório PDF
+                </button>
+
                 <button
                   type="button"
                   onClick={handleSalvarCotacao}
-                  className="btn-primary flex items-center gap-2 px-6"
+                  className="btn-primary bg-slate-900 hover:bg-slate-800 text-white text-xs py-2.5 px-5 font-bold flex items-center gap-1.5 cursor-pointer shadow-md"
                 >
-                  <Check size={16} /> Salvar Cotação
+                  <Check size={16} /> Salvar na Planilha
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleSalvarCotacao()
+                    handleEnviarWhatsAppConselho(form)
+                  }}
+                  className="btn-primary bg-purple-700 hover:bg-purple-600 text-white text-xs py-2.5 px-5 font-bold flex items-center gap-1.5 cursor-pointer shadow-md"
+                  title="Salva e dispara WhatsApp para os conselheiros e síndico"
+                >
+                  <Send size={15} /> Salvar &amp; Disparar WhatsApp
                 </button>
               </div>
             </div>
