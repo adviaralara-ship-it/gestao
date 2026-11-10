@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { auth, storage } from '../firebase'
 import { gerarRelatorioNotasPDF, exportarPlanilhaNotasCsv, filtrarDocumentosNotas, formatarMoeda, parseValorNumerico, formatarDataPtBr } from '../utils/relatorioNotasPdf'
+import { converterParaBlobUrl, visualizarDocumento, baixarDocumento } from '../utils/fileViewer'
 
 const statusBadge = s => ({
   Válida: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -600,6 +601,7 @@ export default function NotasFiscais() {
   const [modal, setModal] = useState(null)
   const [modalTipoInicial, setModalTipoInicial] = useState('Cupom Fiscal')
   const [modalRelatorio, setModalRelatorio] = useState(false)
+  const [previewDoc, setPreviewDoc] = useState(null)
   const [condoFilter, setCondoFilter] = useState(isMorador ? (user?.condominio || 'Todos') : 'Todos')
   const [abaAtiva, setAbaAtiva] = useState(isMorador ? 'cupons' : 'todas') // 'todas', 'cupons', 'notas'
   const [cnpjConsulta, setCnpjConsulta] = useState('')
@@ -674,26 +676,20 @@ export default function NotasFiscais() {
     setLoading(false)
   }
 
-  const visualizarNota = (url) => {
-    if (!url) return
-    if (url.startsWith('data:')) {
-      const newWin = window.open('', '_blank')
-      if (newWin) {
-        newWin.document.write("<html><head><title>Visualizando Documento...</title></head><body style='margin:0;display:flex;justify-content:center;align-items:center;height:100vh;background:#f5f5f5;font-family:sans-serif;'><h2>Preparando documento...</h2></body></html>")
-        fetch(url)
-          .then(res => res.blob())
-          .then(blob => {
-            const objUrl = URL.createObjectURL(blob)
-            newWin.location.href = objUrl
-          })
-          .catch(() => {
-            newWin.document.body.innerHTML = "<h2 style='color:red;'>Erro ao processar o arquivo.</h2>"
-          })
+  const visualizarNota = (itemOuUrl) => {
+    if (!itemOuUrl) {
+      alert('Nenhum arquivo disponível para visualização.')
+      return
+    }
+    if (typeof itemOuUrl === 'string') {
+      const match = notas.find(x => x.arquivoUrl === itemOuUrl)
+      if (match) {
+        setPreviewDoc(match)
       } else {
-        alert("Permita os pop-ups neste site para visualizar o anexo.")
+        setPreviewDoc({ arquivoUrl: itemOuUrl, numero: 'Documento Fiscal', tipo: 'Nota Fiscal' })
       }
     } else {
-      window.open(url, '_blank')
+      setPreviewDoc(itemOuUrl)
     }
   }
 
@@ -927,7 +923,7 @@ export default function NotasFiscais() {
                         <div className="flex items-center justify-center gap-1.5">
                           {n.arquivoUrl && (
                             <button 
-                              onClick={() => visualizarNota(n.arquivoUrl)} 
+                              onClick={() => visualizarNota(n)} 
                               title="Visualizar Comprovante / Nota" 
                               className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all font-bold flex items-center gap-1 text-[11px] shadow-xs cursor-pointer"
                             >
@@ -988,6 +984,84 @@ export default function NotasFiscais() {
           onClose={() => setModalRelatorio(false)}
           user={user}
         />
+      )}
+
+      {/* Modal de Prévia / Visualização do Arquivo */}
+      {previewDoc && (
+        <div className="modal-overlay" onClick={() => setPreviewDoc(null)}>
+          <div className="modal-content max-w-4xl w-full" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-cream-300 flex items-center justify-between bg-slate-900 text-white rounded-t-2xl">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center font-bold text-sky-400">
+                  <FileText size={18} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-white leading-tight">
+                    {previewDoc.numero || previewDoc.prestador || 'Visualizar Documento'}
+                  </h4>
+                  <p className="text-[11px] text-slate-300">
+                    {previewDoc.tipo} • {previewDoc.condominio || 'Geral'} • {formatarDataPtBr(previewDoc.data)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => baixarDocumento(previewDoc.arquivoUrl, previewDoc.arquivoNome || `${previewDoc.numero || 'documento'}.pdf`)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-600 hover:bg-sky-500 text-white shadow-xs transition-colors"
+                  title="Baixar arquivo no computador"
+                >
+                  <Download size={14} />
+                  <span>Baixar</span>
+                </button>
+
+                <button
+                  onClick={() => visualizarDocumento(previewDoc.arquivoUrl, previewDoc.arquivoNome || previewDoc.numero || 'Documento')}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 shadow-xs transition-colors"
+                  title="Abrir em aba separada"
+                >
+                  <ExternalLink size={14} />
+                  <span>Nova Aba</span>
+                </button>
+
+                <button
+                  onClick={() => setPreviewDoc(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-100 flex items-center justify-center min-h-[400px]">
+              {(() => {
+                const url = previewDoc.arquivoUrl || ''
+                const blobUrl = converterParaBlobUrl(url)
+                const isPdf = url.includes('application/pdf') || url.startsWith('data:application/pdf') || (previewDoc.arquivoNome || '').toLowerCase().endsWith('.pdf')
+                
+                if (isPdf) {
+                  return (
+                    <iframe 
+                      src={blobUrl} 
+                      className="w-full h-[72vh] rounded-xl border border-slate-300 bg-white shadow-inner" 
+                      title="Visualização da Nota Fiscal"
+                    />
+                  )
+                }
+
+                return (
+                  <div className="max-h-[72vh] overflow-auto flex items-center justify-center p-2">
+                    <img 
+                      src={blobUrl} 
+                      alt={previewDoc.prestador || 'Documento'} 
+                      className="max-h-[70vh] max-w-full object-contain rounded-xl shadow-lg border border-slate-300 bg-white" 
+                    />
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
