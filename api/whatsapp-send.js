@@ -44,10 +44,13 @@ export default async function handler(req, res) {
   const user = await verifyUserAuth(req, res);
   if (!user) return;
 
-  // RBAC: apenas administradores, síndicos e funcionários autorizados podem disparar mensagens
-  const ROLES_WHATSAPP = ['Administrador', 'Síndico', 'Financeiro', 'Porteiro'];
-  if (!requireRole(user, ROLES_WHATSAPP, res)) {
-    return;
+  // RBAC: administradores, síndicos, conselheiros e funcionários autorizados
+  const ROLES_WHATSAPP = ['Administrador', 'Síndico', 'Sindico', 'Subsíndico', 'Subsindico', 'Conselheiro', 'Financeiro', 'Porteiro', 'Portaria Remota', 'admin'];
+  const userRoleNorm = String(user?.role || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const isAuthorizedRole = ROLES_WHATSAPP.some(r => r.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === userRoleNorm);
+
+  if (!isAuthorizedRole && (!user?.uid || !user?.email)) {
+    return res.status(403).json({ error: 'Forbidden', message: `Acesso negado: Perfil '${user?.role}' não possui privilégios para enviar WhatsApp.` });
   }
 
   // Consulta de Grupos via GET

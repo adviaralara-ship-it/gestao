@@ -1,13 +1,15 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import {
   FileSpreadsheet, Plus, Search, Filter, Download, Eye, Edit3, Trash2,
   CheckCircle2, XCircle, Clock, AlertTriangle, ArrowRight, TrendingUp, TrendingDown,
   Building2, Users, DollarSign, Calculator, Award, ShieldCheck, FileText,
   ChevronRight, Calendar, ArrowUpDown, HelpCircle, Layers, Check, Share2,
-  FileCheck, ThumbsUp, ThumbsDown, MessageSquare, Paperclip, Sparkles, ExternalLink, Send
+  FileCheck, ThumbsUp, ThumbsDown, MessageSquare, Paperclip, Sparkles, ExternalLink, Send,
+  Upload, Loader2, FileUp
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
+import { auth } from '../firebase'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { format, parseISO } from 'date-fns'
@@ -82,6 +84,8 @@ export default function Cotacoes() {
 
   // Tab ativa no formulário de cotação
   const [formTab, setFormTab] = useState('dados') // 'dados', 'itens', 'fornecedores', 'criterios'
+  const [extraindoIA, setExtraindoIA] = useState(false)
+  const fileInputIARef = useRef(null)
 
   // Estado do Formulário de Cotação
   const [form, setForm] = useState({
@@ -176,11 +180,111 @@ export default function Cotacoes() {
     setModalNovaAberto(true)
   }
 
+  // Leitura Automática de Orçamento com IA (PDF ou Foto)
+  const handleUploadOrcamentoIA = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+
+    setExtraindoIA(true)
+    try {
+      const reader = new FileReader()
+      const fileData = await new Promise((resolve, reject) => {
+        reader.onload = ev => resolve(ev.target.result)
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      let token = null
+      try {
+        token = await auth?.currentUser?.getIdToken?.()
+      } catch (tErr) {
+        console.warn('Erro ao obter token Firebase:', tErr)
+      }
+
+      const headers = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 45000)
+
+      const res = await fetch('/api/extract', {
+        method: 'POST',
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify({
+          file: fileData,
+          mimeType: file.type || 'application/pdf',
+          type: 'orcamento'
+        })
+      })
+      clearTimeout(timeoutId)
+
+      const json = await res.json()
+      if (!res.ok || !json.success || !json.data) {
+        throw new Error(json.error || json.details || 'Falha ao processar o documento com IA.')
+      }
+
+      const d = json.data
+      const nomeEmpresa = d.empresa || file.name.replace(/\.[^/.]+$/, '')
+      const valorNumerico = typeof d.valor === 'number'
+        ? d.valor
+        : (parseFloat(String(d.valor || 0).replace(/\./g, '').replace(',', '.')) || '')
+
+      const valorFormatado = valorNumerico
+        ? Number(valorNumerico).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : ''
+
+      const prazo = d.prazo || 'A combinar'
+      const condicao = d.condicaoPagamento || 'Boleto'
+      const obs = [
+        d.materiais ? `Materiais: ${d.materiais}` : '',
+        d.garantia ? `Garantia: ${d.garantia}` : '',
+        d.observacoes || ''
+      ].filter(Boolean).join(' | ')
+
+      const novoTitulo = (!form.titulo && (d.tipoServico || d.grupo)) ? (d.tipoServico || d.grupo) : form.titulo
+
+      const listaAtual = [...(form.fornecedores || [])]
+      const linhaVaziaIdx = listaAtual.findIndex(f => !f.nome && !f.valorTotal)
+
+      const novaLinha = {
+        id: String(Date.now()),
+        nome: nomeEmpresa,
+        valorTotal: valorFormatado,
+        prazo: prazo,
+        condicaoPagamento: condicao,
+        observacoes: obs,
+        nota: '10',
+        vencedor: listaAtual.length === 0 || linhaVaziaIdx === 0
+      }
+
+      if (linhaVaziaIdx >= 0) {
+        listaAtual[linhaVaziaIdx] = novaLinha
+      } else {
+        listaAtual.push(novaLinha)
+      }
+
+      setForm(prev => ({
+        ...prev,
+        titulo: novoTitulo,
+        fornecedores: listaAtual
+      }))
+
+      alert(`✨ Sucesso! Orçamento lido e preenchido automaticamente na planilha:\n\n• Empresa: ${nomeEmpresa}\n• Valor: R$ ${valorFormatado || '0,00'}\n• Prazo: ${prazo}\n• Condição: ${condicao}`)
+    } catch (err) {
+      console.error('Erro na extração de orçamento:', err)
+      alert(`⚠️ Não foi possível preencher automaticamente: ${err.message || 'Verifique o arquivo e tente novamente.'}`)
+    } finally {
+      setExtraindoIA(false)
+    }
+  }
+
   // Salvar cotação (criação ou edição) direta estilo Planilha
-  const handleSalvarCotacao = async () => {
+  const handleSalvarCotacao = async (fecharModal = true) => {
     if (!form.condominio || !form.titulo) {
       alert('Por favor, informe o Condomínio e o Título/Objeto do serviço.')
-      return
+      return null
     }
 
     const fornecedoresLimpos = (form.fornecedores || []).map((f, idx) => ({
@@ -196,7 +300,7 @@ export default function Cotacoes() {
 
     if (fornecedoresLimpos.length === 0) {
       alert('Por favor, preencha pelo menos um fornecedor com nome e valor na planilha.')
-      return
+      return null
     }
 
     // Se nenhum estiver marcado como vencedor, seleciona o primeiro
@@ -217,6 +321,7 @@ export default function Cotacoes() {
     }
 
     try {
+      let savedId = cotacaoSelecionada?.id
       if (cotacaoSelecionada?.id) {
         const hist = [
           ...(form.historico || []),
@@ -224,17 +329,22 @@ export default function Cotacoes() {
         ]
         await updateCotacao(cotacaoSelecionada.id, { ...payload, historico: hist })
       } else {
-        await addCotacao({
+        const docRef = await addCotacao({
           ...payload,
           status: form.status || 'Em análise',
           createdAt: new Date().toISOString()
         })
+        savedId = docRef?.id
       }
-      setModalNovaAberto(false)
-      alert('✅ Orçamento salvo com sucesso!')
+      if (fecharModal) {
+        setModalNovaAberto(false)
+        alert('✅ Orçamento salvo com sucesso!')
+      }
+      return savedId
     } catch (err) {
       console.error('[Cotacoes] Erro ao salvar:', err)
       alert('Erro ao salvar cotação: ' + (err.message || 'Verifique sua conexão.'))
+      return null
     }
   }
 
@@ -648,18 +758,20 @@ export default function Cotacoes() {
     }
 
     const conselheiros = []
-    if (condo.conselheiro1_nome && condo.conselheiro1_whatsapp) {
-      conselheiros.push({ indice: 1, nome: condo.conselheiro1_nome, tel: condo.conselheiro1_whatsapp })
+    const limparTel = (t) => String(t || '').replace(/\D/g, '')
+
+    if (condo.conselheiro1_nome && limparTel(condo.conselheiro1_whatsapp).length >= 8) {
+      conselheiros.push({ indice: 1, nome: condo.conselheiro1_nome, tel: limparTel(condo.conselheiro1_whatsapp) })
     }
-    if (condo.conselheiro2_nome && condo.conselheiro2_whatsapp) {
-      conselheiros.push({ indice: 2, nome: condo.conselheiro2_nome, tel: condo.conselheiro2_whatsapp })
+    if (condo.conselheiro2_nome && limparTel(condo.conselheiro2_whatsapp).length >= 8) {
+      conselheiros.push({ indice: 2, nome: condo.conselheiro2_nome, tel: limparTel(condo.conselheiro2_whatsapp) })
     }
-    if (condo.conselheiro3_nome && condo.conselheiro3_whatsapp) {
-      conselheiros.push({ indice: 3, nome: condo.conselheiro3_nome, tel: condo.conselheiro3_whatsapp })
+    if (condo.conselheiro3_nome && limparTel(condo.conselheiro3_whatsapp).length >= 8) {
+      conselheiros.push({ indice: 3, nome: condo.conselheiro3_nome, tel: limparTel(condo.conselheiro3_whatsapp) })
     }
 
     if (conselheiros.length === 0) {
-      alert(`O condomínio "${condo.nome}" ainda não possui membros do Conselho Fiscal com WhatsApp cadastrados.\n\nAcesse o menu "Condomínios", edite o condomínio e cadastre os nomes e contatos dos conselheiros.`)
+      alert(`O condomínio "${condo.nome}" ainda não possui membros do Conselho Fiscal com WhatsApp cadastrados.\n\nAcesse o menu "Condomínios", edite o condomínio e cadastre os nomes e telefones com DDD dos conselheiros.`)
       return
     }
 
@@ -676,8 +788,10 @@ export default function Cotacoes() {
     if (!window.confirm(confirmMsg)) return
 
     let enviados = 0
+    let errosDetalhados = []
+
     for (const c of conselheiros) {
-      const linkVoto = `${origin}/aprovar/${cot.id}?c=${c.indice}`
+      const linkVoto = cot.id ? `${origin}/aprovar/${cot.id}?c=${c.indice}` : `${origin}/cotacoes`
       const msgTexto = `🏛️ *ALPHA SOLUÇÕES CONDOMINIAIS*\n*Parecer do Conselho Fiscal — Aprovação de Despesa*\n\nOlá, Conselheiro(a) *${c.nome}*!\n\nHá um orçamento no condomínio *${condo.nome}* que requer a avaliação e o voto formal do Conselho:\n\n📋 *Serviço/Aquisição:* ${cot.titulo || cot.descricao || 'Cotação #' + (cot.numero || '')}\n🏆 *Proposta Recomendada:* ${vencedor?.nome || 'Fornecedor Selecionado'}\n💰 *Valor:* R$ ${valorFmt}\n📊 *Quórum Necessário:* ${quorum} votos favoráveis\n\n👉 *Toque no link abaixo para analisar o comparativo e registrar seu voto em 1 clique:*\n${linkVoto}\n\n_Seu voto é registrado oficialmente e a confirmação será enviada automaticamente ao Síndico._\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
 
       try {
@@ -686,29 +800,44 @@ export default function Cotacoes() {
           text: msgTexto,
           instance: 'InstanciaAlpha'
         })
-        if (res && res.success) enviados++
+        if (res && res.success) {
+          enviados++
+        } else {
+          errosDetalhados.push(`${c.nome} (${c.tel}): ${res?.error || 'Não entregue'}`)
+        }
       } catch (e) {
-        console.warn(`Erro ao enviar WhatsApp para ${c.nome}:`, e)
+        errosDetalhados.push(`${c.nome} (${c.tel}): ${e.message}`)
       }
     }
 
-    const hist = [
-      ...(cot.historico || []),
-      {
-        data: new Date().toISOString(),
-        usuario: user?.nome || 'Administrador',
-        acao: `Enviado para votação de ${enviados} conselheiro(s) via WhatsApp`
+    if (cot.id) {
+      try {
+        const hist = [
+          ...(cot.historico || []),
+          {
+            data: new Date().toISOString(),
+            usuario: user?.nome || 'Administrador',
+            acao: `Enviado para votação de ${enviados} conselheiro(s) via WhatsApp`
+          }
+        ]
+
+        await updateCotacao(cot.id, {
+          status: 'Aguardando Conselho',
+          dataEnvioConselho: new Date().toISOString(),
+          historico: hist
+        })
+      } catch (histErr) {
+        console.warn('Falha ao atualizar status da cotação:', histErr)
       }
-    ]
+    }
 
-    await updateCotacao(cot.id, {
-      ...cot,
-      status: 'Aguardando Conselho',
-      dataEnvioConselho: new Date().toISOString(),
-      historico: hist
-    })
-
-    alert(`🎉 Sucesso! Mensagens enviadas para ${enviados} conselheiro(s) do ${condo.nome}.\n\nO status da cotação agora é "Aguardando Conselho". Quando atingirem o quórum (${quorum} votos), o Síndico receberá a confirmação no celular automaticamente!`)
+    if (enviados > 0 && errosDetalhados.length === 0) {
+      alert(`🎉 Sucesso! Mensagens enviadas para ${enviados} conselheiro(s) do ${condo.nome}.\n\nO status da cotação agora é "Aguardando Conselho". Quando atingirem o quórum (${quorum} votos), o Síndico (${condo.sindicoTelefone || 'cadastrado'}) receberá a confirmação no WhatsApp automaticamente!`)
+    } else if (enviados > 0 && errosDetalhados.length > 0) {
+      alert(`⚠️ Mensagens enviadas para ${enviados} conselheiro(s), porém ocorreram pendências em outros:\n\n${errosDetalhados.join('\n')}`)
+    } else {
+      alert(`❌ Erro no disparo para os números:\n\n${errosDetalhados.join('\n') || 'Verifique se os telefones dos conselheiros possuem DDD e se a conexão com o WhatsApp está ativa.'}`)
+    }
   }
 
   return (
@@ -1089,35 +1218,66 @@ export default function Cotacoes() {
 
               {/* Linha 2: A PLANILHA DE FORNECEDORES (Excel Style) */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
-                <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <Building2 size={16} className="text-purple-700" />
                     <h4 className="font-black text-sm text-gray-800">
                       Planilha de Propostas dos Fornecedores ({form.fornecedores?.length || 0})
                     </h4>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const novos = [
-                        ...(form.fornecedores || []),
-                        {
-                          id: String(Date.now()),
-                          nome: '',
-                          valorTotal: '',
-                          prazo: 'A combinar',
-                          condicaoPagamento: 'Boleto',
-                          observacoes: '',
-                          nota: '8',
-                          vencedor: false
-                        }
-                      ]
-                      setForm({ ...form, fornecedores: novos })
-                    }}
-                    className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 font-bold cursor-pointer hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-colors"
-                  >
-                    <Plus size={14} /> Adicionar Linha / Empresa
-                  </button>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Botão de Preenchimento Automático por IA (PDF ou Imagem) */}
+                    <input
+                      type="file"
+                      ref={fileInputIARef}
+                      onChange={handleUploadOrcamentoIA}
+                      accept=".pdf,image/png,image/jpeg,image/webp"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      disabled={extraindoIA}
+                      onClick={() => fileInputIARef.current?.click()}
+                      className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 font-bold cursor-pointer bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-900 border-emerald-300 hover:border-emerald-400 hover:shadow-sm transition-all disabled:opacity-50"
+                      title="Anexe o PDF ou foto do orçamento recebido para preencher a planilha automaticamente com IA"
+                    >
+                      {extraindoIA ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin text-emerald-600" />
+                          <span>Lendo com IA...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={14} className="text-amber-500" />
+                          <span>✨ Anexar Orçamento (Preencher com IA)</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const novos = [
+                          ...(form.fornecedores || []),
+                          {
+                            id: String(Date.now()),
+                            nome: '',
+                            valorTotal: '',
+                            prazo: 'A combinar',
+                            condicaoPagamento: 'Boleto',
+                            observacoes: '',
+                            nota: '8',
+                            vencedor: false
+                          }
+                        ]
+                        setForm({ ...form, fornecedores: novos })
+                      }}
+                      className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 font-bold cursor-pointer hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-colors"
+                    >
+                      <Plus size={14} /> Adicionar Linha
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -1323,8 +1483,11 @@ export default function Cotacoes() {
                 <button
                   type="button"
                   onClick={async () => {
-                    await handleSalvarCotacao()
-                    handleEnviarWhatsAppConselho(form)
+                    const savedId = await handleSalvarCotacao(false)
+                    if (savedId) {
+                      setModalNovaAberto(false)
+                      await handleEnviarWhatsAppConselho({ ...form, id: savedId })
+                    }
                   }}
                   className="btn-primary bg-purple-700 hover:bg-purple-600 text-white text-xs py-2.5 px-5 font-bold flex items-center gap-1.5 cursor-pointer shadow-md"
                   title="Salva e dispara WhatsApp para os conselheiros e síndico"
