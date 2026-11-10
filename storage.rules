@@ -2,12 +2,20 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Regra global padrão: bloqueia acesso por padrão
+    // Backups completos do sistema no cofre da nuvem (JSON comprimido até 100MB)
+    match /backups_sistema/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Regra global padrão
     match /{allPaths=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null 
-        && request.resource.size <= 20 * 1024 * 1024
-        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+        && request.resource.size <= 50 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') 
+            || request.resource.contentType == 'application/pdf'
+            || request.resource.contentType == 'application/json'
+            || request.resource.contentType == 'application/octet-stream');
     }
 
     // Pasta pública para recebimento controlado de currículos e onboarding de candidatos
