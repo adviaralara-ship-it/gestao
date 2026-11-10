@@ -1076,6 +1076,16 @@ export default function Cotacoes() {
                         <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] border ${STATUS_COLORS[cot.status] || 'bg-gray-100 text-gray-700'}`}>
                           {cot.status}
                         </span>
+                        {cot.votosConselho && cot.votosConselho.length > 0 && (
+                          <div className="mt-1 flex items-center justify-center">
+                            <span
+                              className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 text-[10px] flex items-center gap-1 cursor-help"
+                              title={cot.votosConselho.map(v => `${v.nome}: ${v.decisao} (${v.dataFmt || ''})`).join('\n')}
+                            >
+                              ✓ {cot.votosConselho.filter(v => v.decisao === 'APROVADO').length} voto(s) Conselho
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-gray-600 whitespace-nowrap">
                         {cot.responsavel}
@@ -1179,6 +1189,36 @@ export default function Cotacoes() {
 
             {/* Corpo do Formulário / Planilha */}
             <div className="p-5 sm:p-6 overflow-y-auto flex-1 flex flex-col gap-5 custom-scrollbar bg-slate-50/50">
+              {/* Banner de Parecer do Conselho Fiscal */}
+              {form.votosConselho && form.votosConselho.length > 0 && (
+                <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                  form.status === 'Aprovada pelo Conselho' 
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                    : 'bg-purple-50 border-purple-200 text-purple-950'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-base shadow-sm ${
+                      form.status === 'Aprovada pelo Conselho' ? 'bg-emerald-600 text-white' : 'bg-purple-600 text-white'
+                    }`}>
+                      {form.status === 'Aprovada pelo Conselho' ? '✓' : '🏛️'}
+                    </div>
+                    <div>
+                      <h4 className="font-black text-sm">
+                        {form.status === 'Aprovada pelo Conselho' ? 'Orçamento Aprovado pelo Conselho Fiscal' : 'Votação em Andamento no Conselho Fiscal'}
+                      </h4>
+                      <p className="text-xs opacity-90 mt-0.5">
+                        {form.votosConselho.filter(v => v.decisao === 'APROVADO').length} aprovação(ões) registrada(s): {form.votosConselho.map(v => `${v.nome} (${v.decisao})`).join(', ')}
+                      </p>
+                    </div>
+                  </div>
+                  {form.status === 'Aprovada pelo Conselho' && (
+                    <span className="px-3 py-1 bg-emerald-600 text-white font-black text-xs rounded-full shadow-sm shrink-0">
+                      Autorizado para Contratação
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Linha 1: Dados do Condomínio e Objeto */}
               <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>

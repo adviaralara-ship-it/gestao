@@ -170,13 +170,22 @@ export default function WhatsApp() {
         })
       }
 
-      // Fazer upload de backup do PDF para o Firebase Storage se possível
+      // Fazer upload de backup do PDF para o Firebase Storage se possível (com timeout rápido de 5s para não travar o envio)
       if (arquivoPdfFile) {
         try {
           const cleanName = (arquivoPdfNome || 'documento.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')
           uploadedFileRef = ref(storage, `whatsapp_docs/${Date.now()}_${cleanName}`)
-          const snap = await uploadBytes(uploadedFileRef, arquivoPdfFile)
-          mediaUrl = await getDownloadURL(snap.ref)
+          const uploadPromise = uploadBytes(uploadedFileRef, arquivoPdfFile)
+            .then(async snap => {
+              mediaUrl = await getDownloadURL(snap.ref)
+              return mediaUrl
+            })
+            .catch(err => {
+              console.warn('Upload direto no Storage falhou:', err)
+              return null
+            })
+          const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 5000))
+          await Promise.race([uploadPromise, timeoutPromise])
         } catch (storageErr) {
           console.warn('Upload direto no Storage falhou, usando base64 direto:', storageErr)
         }

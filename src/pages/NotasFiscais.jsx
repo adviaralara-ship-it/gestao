@@ -3,7 +3,7 @@ import { Receipt, Search, ExternalLink, RefreshCw, Plus, Trash2, Edit2, X, Eye, 
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { storage } from '../firebase'
+import { auth, storage } from '../firebase'
 
 const statusBadge = s => ({
   Válida: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -46,69 +46,119 @@ function ModalNota({ data, user, condominiosDisponiveis, tipoInicial = 'Nota Fis
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
+
+    if (file.size > 8 * 1024 * 1024) {
+      alert('O arquivo selecionado possui mais de 8MB. Selecione um arquivo com tamanho menor para leitura rápida com Inteligência Artificial.')
+      return
+    }
+
     setIsExtracting(true)
     setIsUploading(true)
     set('arquivoNome', file.name)
-    
-    try {
-      // 1. Upload para o Firebase Storage
+
+    const mime = file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : file.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg')
+
+    // 1. Upload assíncrono para o Firebase Storage em segundo plano (timeout 6s, nunca trava a IA)
+    (async () => {
       try {
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const storageRef = ref(storage, `notas_comprovantes/${Date.now()}_${safeName}`)
-        const snapshot = await uploadBytes(storageRef, file)
-        const downloadUrl = await getDownloadURL(snapshot.ref)
-        set('arquivoUrl', downloadUrl)
-      } catch (stErr) {
-        console.warn('Storage upload falhou, tentando fallback local:', stErr)
-      }
-
-      // 2. Extração OCR com IA via Base64
-      const reader = new FileReader()
-      reader.onload = async (ev) => {
-        const base64Data = ev.target.result
-        
-        // Se falhou no storage e o arquivo for leve, salva base64 como fallback
-        setForm(prev => {
-          if (!prev.arquivoUrl && file.size < 700000) {
-            return { ...prev, arquivoUrl: base64Data }
-          }
-          return prev
-        })
-
-        try {
-          const res = await fetch('/api/extract', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ file: base64Data, mimeType: file.type, type: 'comprovante' })
+        const uploadPromise = uploadBytes(storageRef, file, { contentType: mime })
+          .then(async (snapshot) => {
+            const downloadUrl = await getDownloadURL(snapshot.ref)
+            set('arquivoUrl', downloadUrl)
+            return downloadUrl
           })
-          const ocrData = await res.json()
-          if (ocrData.success && ocrData.data) {
-            const item = Array.isArray(ocrData.data) ? ocrData.data[0] : ocrData.data
-            if (item) {
-              if (item.numero) set('numero', item.numero)
-              if (item.prestador) set('prestador', item.prestador)
-              if (item.cnpj) set('cnpj', item.cnpj)
-              if (item.servico) set('servico', item.servico)
-              if (item.valor) set('valor', typeof item.valor === 'number' ? `R$ ${item.valor.toFixed(2)}` : String(item.valor))
-              if (item.data) set('data', item.data)
-              if (item.tipo && ['Nota Fiscal', 'Cupom Fiscal', 'Recibo', 'Comprovante de Pagamento'].includes(item.tipo)) {
-                set('tipo', item.tipo)
-              }
-            }
-          }
-        } catch(err) {
-          console.error('Falha na extração IA:', err)
-        } finally {
-          setIsExtracting(false)
-          setIsUploading(false)
-        }
+          .catch((stErr) => {
+            console.warn('Storage upload falhou (não impeditivo):', stErr)
+            return null
+          })
+
+        const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 6000))
+        await Promise.race([uploadPromise, timeoutPromise])
+      } catch (stErr) {
+        console.warn('Storage upload erro capturado:', stErr)
+      } finally {
+        setIsUploading(false)
       }
-      reader.readAsDataURL(file)
-    } catch (err) {
-      console.error(err)
+    })()
+
+    // 2. Extração imediata OCR com IA via Base64 (sem esperar o storage)
+    const reader = new FileReader()
+    reader.onerror = () => {
       setIsExtracting(false)
       setIsUploading(false)
+      alert('Erro ao ler arquivo localmente. Tente selecionar novamente.')
     }
+
+    reader.onload = async (ev) => {
+      const base64Data = ev.target.result
+
+      // Fallback: se o arquivo for leve (< 600KB) e storage falhar, mantém base64
+      setForm(prev => {
+        if (!prev.arquivoUrl && file.size < 600000) {
+          return { ...prev, arquivoUrl: base64Data }
+        }
+        return prev
+      })
+
+      try {
+        let token = ''
+        try {
+          token = await auth?.currentUser?.getIdToken?.()
+        } catch (tErr) {
+          console.warn('Erro ao obter token do Firebase Auth:', tErr)
+        }
+
+        const headers = { 'Content-Type': 'application/json' }
+        if (token) headers['Authorization'] = `Bearer ${token}`
+
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 40000)
+
+        const res = await fetch('/api/extract', {
+          method: 'POST',
+          headers,
+          signal: controller.signal,
+          body: JSON.stringify({ file: base64Data, mimeType: mime, type: 'comprovante' })
+        })
+        clearTimeout(timeoutId)
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || errData.details || `Erro ${res.status} no servidor`)
+        }
+
+        const ocrData = await res.json()
+        if (ocrData.success && ocrData.data) {
+          const item = Array.isArray(ocrData.data) ? ocrData.data[0] : ocrData.data
+          if (item) {
+            if (item.numero) set('numero', item.numero)
+            if (item.prestador) set('prestador', item.prestador)
+            if (item.cnpj) set('cnpj', item.cnpj)
+            if (item.servico) set('servico', item.servico)
+            if (item.valor) set('valor', typeof item.valor === 'number' ? `R$ ${item.valor.toFixed(2)}` : String(item.valor))
+            if (item.data) set('data', item.data)
+            if (item.tipo && ['Nota Fiscal', 'Cupom Fiscal', 'Recibo', 'Comprovante de Pagamento'].includes(item.tipo)) {
+              set('tipo', item.tipo)
+            }
+          }
+        } else {
+          throw new Error(ocrData.error || 'Nenhum dado legível identificado no documento')
+        }
+      } catch (err) {
+        console.error('Falha na extração IA:', err)
+        const msg = err.name === 'AbortError'
+          ? 'Tempo limite de resposta excedido ao analisar documento. Por favor, confira os campos e preencha manualmente.'
+          : (err.message || 'Falha ao processar arquivo com IA. Você pode preencher os campos manualmente.')
+        alert(`Aviso: ${msg}`)
+      } finally {
+        setIsExtracting(false)
+        setIsUploading(false)
+      }
+    }
+
+    reader.readAsDataURL(file)
   }
 
   const handleSalvar = async () => {

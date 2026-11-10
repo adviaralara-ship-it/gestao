@@ -37,12 +37,21 @@ export default async function handler(req, res) {
   try {
     const { file, mimeType, type } = req.body;
     
-    if (!file || !mimeType) {
-      return res.status(400).json({ error: 'File e mimeType são obrigatórios.' });
+    if (!file) {
+      return res.status(400).json({ error: 'Arquivo (base64) é obrigatório.' });
     }
 
-    if (!ALLOWED_MIMES.includes(mimeType)) {
-      return res.status(400).json({ error: 'Tipo de arquivo não permitido para extração.' });
+    let finalMime = mimeType;
+    if (!finalMime || !ALLOWED_MIMES.includes(finalMime)) {
+      if (typeof file === 'string' && file.startsWith('data:application/pdf')) {
+        finalMime = 'application/pdf';
+      } else if (typeof file === 'string' && (file.startsWith('data:image/png') || file.startsWith('data:image/x-png'))) {
+        finalMime = 'image/png';
+      } else if (typeof file === 'string' && file.startsWith('data:image/webp')) {
+        finalMime = 'image/webp';
+      } else {
+        finalMime = 'application/pdf';
+      }
     }
 
     // Remover o prefixo do base64 se existir (ex: data:image/jpeg;base64,...)
@@ -142,23 +151,56 @@ Instruções cruciais sobre os dados:
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'];
 
-    const result = await model.generateContent([
-      prompt,
-      {
-        inlineData: {
-          data: base64Data,
-          mimeType: mimeType
-        }
+    let lastError = null;
+    let responseText = '';
+
+    for (const modelName of modelsToTry) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 2500,
+          }
+        });
+
+        const result = await model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: base64Data,
+              mimeType: finalMime
+            }
+          }
+        ]);
+
+        const response = await result.response;
+        responseText = response.text();
+        if (responseText) break;
+      } catch (err) {
+        lastError = err;
+        console.warn(`Tentativa de extração com modelo ${modelName} falhou:`, err.message);
       }
-    ]);
+    }
 
-    const response = await result.response;
-    let text = response.text();
-    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    const data = JSON.parse(text);
+    if (!responseText) {
+      throw lastError || new Error('Não foi possível obter resposta do serviço de IA.');
+    }
+
+    let cleaned = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+    let data = null;
+    try {
+      data = JSON.parse(cleaned);
+    } catch (parseErr) {
+      const match = cleaned.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
+      if (match) {
+        data = JSON.parse(match[0]);
+      } else {
+        throw new Error('Formato retornado pela IA não pôde ser interpretado como JSON');
+      }
+    }
 
     return res.status(200).json({ success: true, data });
   } catch (error) {
