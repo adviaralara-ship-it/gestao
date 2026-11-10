@@ -4,13 +4,14 @@ import {
   CheckCircle2, XCircle, Clock, AlertTriangle, ArrowRight, TrendingUp, TrendingDown,
   Building2, Users, DollarSign, Calculator, Award, ShieldCheck, FileText,
   ChevronRight, Calendar, ArrowUpDown, HelpCircle, Layers, Check, Share2,
-  FileCheck, ThumbsUp, ThumbsDown, MessageSquare, Paperclip, Sparkles, ExternalLink
+  FileCheck, ThumbsUp, ThumbsDown, MessageSquare, Paperclip, Sparkles, ExternalLink, Send
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { format, parseISO } from 'date-fns'
+import { enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
 
 // Categorias padrão
 const CATEGORIAS = [
@@ -22,7 +23,8 @@ const CATEGORIAS = [
 // Status possíveis do fluxo
 const STATUS_LIST = [
   'Rascunho', 'Solicitada', 'Aguardando propostas', 'Em análise',
-  'Aguardando aprovação', 'Aprovada', 'Contratada', 'Concluída',
+  'Aguardando aprovação', 'Aguardando Conselho', 'Aprovada pelo Conselho',
+  'Aprovada', 'Contratada', 'Concluída',
   'Reprovada', 'Cancelada', 'Vencida'
 ]
 
@@ -33,6 +35,8 @@ const STATUS_COLORS = {
   'Aguardando propostas': 'bg-amber-50 text-amber-700 border-amber-200',
   'Em análise': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'Aguardando aprovação': 'bg-purple-50 text-purple-700 border-purple-200',
+  'Aguardando Conselho': 'bg-purple-100 text-purple-800 border-purple-300 font-bold',
+  'Aprovada pelo Conselho': 'bg-emerald-100 text-emerald-800 border-emerald-300 font-black',
   'Aprovada': 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold',
   'Contratada': 'bg-teal-50 text-teal-700 border-teal-300 font-bold',
   'Concluída': 'bg-green-100 text-green-800 border-green-300 font-bold',
@@ -218,8 +222,8 @@ export default function Cotacoes() {
   const metricas = useMemo(() => {
     const total = cotacoesPermitidas.length
     const emAndamento = cotacoesPermitidas.filter(c => ['Solicitada', 'Aguardando propostas', 'Em análise'].includes(c.status)).length
-    const aguardandoAprovacao = cotacoesPermitidas.filter(c => c.status === 'Aguardando aprovação').length
-    const aprovadas = cotacoesPermitidas.filter(c => ['Aprovada', 'Contratada', 'Concluída'].includes(c.status)).length
+    const aguardandoAprovacao = cotacoesPermitidas.filter(c => ['Aguardando aprovação', 'Aguardando Conselho'].includes(c.status)).length
+    const aprovadas = cotacoesPermitidas.filter(c => ['Aprovada', 'Aprovada pelo Conselho', 'Contratada', 'Concluída'].includes(c.status)).length
 
     // Economia gerada (diferença entre 2º menor e o menor escolhido nas aprovadas)
     let economiaTotal = 0
@@ -232,7 +236,7 @@ export default function Cotacoes() {
         const valores = c.fornecedores.map(f => parseFloat(f.valorTotal) || 0).filter(v => v > 0).sort((a, b) => a - b)
         if (valores.length > 0) valorCotadoTotal += valores[0]
 
-        if (['Aprovada', 'Contratada', 'Concluída'].includes(c.status) && valores.length >= 2) {
+        if (['Aprovada', 'Aprovada pelo Conselho', 'Contratada', 'Concluída'].includes(c.status) && valores.length >= 2) {
           const menor = valores[0]
           const segundo = valores[1]
           if (segundo > menor) economiaTotal += (segundo - menor)
@@ -590,6 +594,85 @@ export default function Cotacoes() {
     }
   }
 
+  // Disparo para o Conselho Fiscal via WhatsApp
+  const handleEnviarWhatsAppConselho = async (cot) => {
+    if (!cot) return
+
+    const condo = (condominios || []).find(c => {
+      const n1 = (c.nome || '').trim().toLowerCase()
+      const n2 = (cot.condominio || '').trim().toLowerCase()
+      return n1 === n2 || n1.includes(n2) || n2.includes(n1)
+    })
+
+    if (!condo) {
+      alert(`Condomínio "${cot.condominio || 'não identificado'}" não encontrado no cadastro de Condomínios.`)
+      return
+    }
+
+    const conselheiros = []
+    if (condo.conselheiro1_nome && condo.conselheiro1_whatsapp) {
+      conselheiros.push({ indice: 1, nome: condo.conselheiro1_nome, tel: condo.conselheiro1_whatsapp })
+    }
+    if (condo.conselheiro2_nome && condo.conselheiro2_whatsapp) {
+      conselheiros.push({ indice: 2, nome: condo.conselheiro2_nome, tel: condo.conselheiro2_whatsapp })
+    }
+    if (condo.conselheiro3_nome && condo.conselheiro3_whatsapp) {
+      conselheiros.push({ indice: 3, nome: condo.conselheiro3_nome, tel: condo.conselheiro3_whatsapp })
+    }
+
+    if (conselheiros.length === 0) {
+      alert(`O condomínio "${condo.nome}" ainda não possui membros do Conselho Fiscal com WhatsApp cadastrados.\n\nAcesse o menu "Condomínios", edite o condomínio e cadastre os nomes e contatos dos conselheiros.`)
+      return
+    }
+
+    const fornecedores = cot.fornecedores || []
+    const vencedor = fornecedores.find(f => f.vencedor) || fornecedores[0] || null
+    const valorNum = parseFloat(cot.valorFinalAprovado) || parseFloat(vencedor?.valorTotal) || parseFloat(cot.valorEstimado) || 0
+    const valorFmt = valorNum.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const quorum = Number(condo.quorumConselho) || 2
+    const origin = (typeof window !== 'undefined' && window.location?.origin) ? window.location.origin : 'https://app.alphaadmsc.com.br'
+
+    const listaNomes = conselheiros.map(c => `• ${c.nome} (${c.tel})`).join('\n')
+    const confirmMsg = `Deseja enviar a solicitação de aprovação via WhatsApp para os ${conselheiros.length} conselheiro(s) do ${condo.nome}?\n\n${listaNomes}\n\nValor a ser votado: R$ ${valorFmt}\nQuórum necessário: ${quorum} votos favoráveis.`
+
+    if (!window.confirm(confirmMsg)) return
+
+    let enviados = 0
+    for (const c of conselheiros) {
+      const linkVoto = `${origin}/aprovar/${cot.id}?c=${c.indice}`
+      const msgTexto = `🏛️ *ALPHA SOLUÇÕES CONDOMINIAIS*\n*Parecer do Conselho Fiscal — Aprovação de Despesa*\n\nOlá, Conselheiro(a) *${c.nome}*!\n\nHá um orçamento no condomínio *${condo.nome}* que requer a avaliação e o voto formal do Conselho:\n\n📋 *Serviço/Aquisição:* ${cot.titulo || cot.descricao || 'Cotação #' + (cot.numero || '')}\n🏆 *Proposta Recomendada:* ${vencedor?.nome || 'Fornecedor Selecionado'}\n💰 *Valor:* R$ ${valorFmt}\n📊 *Quórum Necessário:* ${quorum} votos favoráveis\n\n👉 *Toque no link abaixo para analisar o comparativo e registrar seu voto em 1 clique:*\n${linkVoto}\n\n_Seu voto é registrado oficialmente e a confirmação será enviada automaticamente ao Síndico._\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+
+      try {
+        const res = await enviarMensagemWhatsApp({
+          number: c.tel,
+          text: msgTexto,
+          instance: 'InstanciaAlpha'
+        })
+        if (res && res.success) enviados++
+      } catch (e) {
+        console.warn(`Erro ao enviar WhatsApp para ${c.nome}:`, e)
+      }
+    }
+
+    const hist = [
+      ...(cot.historico || []),
+      {
+        data: new Date().toISOString(),
+        usuario: user?.nome || 'Administrador',
+        acao: `Enviado para votação de ${enviados} conselheiro(s) via WhatsApp`
+      }
+    ]
+
+    await updateCotacao(cot.id, {
+      ...cot,
+      status: 'Aguardando Conselho',
+      dataEnvioConselho: new Date().toISOString(),
+      historico: hist
+    })
+
+    alert(`🎉 Sucesso! Mensagens enviadas para ${enviados} conselheiro(s) do ${condo.nome}.\n\nO status da cotação agora é "Aguardando Conselho". Quando atingirem o quórum (${quorum} votos), o Síndico receberá a confirmação no celular automaticamente!`)
+  }
+
   return (
     <div className="flex flex-col gap-6 animate-fade-in max-w-7xl mx-auto pb-12">
       {/* Topo / Header da Página */}
@@ -842,7 +925,15 @@ export default function Cotacoes() {
                             <Download size={15} />
                           </button>
 
-                          {cot.status === 'Aprovada' && (
+                          <button
+                            onClick={() => handleEnviarWhatsAppConselho(cot)}
+                            title="Disparar para Aprovação do Conselho via WhatsApp"
+                            className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Send size={15} />
+                          </button>
+
+                          {['Aprovada', 'Aprovada pelo Conselho'].includes(cot.status) && (
                             <button
                               onClick={() => handleLancarFinanceiro(cot)}
                               title="Lançar no Financeiro"
@@ -1783,18 +1874,21 @@ export default function Cotacoes() {
                         ...(cotacaoSelecionada.historico || []),
                         { data: new Date().toISOString(), usuario: user?.nome || 'Administrador', acao: 'Comparativo realizado e enviado para aprovação' }
                       ]
-                      await updateCotacao(cotacaoSelecionada.id, {
+                      const cotAtualizada = {
                         ...cotacaoSelecionada,
                         status: 'Aguardando aprovação',
                         valorFinalAprovado: calcValorResult,
                         historico: hist
-                      })
+                      }
+                      await updateCotacao(cotacaoSelecionada.id, cotAtualizada)
                       setModalCompararAberto(false)
-                      alert('Cotação atualizada e enviada para aprovação do Síndico/Conselho!')
+                      if (window.confirm('Cotação salva com sucesso!\n\nDeseja disparar as mensagens de aprovação pelo WhatsApp para os membros do Conselho Fiscal agora?')) {
+                        handleEnviarWhatsAppConselho(cotAtualizada)
+                      }
                     }}
-                    className="btn-primary flex items-center gap-2 px-5"
+                    className="btn-primary flex items-center gap-2 px-5 bg-purple-700 hover:bg-purple-600 text-white font-bold cursor-pointer"
                   >
-                    <CheckCircle2 size={16} /> Salvar Decisão & Enviar p/ Aprovação
+                    <Send size={16} /> Salvar &amp; Disparar p/ Conselho (WhatsApp)
                   </button>
                 </div>
               </div>

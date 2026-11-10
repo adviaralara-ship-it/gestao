@@ -62,6 +62,7 @@ import MediacaoSalaExterna from './pages/MediacaoSalaExterna'
 import Cotacoes from './pages/Cotacoes'
 import CheckinPrestador from './pages/CheckinPrestador'
 import PainelSeguranca from './pages/PainelSeguranca'
+import AprovarOrcamento from './pages/AprovarOrcamento'
 
 // Spinner de carregamento enquanto o Firebase Auth verifica a sessão
 function AuthLoader() {
@@ -171,6 +172,9 @@ function AppRoutes() {
         {/* Rota pública para baixa rápida de manutenção ou tarefa via WhatsApp */}
         <Route path="/concluir/:tipo/:id" element={<ConcluirItem />} />
         <Route path="/concluir/:id" element={<ConcluirItem />} />
+        {/* Rota pública para aprovação de orçamentos pelo Conselho Fiscal via WhatsApp */}
+        <Route path="/aprovar/:id" element={<AprovarOrcamento />} />
+        <Route path="/aprovar/orcamento/:id" element={<AprovarOrcamento />} />
         
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<AuthorizedRoute module=""><span /></AuthorizedRoute>} />

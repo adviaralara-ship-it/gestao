@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Building2, Plus, Search, Edit2, Trash2, Home, DollarSign, TrendingUp, Share2, MessageSquare } from 'lucide-react'
+import { Building2, Plus, Search, Edit2, Trash2, Home, DollarSign, TrendingUp, Share2, MessageSquare, ShieldCheck, Users, Phone } from 'lucide-react'
 import { collection, query, where, getDocs, writeBatch, doc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useFirestore } from '../hooks/useFirestore'
@@ -12,14 +12,19 @@ const fmtBR   = v => Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:
 
 function CondoModal({ data, onClose, onSave, isAdm }) {
   const [form, setForm] = useState(() => (data ? { ...data } : {
-    nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
-    honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: '', grupoWhatsapp: ''
+    nome:'', endereco:'', unidades:'', sindico:'', sindicoTelefone:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
+    honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: '', grupoWhatsapp: '',
+    limiteAlcada: 800, quorumConselho: '2',
+    conselheiro1_nome: '', conselheiro1_whatsapp: '',
+    conselheiro2_nome: '', conselheiro2_whatsapp: '',
+    conselheiro3_nome: '', conselheiro3_whatsapp: ''
   }))
   const [fundoStr, setFundoStr] = useState(data?.fundoReserva || '')
   const [metaStr,  setMetaStr]  = useState(data?.fundoMeta || '')
   const [honorariosStr, setHonorariosStr] = useState(data?.honorariosAdm || '')
   const [taxaStr, setTaxaStr] = useState(data?.taxaEmissao !== undefined ? data.taxaEmissao : 3.50)
   const [cotaStr, setCotaStr] = useState(data?.cotaPadrao !== undefined ? data.cotaPadrao : '')
+  const [limiteAlcadaStr, setLimiteAlcadaStr] = useState(data?.limiteAlcada !== undefined ? data.limiteAlcada : 800)
   const [gruposDisponiveis, setGruposDisponiveis] = useState([])
   const [carregandoGrupos, setCarregandoGrupos] = useState(false)
 
@@ -41,22 +46,38 @@ function CondoModal({ data, onClose, onSave, isAdm }) {
 
   useEffect(() => {
     if (data) {
-      setForm({ ...data })
+      setForm({
+        ...data,
+        quorumConselho: data.quorumConselho || '2',
+        sindicoTelefone: data.sindicoTelefone || '',
+        conselheiro1_nome: data.conselheiro1_nome || '',
+        conselheiro1_whatsapp: data.conselheiro1_whatsapp || '',
+        conselheiro2_nome: data.conselheiro2_nome || '',
+        conselheiro2_whatsapp: data.conselheiro2_whatsapp || '',
+        conselheiro3_nome: data.conselheiro3_nome || '',
+        conselheiro3_whatsapp: data.conselheiro3_whatsapp || ''
+      })
       setFundoStr(data.fundoReserva || '')
       setMetaStr(data.fundoMeta || '')
       setHonorariosStr(data.honorariosAdm || '')
       setTaxaStr(data.taxaEmissao !== undefined ? data.taxaEmissao : 3.50)
       setCotaStr(data.cotaPadrao !== undefined ? data.cotaPadrao : '')
+      setLimiteAlcadaStr(data.limiteAlcada !== undefined ? data.limiteAlcada : 800)
     } else {
       setForm({
-        nome:'', endereco:'', unidades:'', sindico:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
-        honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: '', grupoWhatsapp: ''
+        nome:'', endereco:'', unidades:'', sindico:'', sindicoTelefone:'', mandatoFim:'', cnpj:'', status:'Ativo', fundoReserva:'', fundoMeta:'',
+        honorariosAdm: '', chavePixAlpha: '66.643.272/0001-18', discriminarTaxa: false, taxaEmissao: '3.50', nomeTaxa: 'Serviço de Cobrança Digital', cotaPadrao: '', grupoWhatsapp: '',
+        limiteAlcada: 800, quorumConselho: '2',
+        conselheiro1_nome: '', conselheiro1_whatsapp: '',
+        conselheiro2_nome: '', conselheiro2_whatsapp: '',
+        conselheiro3_nome: '', conselheiro3_whatsapp: ''
       })
       setFundoStr('')
       setMetaStr('')
       setHonorariosStr('')
       setTaxaStr(3.50)
       setCotaStr('')
+      setLimiteAlcadaStr(800)
     }
   }, [data])
 
@@ -70,7 +91,7 @@ function CondoModal({ data, onClose, onSave, isAdm }) {
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors cursor-pointer" title="Fechar">✕</button>
         </div>
         <div className="p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto flex-1">
-          {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['cnpj','CNPJ'],['mandatoFim','Fim do Mandato (Síndico)'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX do Condomínio (Para onde vão as cotas)']].map(([k,l])=>(
+          {[['nome','Nome do Condomínio'],['endereco','Endereço Completo'],['sindico','Nome do Síndico'],['sindicoTelefone','WhatsApp do Síndico (Recebe Confirmação de Aprovações)'],['cnpj','CNPJ'],['mandatoFim','Fim do Mandato (Síndico)'],['unidades','Nº de Unidades'],['chave_pix','Chave PIX do Condomínio (Para onde vão as cotas)']].map(([k,l])=>(
             <div key={k}><label className="label">{l}</label><input type={k==='mandatoFim'?'date':'text'} className={`input ${k==='nome'?'uppercase font-bold':''}`} value={form[k]||''} onChange={e=>set(k, k==='nome'?e.target.value.toUpperCase():e.target.value)} placeholder={l}/></div>
           ))}
 
@@ -208,6 +229,123 @@ function CondoModal({ data, onClose, onSave, isAdm }) {
               </div>
             </div>
           </div>
+
+          {/* Seção Governança & Aprovação de Orçamentos pelo Conselho Fiscal */}
+          <div className="p-4 bg-purple-50/70 border border-purple-200 rounded-2xl flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="text-purple-700" size={18} />
+                <span className="font-black text-xs text-purple-900 uppercase tracking-wide">
+                  Alçada de Gastos &amp; Conselho Fiscal
+                </span>
+              </div>
+              <span className="text-[10px] font-bold text-purple-800 bg-purple-100 px-2.5 py-0.5 rounded-full border border-purple-200">
+                WhatsApp Automático
+              </span>
+            </div>
+            
+            <p className="text-[11px] text-purple-900/80 leading-relaxed">
+              Defina o valor limite de despesas que a administradora/síndico pode autorizar sem votação. Qualquer orçamento ou cotação acima desse valor exigirá a aprovação formal dos conselheiros via WhatsApp.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label text-xs font-bold text-gray-700">Valor Máximo sem Aprovação (Alçada em R$)</label>
+                <CurrencyInput value={limiteAlcadaStr} onChange={v => setLimiteAlcadaStr(v)} placeholder="Ex: 800,00" />
+                <span className="text-[10px] text-gray-400">Despesas acima deste valor vão para o Conselho.</span>
+              </div>
+              <div>
+                <label className="label text-xs font-bold text-gray-700">Quórum Necessário</label>
+                <select 
+                  className="input text-xs font-semibold"
+                  value={form.quorumConselho || '2'}
+                  onChange={e => set('quorumConselho', e.target.value)}
+                >
+                  <option value="1">1 voto favorável (Qualquer conselheiro)</option>
+                  <option value="2">2 votos favoráveis (Maioria Simples - Recomendado)</option>
+                  <option value="3">3 votos favoráveis (Unanimidade)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="border-t border-purple-200/60 pt-2 flex flex-col gap-2">
+              <label className="text-[11px] font-black text-purple-900 uppercase flex items-center gap-1.5">
+                <Users size={14} className="text-purple-700" /> Conselheiros Fiscais / Consultivos (Recebem o comparativo no WhatsApp):
+              </label>
+              
+              {/* Conselheiro 1 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white p-2.5 rounded-xl border border-purple-200">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-600">Conselheiro 1 - Nome</label>
+                  <input 
+                    type="text" 
+                    className="input text-xs" 
+                    value={form.conselheiro1_nome || ''} 
+                    onChange={e => set('conselheiro1_nome', e.target.value)} 
+                    placeholder="Ex: Carlos Silva"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-600">WhatsApp (com DDD)</label>
+                  <input 
+                    type="text" 
+                    className="input text-xs" 
+                    value={form.conselheiro1_whatsapp || ''} 
+                    onChange={e => set('conselheiro1_whatsapp', e.target.value)} 
+                    placeholder="Ex: 83999998888"
+                  />
+                </div>
+              </div>
+
+              {/* Conselheiro 2 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white p-2.5 rounded-xl border border-purple-200">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-600">Conselheiro 2 - Nome</label>
+                  <input 
+                    type="text" 
+                    className="input text-xs" 
+                    value={form.conselheiro2_nome || ''} 
+                    onChange={e => set('conselheiro2_nome', e.target.value)} 
+                    placeholder="Ex: Maria Oliveira"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-600">WhatsApp (com DDD)</label>
+                  <input 
+                    type="text" 
+                    className="input text-xs" 
+                    value={form.conselheiro2_whatsapp || ''} 
+                    onChange={e => set('conselheiro2_whatsapp', e.target.value)} 
+                    placeholder="Ex: 83988887777"
+                  />
+                </div>
+              </div>
+
+              {/* Conselheiro 3 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white p-2.5 rounded-xl border border-purple-200">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-600">Conselheiro 3 - Nome</label>
+                  <input 
+                    type="text" 
+                    className="input text-xs" 
+                    value={form.conselheiro3_nome || ''} 
+                    onChange={e => set('conselheiro3_nome', e.target.value)} 
+                    placeholder="Ex: Roberto Santos"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-600">WhatsApp (com DDD)</label>
+                  <input 
+                    type="text" 
+                    className="input text-xs" 
+                    value={form.conselheiro3_whatsapp || ''} 
+                    onChange={e => set('conselheiro3_whatsapp', e.target.value)} 
+                    placeholder="Ex: 83977776666"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Rodapé fixo - Sempre visível */}
@@ -221,7 +359,16 @@ function CondoModal({ data, onClose, onSave, isAdm }) {
             honorariosAdm: parseBR(honorariosStr),
             taxaEmissao: form.discriminarTaxa ? parseBR(taxaStr) : 0,
             fundoReserva:parseBR(fundoStr),
-            fundoMeta:parseBR(metaStr)
+            fundoMeta:parseBR(metaStr),
+            limiteAlcada: parseBR(limiteAlcadaStr),
+            quorumConselho: Number(form.quorumConselho) || 2,
+            sindicoTelefone: (form.sindicoTelefone || '').replace(/\D/g, ''),
+            conselheiro1_nome: (form.conselheiro1_nome || '').trim(),
+            conselheiro1_whatsapp: (form.conselheiro1_whatsapp || '').replace(/\D/g, ''),
+            conselheiro2_nome: (form.conselheiro2_nome || '').trim(),
+            conselheiro2_whatsapp: (form.conselheiro2_whatsapp || '').replace(/\D/g, ''),
+            conselheiro3_nome: (form.conselheiro3_nome || '').trim(),
+            conselheiro3_whatsapp: (form.conselheiro3_whatsapp || '').replace(/\D/g, '')
           })} className="btn-primary bg-brand-600 hover:bg-brand-500 text-white font-black text-xs py-2.5 px-6 rounded-xl shadow-md cursor-pointer">
             💾 Salvar Alterações
           </button>
