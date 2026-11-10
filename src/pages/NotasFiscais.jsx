@@ -1,9 +1,10 @@
-import React, { useState } from 'react'
-import { Receipt, Search, ExternalLink, RefreshCw, Plus, Trash2, Edit2, X, Eye, UploadCloud, Loader2, FileCheck2, Building2, Tag, Calendar, DollarSign, ShieldCheck, CheckCircle2 } from 'lucide-react'
+import React, { useState, useMemo } from 'react'
+import { Receipt, Search, ExternalLink, RefreshCw, Plus, Trash2, Edit2, X, Eye, UploadCloud, Loader2, FileCheck2, Building2, Tag, Calendar, DollarSign, ShieldCheck, CheckCircle2, FileText, Download, FileSpreadsheet, Printer } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { auth, storage } from '../firebase'
+import { gerarRelatorioNotasPDF, exportarPlanilhaNotasCsv, filtrarDocumentosNotas, formatarMoeda, parseValorNumerico, formatarDataPtBr } from '../utils/relatorioNotasPdf'
 
 const statusBadge = s => ({
   Válida: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -319,6 +320,274 @@ function ModalNota({ data, user, condominiosDisponiveis, tipoInicial = 'Nota Fis
   )
 }
 
+// ─── Modal: Emissão de Relatório Personalizado de Comprovantes e Notas ───
+function ModalRelatorioNotas({ notas = [], condominiosDisponiveis = [], condominioInicial = 'Todos', onClose, user }) {
+  const isMorador = user?.role === 'Morador'
+  const agora = new Date()
+  const mesAtualStr = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`
+  const dAnt = new Date(agora.getFullYear(), agora.getMonth() - 1, 1)
+  const mesAntStr = `${dAnt.getFullYear()}-${String(dAnt.getMonth() + 1).padStart(2, '0')}`
+
+  const [condo, setCondo] = useState(isMorador ? (user?.condominio || 'Todos') : condominioInicial)
+  const [tipo, setTipo] = useState('todos')
+  const [modoPeriodo, setModoPeriodo] = useState('mes') // 'mes', 'todos', 'custom'
+  const [mesRef, setMesRef] = useState(mesAtualStr)
+  const [dataInicio, setDataInicio] = useState('')
+  const [dataFim, setDataFim] = useState('')
+  const [filtroStatus, setFiltroStatus] = useState('todos')
+
+  // Documentos filtrados com base nas escolhas em tempo real
+  const docsFiltrados = useMemo(() => {
+    return filtrarDocumentosNotas(notas, {
+      filtroCondominio: condo,
+      tipoDocumento: tipo,
+      modoPeriodo,
+      mesRef,
+      dataInicio,
+      dataFim,
+      filtroStatus
+    })
+  }, [notas, condo, tipo, modoPeriodo, mesRef, dataInicio, dataFim, filtroStatus])
+
+  const totalValor = useMemo(() => {
+    return docsFiltrados.reduce((acc, cur) => acc + parseValorNumerico(cur.valor), 0)
+  }, [docsFiltrados])
+
+  const qtdNotas = docsFiltrados.filter(d => (d.tipo || 'Nota Fiscal') === 'Nota Fiscal').length
+  const qtdCupons = docsFiltrados.filter(d => d.tipo === 'Cupom Fiscal').length
+  const qtdRecibos = docsFiltrados.filter(d => d.tipo === 'Recibo').length
+  const qtdComprovantes = docsFiltrados.filter(d => d.tipo === 'Comprovante de Pagamento').length
+
+  const getDescricaoPeriodo = () => {
+    if (modoPeriodo === 'todos') return 'Todo o Histórico Cadastrado'
+    if (modoPeriodo === 'mes') {
+      const [ano, m] = mesRef.split('-')
+      const nomesMeses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+      const mesNome = nomesMeses[parseInt(m, 10) - 1] || m
+      return `${mesNome} de ${ano}`
+    }
+    return `De ${formatarDataPtBr(dataInicio)} até ${formatarDataPtBr(dataFim)}`
+  }
+
+  const handleGerarPdf = () => {
+    if (docsFiltrados.length === 0) {
+      alert('Nenhum documento encontrado com os filtros selecionados.')
+      return
+    }
+    gerarRelatorioNotasPDF(docsFiltrados, {
+      condominio: condo,
+      tipoDocumento: tipo,
+      periodoDescricao: getDescricaoPeriodo(),
+      usuarioEmissor: user?.nome || user?.email || 'Administração Alpha'
+    })
+  }
+
+  const handleExportarCsv = () => {
+    if (docsFiltrados.length === 0) {
+      alert('Nenhum documento encontrado para exportar.')
+      return
+    }
+    const cleanNome = `relatorio_documentos_${(condo || 'geral').replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.csv`
+    exportarPlanilhaNotasCsv(docsFiltrados, cleanNome)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content max-w-xl" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b border-cream-300 flex items-center justify-between bg-slate-50/70">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold shadow-sm">
+              <FileText size={18} />
+            </div>
+            <div>
+              <h3 className="font-black text-gray-900 text-base leading-tight">
+                Emitir Relatório de Comprovantes & Notas
+              </h3>
+              <p className="text-xs text-gray-500">
+                Gere demonstrativos consolidados ou separados por condomínio e tipo de despesa.
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose}><X size={18} className="text-gray-400 hover:text-gray-700" /></button>
+        </div>
+
+        <div className="p-6 flex flex-col gap-4 text-xs">
+          {/* Linha 1: Condomínio e Tipo de Documento */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label font-bold text-gray-700">1. Condomínio Alvo *</label>
+              {isMorador ? (
+                <input 
+                  className="input font-semibold bg-gray-100 cursor-not-allowed" 
+                  value={user?.condominio || 'Meu Condomínio'} 
+                  disabled 
+                />
+              ) : (
+                <select 
+                  className="input font-bold text-brand-900 bg-amber-50/40 border-amber-300"
+                  value={condo} 
+                  onChange={e => setCondo(e.target.value)}
+                >
+                  <option value="Todos">🌐 Todos os Condomínios</option>
+                  {condominiosDisponiveis.map(c => <option key={c} value={c}>🏢 {c}</option>)}
+                </select>
+              )}
+            </div>
+
+            <div>
+              <label className="label font-bold text-gray-700">2. Tipo de Documento *</label>
+              <select 
+                className="input font-semibold text-gray-800"
+                value={tipo} 
+                onChange={e => setTipo(e.target.value)}
+              >
+                <option value="todos">📑 Todos (Notas, Cupons, Recibos e Comprovantes)</option>
+                {!isMorador && <option value="Nota Fiscal">📑 Apenas Notas Fiscais</option>}
+                <option value="Cupom Fiscal">🧾 Apenas Cupons Fiscais</option>
+                <option value="Recibo">📝 Apenas Recibos</option>
+                <option value="Comprovante de Pagamento">💳 Apenas Comprovantes de Pagamento</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Linha 2: Período */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <label className="label font-bold text-gray-700 mb-0 flex items-center gap-1.5">
+                <Calendar size={14} className="text-brand-600" />
+                3. Período do Relatório
+              </label>
+              <div className="flex gap-1.5 flex-wrap">
+                <button 
+                  type="button"
+                  onClick={() => { setModoPeriodo('mes'); setMesRef(mesAtualStr) }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                    modoPeriodo === 'mes' && mesRef === mesAtualStr ? 'bg-brand-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200'
+                  }`}
+                >
+                  Mês Atual
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => { setModoPeriodo('mes'); setMesRef(mesAntStr) }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                    modoPeriodo === 'mes' && mesRef === mesAntStr ? 'bg-brand-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200'
+                  }`}
+                >
+                  Mês Anterior
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setModoPeriodo('todos')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                    modoPeriodo === 'todos' ? 'bg-brand-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200'
+                  }`}
+                >
+                  Todo o Histórico
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setModoPeriodo('custom')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                    modoPeriodo === 'custom' ? 'bg-brand-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200'
+                  }`}
+                >
+                  Customizado
+                </button>
+              </div>
+            </div>
+
+            {modoPeriodo === 'mes' && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-600">Selecione o mês:</span>
+                <input 
+                  type="month" 
+                  className="input font-semibold text-xs py-1.5 w-48 bg-white"
+                  value={mesRef}
+                  onChange={e => setMesRef(e.target.value)}
+                />
+              </div>
+            )}
+
+            {modoPeriodo === 'custom' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <span className="text-gray-500 text-[11px]">De:</span>
+                  <input type="date" className="input text-xs bg-white" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
+                </div>
+                <div>
+                  <span className="text-gray-500 text-[11px]">Até:</span>
+                  <input type="date" className="input text-xs bg-white" value={dataFim} onChange={e => setDataFim(e.target.value)} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Linha 3: Status e Resumo */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label font-bold text-gray-700">4. Filtro por Status</label>
+              <select className="input font-semibold" value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}>
+                <option value="todos">Todos os Status</option>
+                <option value="valida_liquidada">✅ Apenas Válidas / Liquidadas (Aprovadas)</option>
+                <option value="analise">⏳ Apenas Em Análise</option>
+              </select>
+            </div>
+
+            {/* Caixa de Resumo / Prévia em Tempo Real */}
+            <div className="p-3.5 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">Prévia do Relatório</span>
+                <div className="flex items-baseline justify-between mt-0.5">
+                  <span className="text-lg font-black text-emerald-950">
+                    {formatarMoeda(totalValor)}
+                  </span>
+                  <span className="text-xs font-bold text-emerald-800">
+                    {docsFiltrados.length} doc(s)
+                  </span>
+                </div>
+              </div>
+              <div className="flex gap-1.5 flex-wrap mt-2 pt-2 border-t border-emerald-200/60 text-[10px] text-emerald-800">
+                <span>📑 {qtdNotas} NF(s)</span> •
+                <span>🧾 {qtdCupons} Cupom(ns)</span> •
+                <span>📝 {qtdRecibos} Recibo(s)</span> •
+                <span>💳 {qtdComprovantes} Comprovante(s)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Rodapé com Botões de Ação */}
+        <div className="p-5 border-t border-cream-300 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
+          <button onClick={onClose} className="btn-secondary text-xs">
+            Fechar
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleExportarCsv}
+              disabled={docsFiltrados.length === 0}
+              className="flex items-center gap-1.5 py-2 px-3.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 shadow-sm transition-all active:scale-95 disabled:opacity-50"
+            >
+              <FileSpreadsheet size={15} className="text-emerald-700" />
+              <span>Exportar Excel / CSV</span>
+            </button>
+
+            <button 
+              onClick={handleGerarPdf}
+              disabled={docsFiltrados.length === 0}
+              className="flex items-center gap-1.5 py-2 px-4 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition-all active:scale-95 disabled:opacity-50"
+            >
+              <Download size={15} />
+              <span>Baixar Relatório em PDF</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Componente Principal: Notas Fiscais, Cupons & Comprovantes ─────
 export default function NotasFiscais() {
   const { user } = useAuth()
@@ -330,6 +599,7 @@ export default function NotasFiscais() {
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
   const [modalTipoInicial, setModalTipoInicial] = useState('Cupom Fiscal')
+  const [modalRelatorio, setModalRelatorio] = useState(false)
   const [condoFilter, setCondoFilter] = useState(isMorador ? (user?.condominio || 'Todos') : 'Todos')
   const [abaAtiva, setAbaAtiva] = useState(isMorador ? 'cupons' : 'todas') // 'todas', 'cupons', 'notas'
   const [cnpjConsulta, setCnpjConsulta] = useState('')
@@ -471,6 +741,16 @@ export default function NotasFiscais() {
               </select>
             </div>
           )}
+
+          {/* Botão Emitir Relatório Personalizado */}
+          <button 
+            onClick={() => setModalRelatorio(true)} 
+            className="flex items-center gap-1.5 py-2 px-3.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition-all active:scale-95"
+            title="Emitir relatório em PDF ou Excel com filtros por condomínio e tipo"
+          >
+            <FileText size={15} />
+            <span>📄 Emitir Relatório</span>
+          </button>
 
           {/* Botão Registrar Cupom / Recibo / Comprovante (disponível para todos os perfis) */}
           <button 
@@ -697,6 +977,16 @@ export default function NotasFiscais() {
           condominiosDisponiveis={uniqueCondos} 
           onClose={() => setModal(null)} 
           onSave={handleSave} 
+        />
+      )}
+
+      {modalRelatorio && (
+        <ModalRelatorioNotas 
+          notas={notas}
+          condominiosDisponiveis={uniqueCondos}
+          condominioInicial={condoFilter}
+          onClose={() => setModalRelatorio(false)}
+          user={user}
         />
       )}
     </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Download, Building, Loader2, DollarSign, Calendar, TrendingUp, TrendingDown, CheckCircle2, History, AlertCircle, ShieldAlert } from 'lucide-react'
+import { FileText, Download, Building, Loader2, DollarSign, Calendar, TrendingUp, TrendingDown, CheckCircle2, History, AlertCircle, ShieldAlert, Receipt } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -8,6 +8,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { format, parseISO, subMonths } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { gerarRelatorioNotasPDF, parseValorNumerico, formatarDataPtBr, formatarMoeda } from '../utils/relatorioNotasPdf'
 
 export default function Relatorios() {
   const { user } = useAuth()
@@ -68,12 +69,24 @@ export default function Relatorios() {
       const snapAgua = await getDocs(collection(db, 'rateios_agua'))
       let rateiosAgua = snapAgua.docs.map(d => ({ id: d.id, ...d.data() }))
 
+      // Buscar Comprovantes e Notas Fiscais Registradas
+      const snapNotas = await getDocs(collection(db, 'notas_fiscais'))
+      let notasDocs = snapNotas.docs.map(d => ({ id: d.id, ...d.data() }))
+
       // Filtro de condomínio
       if (filtroCondominio) {
         lancamentos = lancamentos.filter(l => !l.condominio || l.condominio === filtroCondominio)
         boletos = boletos.filter(b => !b.condominio || b.condominio === filtroCondominio)
         rateiosAgua = rateiosAgua.filter(r => !r.condominio || r.condominio.toLowerCase().includes(filtroCondominio.toLowerCase()) || filtroCondominio.toLowerCase().includes(r.condominio.toLowerCase()))
+        notasDocs = notasDocs.filter(n => {
+          const nCondo = (n.condominio || '').toLowerCase()
+          const fCondo = filtroCondominio.toLowerCase()
+          return nCondo === fCondo || nCondo.includes(fCondo) || fCondo.includes(nCondo)
+        })
       }
+
+      // Filtrar notas do mês alvo
+      notasDocs = notasDocs.filter(n => (n.data || '').startsWith(`${anoStr}-${mesStr}`))
 
       // Identifica o rateio de água específico daquele mês
       const rateioAguaMes = rateiosAgua.find(r => r.competencia === mesAlvo)
@@ -331,6 +344,48 @@ export default function Relatorios() {
         })
       }
 
+      // Seção 5: Comprovantes, Recibos e Notas Fiscais Registradas no Mês
+      if (notasDocs.length > 0) {
+        doc.addPage()
+        let notasStartY = 20
+
+        doc.setFontSize(13)
+        doc.setTextColor(35, 48, 68) // Azul-marinho Corporativo Alpha #233044
+        doc.text(`5. Comprovantes & Notas Fiscais do Período — ${filtroCondominio || 'Geral'}`, 14, notasStartY)
+
+        const totalNotasVal = notasDocs.reduce((acc, cur) => acc + parseValorNumerico(cur.valor), 0)
+        doc.setFontSize(9)
+        doc.setTextColor(71, 85, 105)
+        doc.text(`Total de Documentos Fiscais Cadastrados: ${notasDocs.length} | Valor Consolidado: R$ ${totalNotasVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 14, notasStartY + 6)
+
+        const notasBody = notasDocs.map(n => [
+          formatarDataPtBr(n.data),
+          n.tipo || 'Nota Fiscal',
+          n.numero || '-',
+          n.prestador || '-',
+          n.cnpj || '-',
+          n.servico || n.arquivoNome || '-',
+          n.status || 'Válida',
+          formatarMoeda(n.valor)
+        ])
+
+        autoTable(doc, {
+          startY: notasStartY + 10,
+          head: [['Data', 'Tipo', 'Nº / ID', 'Prestador / Favorecido', 'CNPJ/CPF', 'Descrição / Serviço', 'Status', 'Valor (R$)']],
+          body: notasBody,
+          theme: 'striped',
+          headStyles: { fillColor: [35, 48, 68], fontSize: 8, fontStyle: 'bold' },
+          styles: { fontSize: 7.5, halign: 'center' },
+          columnStyles: { 
+            0: { cellWidth: 16 },
+            1: { fontStyle: 'bold', cellWidth: 22 },
+            3: { halign: 'left', fontStyle: 'bold' },
+            5: { halign: 'left' },
+            7: { halign: 'right', fontStyle: 'bold', textColor: [16, 120, 80] }
+          }
+        })
+      }
+
       // Rodapé
       const totalPages = doc.internal.getNumberOfPages()
       for (let i = 1; i <= totalPages; i++) {
@@ -540,11 +595,60 @@ export default function Relatorios() {
     }
   }
 
+  // Função para gerar Relatório Separado de Documentos Fiscais & Comprovantes
+  const gerarRelatorioDocumentosFiscais = async (mesAlvo = mes, condoAlvo = selectedCondominio) => {
+    setLoading(true)
+    try {
+      const filtroCondominio = condoAlvo === 'Todos' ? null : condoAlvo
+      const [anoStr, mesStr] = mesAlvo.split('-')
+
+      const snapNotas = await getDocs(collection(db, 'notas_fiscais'))
+      let notasDocs = snapNotas.docs.map(d => ({ id: d.id, ...d.data() }))
+
+      if (filtroCondominio) {
+        notasDocs = notasDocs.filter(n => {
+          const nCondo = (n.condominio || '').toLowerCase()
+          const fCondo = filtroCondominio.toLowerCase()
+          return nCondo === fCondo || nCondo.includes(fCondo) || fCondo.includes(nCondo)
+        })
+      }
+
+      // Filtrar pelo mês de referência
+      notasDocs = notasDocs.filter(n => (n.data || '').startsWith(`${anoStr}-${mesStr}`))
+
+      if (notasDocs.length === 0) {
+        alert(`Nenhum comprovante ou nota fiscal cadastrada para o condomínio ${filtroCondominio || 'selecionado'} no mês ${mesAlvo}.`)
+        setLoading(false)
+        setDownloadingMes(null)
+        return
+      }
+
+      const nomesMeses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+      const mesNome = nomesMeses[parseInt(mesStr, 10) - 1] || mesStr
+      const periodoDesc = `${mesNome} de ${anoStr}`
+
+      gerarRelatorioNotasPDF(notasDocs, {
+        condominio: filtroCondominio || 'Todos os Condomínios',
+        tipoDocumento: 'todos',
+        periodoDescricao: periodoDesc,
+        usuarioEmissor: user?.nome || user?.email || 'Administração Alpha'
+      })
+    } catch (err) {
+      console.error(err)
+      alert("Erro ao gerar relatório de documentos fiscais. Tente novamente.")
+    } finally {
+      setLoading(false)
+      setDownloadingMes(null)
+    }
+  }
+
   const handleDownloadPersonalizado = () => {
     if (tipoRelatorio === 'financeiro') {
       gerarRelatorioFinanceiro(mes, selectedCondominio)
-    } else {
+    } else if (tipoRelatorio === 'operacional') {
       gerarRelatorioOperacional(mes, selectedCondominio)
+    } else if (tipoRelatorio === 'notas_fiscais') {
+      gerarRelatorioDocumentosFiscais(mes, selectedCondominio)
     }
   }
 
@@ -552,8 +656,10 @@ export default function Relatorios() {
     setDownloadingMes(`${mesValor}_${tipo}`)
     if (tipo === 'financeiro') {
       gerarRelatorioFinanceiro(mesValor, selectedCondominio)
-    } else {
+    } else if (tipo === 'operacional') {
       gerarRelatorioOperacional(mesValor, selectedCondominio)
+    } else if (tipo === 'notas_fiscais') {
+      gerarRelatorioDocumentosFiscais(mesValor, selectedCondominio)
     }
   }
 
@@ -599,7 +705,8 @@ export default function Relatorios() {
               value={tipoRelatorio}
               onChange={e => setTipoRelatorio(e.target.value)}
             >
-              <option value="financeiro">💰 Financeiro (Receitas & Despesas)</option>
+              <option value="financeiro">💰 Financeiro Completo (Receitas, Despesas & Comprovantes)</option>
+              <option value="notas_fiscais">📑 Comprovantes & Notas Fiscais (Separado)</option>
               <option value="operacional">📋 Operacional (Atividades & Ocorrências)</option>
             </select>
           </div>
@@ -696,23 +803,33 @@ export default function Relatorios() {
                   <button
                     onClick={() => handleDownloadMesHistorico(m.valor, 'financeiro')}
                     disabled={loading}
-                    title="Baixar Receitas & Despesas deste mês"
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 transition-colors"
+                    title="Baixar Balanço Financeiro deste mês (Receitas, Despesas & Comprovantes)"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 transition-colors"
                   >
                     {isDownloadingFin ? <Loader2 size={13} className="animate-spin" /> : <TrendingUp size={13} />}
-                    <span>💰 Receitas/Despesas</span>
+                    <span>💰 Financeiro</span>
                   </button>
 
                   <button
                     onClick={() => handleDownloadMesHistorico(m.valor, 'operacional')}
                     disabled={loading}
                     title="Baixar Atividades e Ocorrências deste mês"
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200 transition-colors"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200 transition-colors"
                   >
                     {isDownloadingOp ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
                     <span>📋 Atividades</span>
                   </button>
                 </div>
+
+                <button
+                  onClick={() => handleDownloadMesHistorico(m.valor, 'notas_fiscais')}
+                  disabled={loading}
+                  title="Baixar Comprovantes e Notas Fiscais separadas deste mês"
+                  className="flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-bold border border-slate-200 transition-colors mt-2 w-full"
+                >
+                  {downloadingMes === `${m.valor}_notas_fiscais` ? <Loader2 size={13} className="animate-spin" /> : <Receipt size={13} className="text-slate-600" />}
+                  <span>📑 Comprovantes & Notas Fiscais</span>
+                </button>
               </div>
             )
           })}
