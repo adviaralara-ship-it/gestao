@@ -4,8 +4,20 @@ import { auth } from '../firebase'
 async function getAuthHeaders() {
   const headers = { 'Content-Type': 'application/json' }
   try {
-    if (auth?.currentUser) {
-      const token = await auth.currentUser.getIdToken(false)
+    let currentUser = auth?.currentUser
+    if (!currentUser && typeof window !== 'undefined') {
+      await new Promise(resolve => {
+        const unsub = auth?.onAuthStateChanged(u => {
+          if (u) currentUser = u
+          unsub?.()
+          resolve()
+        })
+        setTimeout(() => { unsub?.(); resolve() }, 1000)
+      })
+    }
+
+    if (currentUser) {
+      const token = await currentUser.getIdToken(false)
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
       }
