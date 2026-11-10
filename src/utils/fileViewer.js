@@ -8,13 +8,21 @@ export function converterParaBlobUrl(dataUrl) {
     const mimeMatch = parts[0].match(/:(.*?);/);
     const mimeType = mimeMatch ? mimeMatch[1] : 'application/pdf';
     
-    const byteCharacters = atob(parts[1]);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    const cleanBase64 = (parts[1] || '').replace(/[\s\r\n]+/g, '');
+    const byteCharacters = atob(cleanBase64);
+    const sliceSize = 1024;
+    const byteArrays = [];
+
+    for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+      const slice = byteCharacters.slice(offset, offset + sliceSize);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i);
+      }
+      byteArrays.push(new Uint8Array(byteNumbers));
     }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: mimeType });
+
+    const blob = new Blob(byteArrays, { type: mimeType });
     return URL.createObjectURL(blob);
   } catch (err) {
     console.error("Erro ao converter dataUrl para Blob:", err);

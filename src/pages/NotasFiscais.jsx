@@ -6,6 +6,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { auth, storage } from '../firebase'
 import { gerarRelatorioNotasPDF, exportarPlanilhaNotasCsv, filtrarDocumentosNotas, formatarMoeda, parseValorNumerico, formatarDataPtBr } from '../utils/relatorioNotasPdf'
 import { converterParaBlobUrl, visualizarDocumento, baixarDocumento } from '../utils/fileViewer'
+import VisualizadorPdfCanvas from '../components/VisualizadorPdfCanvas'
 
 const statusBadge = s => ({
   Válida: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -1036,19 +1037,20 @@ export default function NotasFiscais() {
             <div className="p-4 bg-slate-100 flex items-center justify-center min-h-[400px]">
               {(() => {
                 const url = previewDoc.arquivoUrl || ''
-                const blobUrl = converterParaBlobUrl(url)
                 const isPdf = url.includes('application/pdf') || url.startsWith('data:application/pdf') || (previewDoc.arquivoNome || '').toLowerCase().endsWith('.pdf')
                 
                 if (isPdf) {
                   return (
-                    <iframe 
-                      src={blobUrl} 
-                      className="w-full h-[72vh] rounded-xl border border-slate-300 bg-white shadow-inner" 
-                      title="Visualização da Nota Fiscal"
+                    <VisualizadorPdfCanvas 
+                      url={url} 
+                      nome={previewDoc.arquivoNome || previewDoc.numero || 'Nota_Fiscal.pdf'}
+                      onBaixar={() => baixarDocumento(previewDoc.arquivoUrl, previewDoc.arquivoNome || `${previewDoc.numero || 'documento'}.pdf`)}
+                      onNovaAba={() => visualizarDocumento(previewDoc.arquivoUrl, previewDoc.arquivoNome || previewDoc.numero || 'Documento')}
                     />
                   )
                 }
 
+                const blobUrl = converterParaBlobUrl(url)
                 return (
                   <div className="max-h-[72vh] overflow-auto flex items-center justify-center p-2">
                     <img 
