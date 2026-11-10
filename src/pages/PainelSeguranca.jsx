@@ -104,6 +104,45 @@ export default function PainelSegurancaBackup() {
     }
   }
 
+  const handleExportarJsonDireto = async () => {
+    setExecutandoBackup(true)
+    setMsgSucesso('')
+
+    try {
+      const dadosExportados = {}
+      let totalDocs = 0
+
+      for (const colName of COLECOES_SISTEMA) {
+        try {
+          const snap = await getDocs(collection(db, colName))
+          dadosExportados[colName] = snap.docs.map(docSnap => ({
+            id: docSnap.id,
+            ...docSnap.data()
+          }))
+          totalDocs += snap.docs.length
+        } catch (e) {
+          console.warn(`Aviso ao exportar coleção ${colName}:`, e)
+        }
+      }
+
+      const agora = new Date()
+      const dataFormatada = agora.toISOString().slice(0, 10)
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dadosExportados, null, 2))
+      const downloadAnchor = document.createElement('a')
+      downloadAnchor.setAttribute("href", dataStr)
+      downloadAnchor.setAttribute("download", `alpha_backup_completo_${dataFormatada}_${totalDocs}_itens.json`)
+      document.body.appendChild(downloadAnchor)
+      downloadAnchor.click()
+      downloadAnchor.remove()
+
+      setMsgSucesso(`✅ Download concluído! Arquivo gerado com ${totalDocs} registros de todas as 18 coleções.`)
+    } catch (err) {
+      alert('Erro ao exportar backup: ' + err.message)
+    } finally {
+      setExecutandoBackup(false)
+    }
+  }
+
   const handleRestaurarBackup = async (backupId, modo = 'teste') => {
     const confirmMsg = modo === 'teste'
       ? 'Deseja restaurar este backup em AMBIENTE DE TESTE?\n\nOs dados serão gravados em coleções de teste (prefixo teste_) para você conferir a integridade sem alterar nenhum dado real em produção.'
@@ -314,22 +353,23 @@ export default function PainelSegurancaBackup() {
           <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-2xl shadow-lg border border-slate-700 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
               <h3 className="text-lg font-black flex items-center gap-2">
-                <Database className="text-emerald-400" /> Cofre de Backups Diários Externos
+                <Database className="text-emerald-400" /> Cofre de Backups &amp; Exportação Completa
               </h3>
               <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-                As cópias são executadas automaticamente todos os dias às <strong>00:00h (Horário de Brasília)</strong> através de cron independente na Vercel e armazenadas em cofre de segurança isolado, com retenção histórica de <strong>pelo menos 7 dias</strong>.
+                As cópias preservam todos os dados de condomínios, moradores, finanças, boletos e manutenções. Você pode gerar snapshots no cofre da nuvem ou baixar o arquivo JSON completo diretamente para o seu computador a qualquer momento.
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <a
-                href="/api/backup/executar?download=true"
-                target="_blank"
-                rel="noreferrer"
-                className="btn-secondary bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs py-2 flex items-center gap-1.5"
-                title="Faz o download do snapshot completo para seu computador"
+              <button
+                type="button"
+                onClick={handleExportarJsonDireto}
+                disabled={executandoBackup}
+                className="btn-secondary bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs py-2 flex items-center gap-1.5 cursor-pointer"
+                title="Faz o download imediato de todas as coleções para o seu computador em arquivo JSON"
               >
-                <Download size={14} /> Baixar JSON Completo
-              </a>
+                <Download size={14} className={executandoBackup ? 'animate-bounce' : ''} />
+                {executandoBackup ? 'Exportando Dados...' : 'Baixar JSON Completo'}
+              </button>
             </div>
           </div>
 
