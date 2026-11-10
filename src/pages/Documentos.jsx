@@ -148,7 +148,7 @@ function ModalDocumento({ data, onClose, onSave, condominios }) {
         const valResult = await validateFileUpload(arquivo, ['pdf', 'jpeg', 'png', 'webp'])
         if (!valResult.valid) {
           alert(`❌ Erro no arquivo: ${valResult.error}`)
-          setLoading(false)
+          setUploading(false)
           setUploadProgress('')
           return
         }

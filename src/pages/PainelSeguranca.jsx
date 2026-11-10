@@ -127,13 +127,15 @@ export default function PainelSegurancaBackup() {
 
       const agora = new Date()
       const dataFormatada = agora.toISOString().slice(0, 10)
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dadosExportados, null, 2))
+      const blob = new Blob([JSON.stringify(dadosExportados, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
       const downloadAnchor = document.createElement('a')
-      downloadAnchor.setAttribute("href", dataStr)
+      downloadAnchor.setAttribute("href", url)
       downloadAnchor.setAttribute("download", `alpha_backup_completo_${dataFormatada}_${totalDocs}_itens.json`)
       document.body.appendChild(downloadAnchor)
       downloadAnchor.click()
       downloadAnchor.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
 
       setMsgSucesso(`✅ Download concluído! Arquivo gerado com ${totalDocs} registros de todas as 18 coleções.`)
     } catch (err) {

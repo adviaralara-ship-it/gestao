@@ -481,112 +481,121 @@ export default function Cotacoes() {
 
   // Exportar Comparativo em PDF Profissional
   const exportarComparativoPDF = (cot) => {
-    const comp = calcularComparativo(cot)
-    if (!comp) {
-      alert('Esta cotação não possui fornecedores para gerar comparativo.')
-      return
-    }
+    try {
+      const comp = calcularComparativo(cot)
+      if (!comp || !comp.fornecedoresComNota || comp.fornecedoresComNota.length === 0) {
+        alert('Por favor, preencha ao menos um fornecedor com nome e valor na planilha para gerar o relatório comparativo em PDF.')
+        return
+      }
 
-    const doc = new jsPDF()
-    const pageWidth = doc.internal.pageSize.width
+      const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.width
 
-    // Topo Oficial Alpha
-    doc.setFillColor(26, 43, 78)
-    doc.rect(0, 0, pageWidth, 28, 'F')
-    doc.setFontSize(18)
-    doc.setTextColor(255, 255, 255)
-    doc.text('ALPHA SOLUÇÕES CONDOMINIAIS', pageWidth / 2, 12, { align: 'center' })
-    doc.setFontSize(11)
-    doc.setTextColor(200, 220, 255)
-    doc.text(`Mapa Comparativo de Cotação & Decisão de Compra — ${cot.numero}`, pageWidth / 2, 20, { align: 'center' })
+      // Topo Oficial Alpha
+      doc.setFillColor(26, 43, 78)
+      doc.rect(0, 0, pageWidth, 28, 'F')
+      doc.setFontSize(18)
+      doc.setTextColor(255, 255, 255)
+      doc.text('ALPHA SOLUÇÕES CONDOMINIAIS', pageWidth / 2, 12, { align: 'center' })
+      doc.setFontSize(11)
+      doc.setTextColor(200, 220, 255)
+      doc.text(`Mapa Comparativo de Cotação & Decisão de Compra — ${cot?.numero || 'COT-0000'}`, pageWidth / 2, 20, { align: 'center' })
 
-    let startY = 36
+      let startY = 36
 
-    // Dados da Cotação
-    doc.setFontSize(10)
-    doc.setTextColor(50)
-    doc.text(`Condomínio: ${cot.condominio} | Objeto: ${cot.titulo} | Categoria: ${cot.categoria}`, 14, startY)
-    doc.text(`Responsável: ${cot.responsavel} | Data: ${cot.dataCriacao || format(new Date(), 'dd/MM/yyyy')} | Status: ${cot.status}`, 14, startY + 6)
-    startY += 14
+      // Dados da Cotação
+      doc.setFontSize(10)
+      doc.setTextColor(50)
+      doc.text(`Condomínio: ${cot?.condominio || 'Geral'} | Objeto: ${cot?.titulo || 'Serviço'} | Categoria: ${cot?.categoria || 'Manutenção'}`, 14, startY)
+      doc.text(`Responsável: ${cot?.responsavel || user?.nome || 'Administrador'} | Data: ${cot?.dataCriacao || format(new Date(), 'dd/MM/yyyy')} | Status: ${cot?.status || 'Em análise'}`, 14, startY + 6)
+      startY += 14
 
-    // Tabela Comparativa de Fornecedores
-    doc.setFontSize(13)
-    doc.setTextColor(26, 43, 78)
-    doc.text('1. Quadro Comparativo de Propostas', 14, startY)
-
-    const tableHeaders = ['Critério / Fornecedor', ...comp.fornecedoresComNota.map(f => f.nome)]
-    const rows = [
-      ['Valor Total da Proposta', ...comp.fornecedoresComNota.map(f => `R$ ${(parseFloat(f.valorTotal) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }`)],
-      ['Prazo de Entrega/Execução', ...comp.fornecedoresComNota.map(f => f.prazo || '-')],
-      ['Garantia Oferecida', ...comp.fornecedoresComNota.map(f => f.garantia ? `${f.garantia} meses` : '-')],
-      ['Condição de Pagamento', ...comp.fornecedoresComNota.map(f => f.condicaoPagamento || '-')],
-      ['Pontuação Ponderada (0-100)', ...comp.fornecedoresComNota.map(f => `${f.notaCalculada} pts`)],
-    ]
-
-    autoTable(doc, {
-      startY: startY + 4,
-      head: [tableHeaders],
-      body: rows,
-      theme: 'grid',
-      headStyles: { fillColor: [26, 43, 78], halign: 'center' },
-      styles: { fontSize: 9, halign: 'center' },
-      columnStyles: { 0: { halign: 'left', fontStyle: 'bold' } }
-    })
-
-    startY = doc.lastAutoTable.finalY + 12
-
-    // Destaques e Inteligência
-    doc.setFontSize(13)
-    doc.setTextColor(26, 43, 78)
-    doc.text('2. Análise Técnica & Inteligência de Compra', 14, startY)
-
-    const menorNome = comp.menorOrcamento?.nome || 'N/A'
-    const menorVal = comp.menorOrcamento ? `R$ ${comp.menorOrcamento.vTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'N/A'
-    const melhorNome = comp.melhorCustoBeneficio?.nome || 'N/A'
-    const economiaTxt = comp.economiaPotencial > 0 ? `R$ ${comp.economiaPotencial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${comp.percentualEconomia}%)` : 'R$ 0,00'
-
-    autoTable(doc, {
-      startY: startY + 4,
-      head: [['🏆 Menor Preço', '⭐ Melhor Custo-Benefício', '💰 Economia Potencial']],
-      body: [[
-        `${menorNome}\n${menorVal}`,
-        `${melhorNome}\nNota: ${comp.melhorCustoBeneficio?.notaCalculada || 0} pts`,
-        `${economiaTxt}\n(ref. à 2ª menor proposta)`
-      ]],
-      theme: 'grid',
-      headStyles: { fillColor: [16, 110, 80], halign: 'center' },
-      bodyStyles: { halign: 'center', fontStyle: 'bold', fontSize: 10 }
-    })
-
-    startY = doc.lastAutoTable.finalY + 12
-
-    // Decisão e Justificativa
-    if (cot.fornecedorEscolhidoId) {
-      const vencedor = cot.fornecedores.find(f => f.id === cot.fornecedorEscolhidoId || f.nome === cot.fornecedorEscolhidoId)
+      // Tabela Comparativa de Fornecedores
       doc.setFontSize(13)
       doc.setTextColor(26, 43, 78)
-      doc.text('3. Decisão da Escolha & Justificativa', 14, startY)
+      doc.text('1. Quadro Comparativo de Propostas', 14, startY)
 
-      doc.setFontSize(10)
-      doc.setTextColor(40)
-      doc.text(`Fornecedor Escolhido: ${vencedor?.nome || 'Não definido'}`, 14, startY + 6)
-      doc.text(`Motivo da Escolha: ${cot.motivoEscolha || '-'}`, 14, startY + 12)
-      doc.text(`Valor Aprovado / Final: R$ ${(parseFloat(cot.valorFinalAprovado) || parseFloat(vencedor?.valorTotal) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 14, startY + 18)
-      doc.text(`Justificativa: ${cot.justificativaEscolha || 'Conforme análise técnica e orçamentos apresentados.'}`, 14, startY + 24, { maxWidth: pageWidth - 28 })
-      startY += 40
+      const tableHeaders = ['Critério / Fornecedor', ...comp.fornecedoresComNota.map((f, i) => f.nome || `Fornecedor ${i+1}`)]
+      const rows = [
+        ['Valor Total da Proposta', ...comp.fornecedoresComNota.map(f => `R$ ${(parseFloat(f.valorTotal) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }`)],
+        ['Prazo de Entrega/Execução', ...comp.fornecedoresComNota.map(f => f.prazo || '-')],
+        ['Garantia Oferecida', ...comp.fornecedoresComNota.map(f => f.garantia ? `${f.garantia} meses` : '-')],
+        ['Condição de Pagamento', ...comp.fornecedoresComNota.map(f => f.condicaoPagamento || '-')],
+        ['Pontuação Ponderada (0-100)', ...comp.fornecedoresComNota.map(f => `${f.notaCalculada || 0} pts`)],
+      ]
+
+      autoTable(doc, {
+        startY: startY + 4,
+        head: [tableHeaders],
+        body: rows,
+        theme: 'grid',
+        headStyles: { fillColor: [26, 43, 78], halign: 'center' },
+        styles: { fontSize: 9, halign: 'center' },
+        columnStyles: { 0: { halign: 'left', fontStyle: 'bold' } }
+      })
+
+      startY = (doc.lastAutoTable?.finalY || startY + 40) + 12
+
+      // Destaques e Inteligência
+      doc.setFontSize(13)
+      doc.setTextColor(26, 43, 78)
+      doc.text('2. Análise Técnica & Inteligência de Compra', 14, startY)
+
+      const menorNome = comp.menorOrcamento?.nome || 'N/A'
+      const menorVal = comp.menorOrcamento ? `R$ ${comp.menorOrcamento.vTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'N/A'
+      const melhorNome = comp.melhorCustoBeneficio?.nome || 'N/A'
+      const economiaTxt = comp.economiaPotencial > 0 ? `R$ ${comp.economiaPotencial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${comp.percentualEconomia}%)` : 'R$ 0,00'
+
+      autoTable(doc, {
+        startY: startY + 4,
+        head: [['🏆 Menor Preço', '⭐ Melhor Custo-Benefício', '💰 Economia Potencial']],
+        body: [[
+          `${menorNome}\n${menorVal}`,
+          `${melhorNome}\nNota: ${comp.melhorCustoBeneficio?.notaCalculada || 0} pts`,
+          `${economiaTxt}\n(ref. à 2ª menor proposta)`
+        ]],
+        theme: 'grid',
+        headStyles: { fillColor: [16, 110, 80], halign: 'center' },
+        bodyStyles: { halign: 'center', fontStyle: 'bold', fontSize: 10 }
+      })
+
+      startY = (doc.lastAutoTable?.finalY || startY + 30) + 12
+
+      // Decisão e Justificativa
+      const fornecedoresList = Array.isArray(cot?.fornecedores) ? cot.fornecedores : []
+      const vencedor = fornecedoresList.find(f => f.id === cot?.fornecedorEscolhidoId || f.nome === cot?.fornecedorEscolhidoId || f.vencedor) || fornecedoresList[0] || null
+
+      if (vencedor) {
+        doc.setFontSize(13)
+        doc.setTextColor(26, 43, 78)
+        doc.text('3. Decisão da Escolha & Justificativa', 14, startY)
+
+        const valVencedor = parseFloat(cot?.valorFinalAprovado) || parseFloat(vencedor?.valorTotal) || 0
+
+        doc.setFontSize(10)
+        doc.setTextColor(40)
+        doc.text(`Fornecedor Escolhido: ${vencedor?.nome || 'Não definido'}`, 14, startY + 6)
+        doc.text(`Motivo da Escolha: ${cot?.motivoEscolha || 'Melhor custo-benefício e conformidade com escopo'}`, 14, startY + 12)
+        doc.text(`Valor Aprovado / Final: R$ ${valVencedor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 14, startY + 18)
+        doc.text(`Justificativa: ${cot?.justificativaEscolha || cot?.observacoes || 'Conforme análise técnica das propostas apresentadas na planilha.'}`, 14, startY + 24, { maxWidth: pageWidth - 28 })
+        startY += 40
+      }
+
+      // Assinaturas
+      if (startY > 230) { doc.addPage(); startY = 30; }
+      doc.setFontSize(9)
+      doc.setTextColor(100)
+      doc.text('____________________________________', 30, startY + 20)
+      doc.text('Responsável pela Cotação', 40, startY + 26)
+
+      doc.text('____________________________________', pageWidth - 100, startY + 20)
+      doc.text('Síndico / Conselho Fiscal', pageWidth - 90, startY + 26)
+
+      doc.save(`Comparativo_${cot?.numero || 'Orcamento'}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`)
+    } catch (err) {
+      console.error('Erro ao exportar PDF comparativo:', err)
+      alert('Erro ao gerar relatório em PDF: ' + (err.message || 'Verifique os dados da cotação.'))
     }
-
-    // Assinaturas
-    if (startY > 230) { doc.addPage(); startY = 30; }
-    doc.setFontSize(9)
-    doc.setTextColor(100)
-    doc.text('____________________________________', 30, startY + 20)
-    doc.text('Responsável pela Cotação', 40, startY + 26)
-
-    doc.text('____________________________________', pageWidth - 100, startY + 20)
-    doc.text('Síndico / Conselho Fiscal', pageWidth - 90, startY + 26)
-
-    doc.save(`Comparativo_${cot.numero}.pdf`)
   }
 
   // Selecionar / desselecionar orçamento individual
@@ -609,67 +618,72 @@ export default function Cotacoes() {
 
   // Exportar relatório em PDF APENAS dos orçamentos selecionados
   const exportarSelecionadosPDF = () => {
-    const itensParaExportar = cotacoes.filter(c => selecionados.includes(c.id))
-    if (itensParaExportar.length === 0) {
-      alert('Selecione ao menos um orçamento para exportar.')
-      return
-    }
-
-    const doc = new jsPDF()
-    const pageWidth = doc.internal.pageSize.width
-
-    // Topo Oficial Alpha
-    doc.setFillColor(26, 43, 78)
-    doc.rect(0, 0, pageWidth, 28, 'F')
-    doc.setFontSize(16)
-    doc.setTextColor(255, 255, 255)
-    doc.text('ALPHA SOLUÇÕES CONDOMINIAIS', pageWidth / 2, 12, { align: 'center' })
-    doc.setFontSize(10)
-    doc.setTextColor(200, 220, 255)
-    doc.text(`Relatório de Orçamentos Selecionados (${itensParaExportar.length} itens)`, pageWidth / 2, 20, { align: 'center' })
-
-    let startY = 36
-    doc.setFontSize(9)
-    doc.setTextColor(80)
-    doc.text(`Emitido em: ${format(new Date(), 'dd/MM/yyyy HH:mm')} | Responsável: ${user?.nome || 'Administrador'}`, 14, startY)
-
-    const tableHeaders = ['Cotação', 'Condomínio', 'Objeto / Serviço', 'Status', 'Menor Proposta', 'Responsável']
-    const rows = itensParaExportar.map(cot => {
-      const comp = calcularComparativo(cot)
-      const menorVal = comp?.menorOrcamento?.vTotal || cot.valorEstimadoTotal || 0
-      const menorValStr = menorVal > 0 ? `R$ ${menorVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—'
-      return [
-        cot.numero || 'COT-0000',
-        cot.condominio || 'Geral',
-        cot.titulo || '-',
-        cot.status || 'Rascunho',
-        menorValStr,
-        cot.responsavel || '-'
-      ]
-    })
-
-    autoTable(doc, {
-      startY: startY + 4,
-      head: [tableHeaders],
-      body: rows,
-      theme: 'grid',
-      headStyles: { fillColor: [26, 43, 78], halign: 'center', fontSize: 9 },
-      styles: { fontSize: 8, halign: 'left' },
-      columnStyles: {
-        0: { fontStyle: 'bold', halign: 'center', cellWidth: 28 },
-        3: { halign: 'center', cellWidth: 28 },
-        4: { halign: 'right', fontStyle: 'bold', cellWidth: 32 },
+    try {
+      const itensParaExportar = cotacoes.filter(c => selecionados.includes(c.id))
+      if (itensParaExportar.length === 0) {
+        alert('Selecione ao menos um orçamento marcando a caixinha (checkbox) para exportar.')
+        return
       }
-    })
 
-    const finalY = doc.lastAutoTable.finalY + 12
-    if (finalY > 260) doc.addPage()
+      const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.width
 
-    doc.setFontSize(8)
-    doc.setTextColor(120)
-    doc.text(`Documento gerado automaticamente pelo Sistema de Gestão Alpha Soluções.`, 14, (finalY > 260 ? 30 : finalY))
+      // Topo Oficial Alpha
+      doc.setFillColor(26, 43, 78)
+      doc.rect(0, 0, pageWidth, 28, 'F')
+      doc.setFontSize(16)
+      doc.setTextColor(255, 255, 255)
+      doc.text('ALPHA SOLUÇÕES CONDOMINIAIS', pageWidth / 2, 12, { align: 'center' })
+      doc.setFontSize(10)
+      doc.setTextColor(200, 220, 255)
+      doc.text(`Relatório de Orçamentos Selecionados (${itensParaExportar.length} itens)`, pageWidth / 2, 20, { align: 'center' })
 
-    doc.save(`Relatorio_Orcamentos_Selecionados_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`)
+      let startY = 36
+      doc.setFontSize(9)
+      doc.setTextColor(80)
+      doc.text(`Emitido em: ${format(new Date(), 'dd/MM/yyyy HH:mm')} | Responsável: ${user?.nome || 'Administrador'}`, 14, startY)
+
+      const tableHeaders = ['Cotação', 'Condomínio', 'Objeto / Serviço', 'Status', 'Menor Proposta', 'Responsável']
+      const rows = itensParaExportar.map(cot => {
+        const comp = calcularComparativo(cot)
+        const menorVal = comp?.menorOrcamento?.vTotal || cot.valorEstimadoTotal || 0
+        const menorValStr = menorVal > 0 ? `R$ ${menorVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—'
+        return [
+          cot.numero || 'COT-0000',
+          cot.condominio || 'Geral',
+          cot.titulo || '-',
+          cot.status || 'Rascunho',
+          menorValStr,
+          cot.responsavel || '-'
+        ]
+      })
+
+      autoTable(doc, {
+        startY: startY + 4,
+        head: [tableHeaders],
+        body: rows,
+        theme: 'grid',
+        headStyles: { fillColor: [26, 43, 78], halign: 'center', fontSize: 9 },
+        styles: { fontSize: 8, halign: 'left' },
+        columnStyles: {
+          0: { fontStyle: 'bold', halign: 'center', cellWidth: 28 },
+          3: { halign: 'center', cellWidth: 28 },
+          4: { halign: 'right', fontStyle: 'bold', cellWidth: 32 },
+        }
+      })
+
+      const finalY = (doc.lastAutoTable?.finalY || startY + 50) + 12
+      if (finalY > 260) doc.addPage()
+
+      doc.setFontSize(8)
+      doc.setTextColor(120)
+      doc.text(`Documento gerado automaticamente pelo Sistema de Gestão Alpha Soluções.`, 14, (finalY > 260 ? 30 : finalY))
+
+      doc.save(`Relatorio_Orcamentos_Selecionados_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`)
+    } catch (err) {
+      console.error('Erro ao exportar selecionados:', err)
+      alert('Erro ao exportar selecionados: ' + (err.message || 'Verifique os itens selecionados.'))
+    }
   }
 
   // Integração: Lançar no Financeiro
