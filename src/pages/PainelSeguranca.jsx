@@ -16,7 +16,7 @@ const COLECOES_SISTEMA = [
   'condominios', 'moradores', 'financeiro_lancamentos', 'boletos', 
   'cotacoes', 'manutencoes', 'apolices', 'ocorrencias', 'assembleias', 
   'avisos', 'reservas', 'usuarios', 'pets', 'veiculos', 'visitantes', 
-  'documentos', 'encomendas', 'tarefas'
+  'documentos', 'encomendas', 'tarefas', 'notas_fiscais'
 ]
 
 export default function PainelSegurancaBackup() {
@@ -189,6 +189,42 @@ export default function PainelSegurancaBackup() {
       setMsgSucesso(`✅ Download concluído! Arquivo gerado com ${totalDocs} registros de todas as 18 coleções.`)
     } catch (err) {
       alert('Erro ao exportar backup: ' + err.message)
+    } finally {
+      setExecutandoBackup(false)
+    }
+  }
+
+  const handleEnviarBackupEmailCofre = async () => {
+    setExecutandoBackup(true)
+    setMsgSucesso('Gerando cópia completa e enviando para o cofre cofrealpha29@gmail.com...')
+    try {
+      let token = ''
+      try {
+        token = await auth?.currentUser?.getIdToken?.()
+      } catch (e) {}
+
+      const headers = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
+
+      const res = await fetch('/api/backup/executar?enviarEmail=true&destino=cofrealpha29@gmail.com', {
+        method: 'GET',
+        headers
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `Erro ${res.status}`)
+      }
+
+      const data = await res.json()
+      if (data.emailStatus?.enviado) {
+        setMsgSucesso(`✅ Sucesso! Cópia de segurança com ${data.totalDocumentos} registros enviada para cofrealpha29@gmail.com!`)
+        alert(`🎉 Cópia de segurança enviada com sucesso!\n\nForam empacotados ${data.totalDocumentos} registros de todas as coleções do sistema e o arquivo JSON completo foi anexado e enviado diretamente para o e-mail do cofre:\n👉 cofrealpha29@gmail.com\n\nVocê pode abrir sua caixa de entrada para conferir o anexo!`)
+      } else {
+        throw new Error(data.emailStatus?.motivo || data.emailStatus?.erro || 'Falha no envio do e-mail')
+      }
+    } catch (err) {
+      alert('Erro ao enviar backup para o cofre: ' + err.message)
     } finally {
       setExecutandoBackup(false)
     }
@@ -524,6 +560,17 @@ export default function PainelSegurancaBackup() {
             <div className="flex items-center flex-wrap gap-2">
               <button
                 type="button"
+                onClick={handleEnviarBackupEmailCofre}
+                disabled={executandoBackup}
+                className="btn-secondary bg-sky-600 hover:bg-sky-500 text-white border-transparent text-xs py-2 flex items-center gap-1.5 cursor-pointer font-bold shadow-md"
+                title="Envia a cópia de segurança em formato JSON diretamente como anexo para o e-mail oficial cofrealpha29@gmail.com"
+              >
+                <Mail size={14} className={executandoBackup ? 'animate-bounce' : ''} />
+                {executandoBackup ? 'Enviando ao Cofre...' : '📧 Enviar Cópia para cofrealpha29@gmail.com'}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={executandoBackup}
                 className="btn-secondary bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs py-2 flex items-center gap-1.5 cursor-pointer"
@@ -545,16 +592,16 @@ export default function PainelSegurancaBackup() {
             </div>
           </div>
 
-          {/* Card explicativo sobre a nuvem e Google Drive */}
+          {/* Card explicativo sobre a nuvem, cofre de e-mail e Google Drive */}
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-blue-900">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700 shrink-0 font-bold">
                 <HardDrive size={18} />
               </div>
               <div>
-                <strong className="block text-blue-950 font-bold">Como funciona o armazenamento das cópias:</strong>
+                <strong className="block text-blue-950 font-bold">Armazenamento das Cópias &amp; Envio Automatizado para o Cofre:</strong>
                 <span>
-                  Cada snapshot é gravado com segurança militar no <strong>Google Cloud Storage</strong> da Alpha e baixado no seu computador. Para sincronizar com o <strong>Google Drive</strong>, basta manter a pasta de Downloads sincronizada com o app do Google Drive no seu PC.
+                  O sistema envia a cópia de segurança completa com todos os condomínios, moradores, finanças, boletos e notas fiscais diretamente para o seu e-mail <strong>cofrealpha29@gmail.com</strong>. Você também pode baixar o arquivo .JSON para salvar na sua pasta do Google Drive (<strong>00 - Cofre de Backups Alpha</strong>) ou restaurar a qualquer momento.
                 </span>
               </div>
             </div>

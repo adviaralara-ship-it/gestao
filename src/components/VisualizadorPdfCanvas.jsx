@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, AlertCircle, Download, ExternalLink } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, AlertCircle, Download, ExternalLink, FileText } from 'lucide-react'
+import { converterParaBlobUrl } from '../utils/fileViewer'
 
 // Configura o worker do PDF.js usando o bundler do Vite
 if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
@@ -16,6 +17,7 @@ export default function VisualizadorPdfCanvas({ url, nome = 'Documento.pdf', onB
   const [scale, setScale] = useState(1.3)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [blobUrl, setBlobUrl] = useState('')
 
   useEffect(() => {
     let isCancelled = false
@@ -23,13 +25,20 @@ export default function VisualizadorPdfCanvas({ url, nome = 'Documento.pdf', onB
     setError(null)
     setPageNum(1)
 
+    if (!url) {
+      setError('Nenhum arquivo anexado a este registro.')
+      setLoading(false)
+      return
+    }
+
+    // Gera o Blob URL correspondente para fallback e ações rápidas
+    const bUrl = converterParaBlobUrl(url, 'application/pdf')
+    setBlobUrl(bUrl)
+
     async function loadPdf() {
       try {
-        if (!url) {
-          throw new Error('Endereço do documento não informado.')
-        }
-
         let docSource = url
+
         // Se for Base64 (data URI), decodifica para Uint8Array em blocos seguros
         if (typeof url === 'string' && url.startsWith('data:')) {
           const parts = url.split(',')
@@ -43,8 +52,13 @@ export default function VisualizadorPdfCanvas({ url, nome = 'Documento.pdf', onB
           docSource = { data: bytes }
         }
 
-        const loadingTask = pdfjsLib.getDocument(docSource)
-        const doc = await loadingTask.promise
+        // Timeout preventivo para não travar o usuário
+        const loadingPromise = pdfjsLib.getDocument(docSource).promise
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Tempo limite para renderizar páginas excedido')), 15000)
+        )
+
+        const doc = await Promise.race([loadingPromise, timeoutPromise])
 
         if (!isCancelled) {
           setPdfDoc(doc)
@@ -52,7 +66,7 @@ export default function VisualizadorPdfCanvas({ url, nome = 'Documento.pdf', onB
           setLoading(false)
         }
       } catch (err) {
-        console.error('Erro ao carregar PDF via Canvas:', err)
+        console.warn('Aviso no carregamento do PDF via Canvas:', err.message)
         if (!isCancelled) {
           setError(err.message || 'Falha ao processar páginas do PDF')
           setLoading(false)
@@ -114,37 +128,55 @@ export default function VisualizadorPdfCanvas({ url, nome = 'Documento.pdf', onB
     return (
       <div className="flex flex-col items-center justify-center p-12 text-slate-500 gap-3 min-h-[350px]">
         <Loader2 size={36} className="animate-spin text-brand-600" />
-        <span className="text-xs font-bold">Carregando páginas do PDF...</span>
+        <span className="text-xs font-bold text-gray-700">Carregando visualização do PDF...</span>
+        <span className="text-[11px] text-gray-400">Decodificando documento com alta fidelidade</span>
       </div>
     )
   }
 
-  if (error) {
+  if (error || !pdfDoc) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center min-h-[350px] bg-slate-50 rounded-2xl border border-slate-200">
-        <AlertCircle size={40} className="text-amber-500 mb-2" />
-        <h4 className="font-bold text-sm text-gray-800">Visualização de Documento</h4>
-        <p className="text-xs text-gray-500 max-w-sm mt-1 mb-4">
-          O formato deste arquivo requer abertura direta no visualizador do navegador ou download.
+      <div className="flex flex-col items-center justify-center p-8 text-center min-h-[380px] w-full bg-slate-50 rounded-2xl border border-slate-200">
+        <div className="w-14 h-14 rounded-2xl bg-sky-50 text-sky-700 flex items-center justify-center mb-3 shadow-inner">
+          <FileText size={28} />
+        </div>
+        <h4 className="font-black text-sm text-gray-900">{nome}</h4>
+        <p className="text-xs text-gray-500 max-w-sm mt-1 mb-5">
+          Documento PDF pronto para leitura. Você pode abrir instantaneamente no visualizador do navegador em tela cheia ou baixar o arquivo original.
         </p>
-        <div className="flex gap-2.5">
+
+        <div className="flex gap-3 flex-wrap justify-center">
           {onNovaAba && (
             <button 
               onClick={onNovaAba}
-              className="btn-primary py-2 px-4 text-xs flex items-center gap-1.5 font-bold shadow-sm"
+              className="btn-primary py-2.5 px-5 text-xs flex items-center gap-2 font-bold shadow-sm active:scale-95 transition-all"
             >
-              <ExternalLink size={14} /> Abrir em Nova Aba
+              <ExternalLink size={15} /> Abrir em Nova Aba (Tela Cheia)
             </button>
           )}
           {onBaixar && (
             <button 
               onClick={onBaixar}
-              className="btn-secondary py-2 px-4 text-xs flex items-center gap-1.5 font-bold"
+              className="btn-secondary py-2.5 px-5 text-xs flex items-center gap-2 font-bold active:scale-95 transition-all"
             >
-              <Download size={14} /> Baixar Arquivo
+              <Download size={15} /> Baixar Arquivo PDF
             </button>
           )}
         </div>
+
+        {blobUrl && (
+          <div className="w-full mt-6 pt-6 border-t border-slate-200">
+            <object 
+              data={blobUrl} 
+              type="application/pdf" 
+              className="w-full h-[55vh] rounded-xl border border-slate-300 shadow-inner bg-white"
+            >
+              <p className="text-xs text-gray-500 py-4">
+                Seu navegador não suporta visualização embutida de PDF. Clique no botão "Abrir em Nova Aba" acima.
+              </p>
+            </object>
+          </div>
+        )}
       </div>
     )
   }

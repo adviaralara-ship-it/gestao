@@ -97,13 +97,12 @@ function ModalNota({ data, user, condominiosDisponiveis, tipoInicial = 'Nota Fis
     reader.onload = async (ev) => {
       const base64Data = ev.target.result
 
-      // Fallback: se o arquivo for leve (< 600KB) e storage falhar, mantém base64
-      setForm(prev => {
-        if (!prev.arquivoUrl && file.size < 600000) {
-          return { ...prev, arquivoUrl: base64Data }
-        }
-        return prev
-      })
+      // Preserva imediatamente o arquivo como Base64 para garantir que nunca fique sem anexo
+      setForm(prev => ({
+        ...prev,
+        arquivoUrl: prev.arquivoUrl || base64Data,
+        arquivoNome: file.name
+      }))
 
       try {
         let token = ''
@@ -117,7 +116,7 @@ function ModalNota({ data, user, condominiosDisponiveis, tipoInicial = 'Nota Fis
         if (token) headers['Authorization'] = `Bearer ${token}`
 
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 40000)
+        const timeoutId = setTimeout(() => controller.abort(), 20000)
 
         const res = await fetch('/api/extract', {
           method: 'POST',
@@ -146,15 +145,9 @@ function ModalNota({ data, user, condominiosDisponiveis, tipoInicial = 'Nota Fis
               set('tipo', item.tipo)
             }
           }
-        } else {
-          throw new Error(ocrData.error || 'Nenhum dado legível identificado no documento')
         }
       } catch (err) {
-        console.error('Falha na extração IA:', err)
-        const msg = err.name === 'AbortError'
-          ? 'Tempo limite de resposta excedido ao analisar documento. Por favor, confira os campos e preencha manualmente.'
-          : (err.message || 'Falha ao processar arquivo com IA. Você pode preencher os campos manualmente.')
-        alert(`Aviso: ${msg}`)
+        console.warn('Extração automática com IA finalizada com aviso:', err.message)
       } finally {
         setIsExtracting(false)
         setIsUploading(false)
@@ -1037,8 +1030,33 @@ export default function NotasFiscais() {
             <div className="p-4 bg-slate-100 flex items-center justify-center min-h-[400px]">
               {(() => {
                 const url = previewDoc.arquivoUrl || ''
-                const isPdf = url.includes('application/pdf') || url.startsWith('data:application/pdf') || (previewDoc.arquivoNome || '').toLowerCase().endsWith('.pdf')
-                
+                if (!url) {
+                  return (
+                    <div className="flex flex-col items-center justify-center p-8 text-center bg-white rounded-2xl border border-slate-200 max-w-md shadow-sm">
+                      <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3">
+                        <FileText size={24} />
+                      </div>
+                      <h4 className="font-bold text-sm text-gray-800">Sem Arquivo Anexado</h4>
+                      <p className="text-xs text-gray-500 mt-1 mb-4">
+                        Este documento foi registrado no sistema sem upload de arquivo digital. Você pode editar o registro para anexar a nota fiscal, cupom ou comprovante.
+                      </p>
+                      <button
+                        onClick={() => {
+                          const docToEdit = previewDoc
+                          setPreviewDoc(null)
+                          setModalData(docToEdit)
+                        }}
+                        className="btn-primary py-2 px-4 text-xs font-bold"
+                      >
+                        ✏️ Editar Registro e Anexar Arquivo
+                      </button>
+                    </div>
+                  )
+                }
+
+                const isImage = url.startsWith('data:image/') || /\.(png|jpe?g|webp)$/i.test(previewDoc.arquivoNome || '')
+                const isPdf = !isImage && (url.includes('application/pdf') || url.startsWith('data:application/pdf') || (previewDoc.arquivoNome || '').toLowerCase().endsWith('.pdf') || url.startsWith('data:'))
+
                 if (isPdf) {
                   return (
                     <VisualizadorPdfCanvas 
@@ -1050,7 +1068,7 @@ export default function NotasFiscais() {
                   )
                 }
 
-                const blobUrl = converterParaBlobUrl(url)
+                const blobUrl = converterParaBlobUrl(url, 'image/jpeg')
                 return (
                   <div className="max-h-[72vh] overflow-auto flex items-center justify-center p-2">
                     <img 

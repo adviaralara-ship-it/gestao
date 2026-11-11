@@ -360,12 +360,39 @@ export default async function handler(req, res) {
       } catch(e) {}
     }
 
+    // 8. Se for domingo, executa backup automático e envia para o e-mail do cofre cofrealpha29@gmail.com
+    const isDomingo = new Date().getDay() === 0;
+    let backupExecutado = false;
+    if (isDomingo) {
+      try {
+        const backupModule = await import('../backup/executar.js');
+        const backupReq = {
+          method: 'GET',
+          headers: {},
+          query: {
+            secret: process.env.API_SECRET_KEY || 'Alpha_Sec_Backend_Token_2026_xK9pL2',
+            enviarEmail: 'true',
+            destino: 'cofrealpha29@gmail.com'
+          }
+        };
+        const backupRes = {
+          setHeader: () => {},
+          status: () => ({ json: () => {} })
+        };
+        await backupModule.default(backupReq, backupRes);
+        backupExecutado = true;
+      } catch (errBackup) {
+        console.warn('Aviso no backup automático dominical:', errBackup.message);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       dataReferencia: hojeStr,
       totalTarefasHoje: tarefasHoje.length,
       totalContasVencendoHoje: contasVencendoHoje.length,
       totalManutencoesHoje: manutencoesHoje.length,
+      backupExecutado,
       disparos
     });
   } catch (error) {
