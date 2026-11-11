@@ -144,7 +144,20 @@ export default async function handler(req, res) {
       return dtPrev === hojeStr && !isDone;
     });
 
-    if (contasVencendoHoje.length === 0 && tarefasHoje.length === 0 && manutencoesHoje.length === 0) {
+    // 3.1 Manutenções agendadas para daqui a 3 dias (Aviso de antecedência)
+    const partesHoje = hojeStr.split('-').map(Number);
+    const dataHojeObj = new Date(partesHoje[0], partesHoje[1] - 1, partesHoje[2]);
+    const dataD3Obj = new Date(dataHojeObj.getTime() + (3 * 24 * 60 * 60 * 1000));
+    const d3Str = `${dataD3Obj.getFullYear()}-${String(dataD3Obj.getMonth() + 1).padStart(2, '0')}-${String(dataD3Obj.getDate()).padStart(2, '0')}`;
+
+    const manutencoesD3 = manutencoes.filter(m => {
+      const isDone = m.status === 'Concluída' || m.status === 'concluida';
+      const dtPrev = normalizarParaIso(m.dataPrevista || m.data || m.proxima_data);
+      const jaEnviouD3 = m.notifD3 === hojeStr || m.notifD3 === d3Str || m.lembrete3DiasEnviadoEm;
+      return dtPrev === d3Str && !isDone && !jaEnviouD3;
+    });
+
+    if (contasVencendoHoje.length === 0 && tarefasHoje.length === 0 && manutencoesHoje.length === 0 && manutencoesD3.length === 0) {
       if (!isForce) {
         try {
           await setDoc(lockRef, {
@@ -318,6 +331,36 @@ export default async function handler(req, res) {
         if (respGr.ok) disparos++;
       } catch(errGrupo) {
         console.warn('Erro ao notificar grupo do condomínio na manutenção de hoje:', errGrupo.message);
+      }
+    }
+
+    // 6.2.1 Notificar grupos de WhatsApp com 3 DIAS DE ANTECEDÊNCIA
+    for (const m of manutencoesD3) {
+      if (!m.condominio) continue;
+      const condo = condominios.find(c => c.nome === m.condominio);
+      const grupoJid = String(condo?.grupoWhatsapp || '').trim();
+      if (!grupoJid) continue;
+
+      const dataFmtManu = m.dataPrevista ? (m.dataPrevista.includes('-') ? m.dataPrevista.split('-').reverse().join('/') : m.dataPrevista) : 'Em 3 dias';
+      const msgGrupoD3 = `🔔 *MANUTENÇÃO AGENDADA | ${m.condominio}*\n\nOlá, moradores! Passando para avisar com antecedência sobre uma melhoria no nosso prédio:\n\n🛠️ *O que será feito:* ${m.titulo}\n📅 *Quando:* ${dataFmtManu} (em 3 dias)\n👷 *Empresa responsável:* ${m.fornecedor || 'Equipe Especializada'}${m.descricao ? `\n📝 *Detalhes:* ${m.descricao}` : ''}\n\n💡 *Por que estamos fazendo isso?* Essa manutenção preventiva faz parte do nosso cuidado contínuo para manter a segurança, o conforto e o patrimônio de todos em dia.\n\nFicou com alguma dúvida? Pode falar direto com a nossa equipe!\n\nUm abraço,\n*Alpha Soluções Condominiais*`;
+
+      try {
+        const respGrD3 = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: API_KEY },
+          body: JSON.stringify({ number: grupoJid, text: msgGrupoD3 })
+        });
+        if (respGrD3.ok) {
+          disparos++;
+          try {
+            await updateDoc(doc(db, 'manutencoes', m.id), {
+              notifD3: hojeStr,
+              lembrete3DiasEnviadoEm: hojeStr
+            });
+          } catch(e) {}
+        }
+      } catch(errGrupo) {
+        console.warn('Erro ao notificar grupo do condomínio com 3 dias de antecedência:', errGrupo.message);
       }
     }
 

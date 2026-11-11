@@ -42,7 +42,7 @@ function ModalManutencao({ data, condominios, onClose, onSave }) {
     descricao: '',
     condominio: '',
     qtdCiclos: 4,
-    notificarGrupoAgora: true,
+    notificarGrupoAgora: false,
     gerarCiclosFuturos: true
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -201,37 +201,15 @@ function ModalManutencao({ data, condominios, onClose, onSave }) {
             </div>
           )}
 
-          {/* NOTIFICAR GRUPO DE WHATSAPP DO CONDOMÍNIO */}
-          <div className="col-span-2 bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 flex flex-col gap-2">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
-                checked={form.notificarGrupoAgora !== false}
-                onChange={e => set('notificarGrupoAgora', e.target.checked)}
-              />
-              <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
-                <MessageSquare size={14} className="text-emerald-700" />
-                Notificar grupo de WhatsApp do condomínio avisando sobre esta manutenção
-              </span>
-            </label>
-            <div className="text-[11px] text-emerald-800 pl-6">
-              {form.condominio ? (
-                temGrupo ? (
-                  <span className="text-emerald-700 font-medium">
-                    ✅ Grupo conectado: <b>{selectedCondo.nome}</b>. Uma mensagem oficial da Alpha será disparada para os moradores avisando sobre o serviço.
-                  </span>
-                ) : (
-                  <span className="text-amber-800 font-medium">
-                    ⚠️ O condomínio <b>{form.condominio}</b> ainda não possui grupo de WhatsApp vinculado. O aviso será enviado para o síndico e administradora.
-                  </span>
-                )
-              ) : (
-                <span className="text-gray-600">
-                  ℹ️ Selecione um condomínio acima para enviar o comunicado direto no grupo de WhatsApp correspondente.
-                </span>
-              )}
+          {/* AVISO DO CRONOGRAMA AUTOMÁTICO */}
+          <div className="col-span-2 bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 flex flex-col gap-1.5">
+            <div className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
+              <Clock size={14} className="text-blue-600" />
+              Notificações Programadas no WhatsApp
             </div>
+            <p className="text-[11px] text-blue-800 leading-relaxed">
+              🔔 Os comunicados no grupo do condomínio serão disparados automaticamente com <b>3 dias de antecedência</b> e relembrados <b>na manhã do dia da execução</b>. Nenhum aviso é enviado imediatamente no cadastro para não sobrecarregar os moradores.
+            </p>
           </div>
 
           <div className="col-span-2">
@@ -549,16 +527,30 @@ export default function Manutencoes() {
   const hojeStr = new Date().toISOString().split('T')[0]
   const isAdm = user?.role === 'Administrador'
   const meuCondo = (user?.condominio || '').trim().toLowerCase()
+  const [statusFiltro, setStatusFiltro] = useState('Agendadas') // 'Agendadas' (Padrão), 'Concluidas', 'Todas'
 
-  const viewManutencoes = manutencoes
+  // Manutenções filtradas pelo condomínio selecionado
+  const manutencoesDoCondo = manutencoes.filter(m => {
+    if (!isAdm) {
+      if (!meuCondo) return false
+      const mCondo = (m.condominio || '').trim().toLowerCase()
+      if (!mCondo || (mCondo !== meuCondo && !mCondo.includes(meuCondo) && !meuCondo.includes(mCondo))) return false
+      return true
+    }
+    if (condoFiltro !== 'Todos' && m.condominio && m.condominio !== condoFiltro) return false
+    return true
+  })
+
+  // Contadores para os botões de filtro
+  const totalAgendadas = manutencoesDoCondo.filter(m => m.status !== 'Concluída' && m.status !== 'concluida').length
+  const totalConcluidas = manutencoesDoCondo.filter(m => m.status === 'Concluída' || m.status === 'concluida').length
+  const totalGeral = manutencoesDoCondo.length
+
+  const viewManutencoes = manutencoesDoCondo
     .filter(m => {
-      if (!isAdm) {
-        if (!meuCondo) return false
-        const mCondo = (m.condominio || '').trim().toLowerCase()
-        if (!mCondo || (mCondo !== meuCondo && !mCondo.includes(meuCondo) && !meuCondo.includes(mCondo))) return false
-        return true
-      }
-      if (condoFiltro !== 'Todos' && m.condominio && m.condominio !== condoFiltro) return false
+      const isConcluida = m.status === 'Concluída' || m.status === 'concluida'
+      if (statusFiltro === 'Agendadas') return !isConcluida
+      if (statusFiltro === 'Concluidas') return isConcluida
       return true
     })
     .map(m => {
@@ -679,62 +671,7 @@ export default function Manutencoes() {
         } catch(e) {}
       }
 
-      // 2. DISPARO PARA O GRUPO DE WHATSAPP DO CONDOMÍNIO
-      let notificouGrupo = false
-      if (form.condominio && (form.notificarGrupoAgora !== false || ehParaHoje)) {
-        const condoDoc = condominios.find(c => c.nome === form.condominio)
-        if (condoDoc?.grupoWhatsapp) {
-          try {
-            await enviarManutencaoWhatsAppGrupo({
-              ...form,
-              id: docIdPrincipal || form.id,
-              totalCiclos,
-              cicloNumero: 1
-            }, condoDoc, ehParaHoje)
-            notificouGrupo = true
-          } catch(errGrupo) {
-            console.warn('Falha no envio de comunicado para grupo:', errGrupo)
-          }
-        }
-      }
-
-      // 3. Disparo para os números de WhatsApp dos Administradores e Síndico APENAS se for agendamento para HOJE
-      if (ehParaHoje) {
-        const telefonesDestino = new Set()
-        telefonesDestino.add('558396885931') // Número oficial padrão da Alpha
-        telefonesDestino.add('5583996806325') // 83 99680-6325
-        telefonesDestino.add('5583999797285') // 83 99979-7285
-        telefonesDestino.add('5583998350321') // 83 99835-0321
-        telefonesDestino.add('5583998468997') // 83 99846-8997
-
-        if (allUsuarios && allUsuarios.length > 0) {
-          allUsuarios.forEach(u => {
-            const isAdmRole = u.role === 'Administrador' || u.role === 'Financeiro'
-            const isSindicoDesteCondo = u.role === 'Síndico' && (!form.condominio || u.condominio === form.condominio)
-            
-            if (isAdmRole || isSindicoDesteCondo) {
-              const rawTel = u.tel || u.telefone || u.whatsapp || u.celular || ''
-              const cleanTel = String(rawTel).replace(/\D/g, '')
-              if (cleanTel.length >= 8) {
-                telefonesDestino.add(cleanTel.length <= 11 ? `55${cleanTel}` : cleanTel)
-              }
-            }
-          })
-        }
-
-        const custoFmt = form.custoEstimado ? Number(form.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'
-        const msgWhats = `🚨 *${tipoLabel.toUpperCase()} HOJE - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${form.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${form.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${form.fornecedor || 'Não informado'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n🔄 *Recorrência:* ${form.recorrencia || 'Nenhuma'}\n📌 *Status:* ${form.status || 'Agendada'}${form.descricao ? `\n📝 *Observações:* ${form.descricao}` : ''}\n\n✅ *Dar baixa / Concluir serviço:*\n👉 https://app.alphaadmsc.com.br/concluir/manutencao/${docIdPrincipal || form.id || ''}\n\n🔗 *Acesse o cronograma completo:* https://app.alphaadmsc.com.br/manutencoes`
-
-        for (const numero of telefonesDestino) {
-          try {
-            await enviarMensagemWhatsApp({
-              number: numero,
-              text: msgWhats,
-              instance: 'InstanciaAlpha'
-            })
-          } catch(e) {}
-        }
-      }
+      // 2. Os avisos no grupo do condomínio serão disparados automaticamente com 3 dias de antecedência e no dia da execução pela manhã (sem envio imediato ao cadastrar).
 
       let msgFinal = isNew
         ? `🎉 Agendamento salvo com sucesso!\n\n`
@@ -743,14 +680,7 @@ export default function Manutencoes() {
       if (isNew && totalCiclos > 1) {
         msgFinal += `🔄 Foram registrados ${totalCiclos} ciclos de ${form.recorrencia.toLowerCase()} no cronograma.\n`
       }
-      if (notificouGrupo) {
-        msgFinal += `📲 Comunicado enviado para o grupo de WhatsApp do condomínio "${form.condominio}".\n`
-      } else if (form.condominio && form.notificarGrupoAgora) {
-        msgFinal += `ℹ️ Grupo do WhatsApp não vinculado para o condomínio "${form.condominio}".\n`
-      }
-      msgFinal += ehParaHoje
-        ? `📲 Disparo de WhatsApp enviado para Administradores e Síndico (execução hoje).`
-        : `⏰ Lembretes automáticos programados para a véspera e dia da execução.`
+      msgFinal += `⏰ Lembretes automáticos no WhatsApp programados para 3 dias antes e na manhã da execução.`
 
       alert(msgFinal)
     } catch(err) {
@@ -1059,6 +989,40 @@ export default function Manutencoes() {
               )}
             </div>
           </div>
+
+          {/* SELETOR DE STATUS: AGENDADAS (PADRÃO) vs CONCLUÍDAS vs TODAS */}
+          <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit print:hidden border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setStatusFiltro('Agendadas')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${statusFiltro === 'Agendadas' ? 'bg-white text-brand-700 shadow-xs' : 'text-slate-600 hover:text-brand-600'}`}
+            >
+              <span>📅 Agendadas / Em Aberto</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${statusFiltro === 'Agendadas' ? 'bg-brand-50 text-brand-700' : 'bg-slate-200 text-slate-700'}`}>
+                {totalAgendadas}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFiltro('Concluidas')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${statusFiltro === 'Concluidas' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600 hover:text-emerald-700'}`}
+            >
+              <span>✅ Concluídas</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${statusFiltro === 'Concluidas' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>
+                {totalConcluidas}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFiltro('Todas')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${statusFiltro === 'Todas' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <span>📋 Todas</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${statusFiltro === 'Todas' ? 'bg-slate-300 text-slate-800' : 'bg-slate-200 text-slate-700'}`}>
+                {totalGeral}
+              </span>
+            </button>
+          </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 print:grid-cols-2 print:gap-4">
             {viewPreventivas.length === 0 && (
@@ -1208,6 +1172,40 @@ export default function Manutencoes() {
                 </button>
               )}
             </div>
+          </div>
+
+          {/* SELETOR DE STATUS: AGENDADAS (PADRÃO) vs CONCLUÍDAS vs TODAS */}
+          <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit print:hidden border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setStatusFiltro('Agendadas')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${statusFiltro === 'Agendadas' ? 'bg-white text-purple-700 shadow-xs' : 'text-slate-600 hover:text-purple-600'}`}
+            >
+              <span>📅 Agendadas / Em Aberto</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${statusFiltro === 'Agendadas' ? 'bg-purple-50 text-purple-700' : 'bg-slate-200 text-slate-700'}`}>
+                {manutencoesDoCondo.filter(m => isVisita(m) && m.status !== 'Concluída' && m.status !== 'concluida').length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFiltro('Concluidas')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${statusFiltro === 'Concluidas' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600 hover:text-emerald-700'}`}
+            >
+              <span>✅ Concluídas</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${statusFiltro === 'Concluidas' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>
+                {manutencoesDoCondo.filter(m => isVisita(m) && (m.status === 'Concluída' || m.status === 'concluida')).length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFiltro('Todas')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${statusFiltro === 'Todas' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <span>📋 Todas</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${statusFiltro === 'Todas' ? 'bg-slate-300 text-slate-800' : 'bg-slate-200 text-slate-700'}`}>
+                {manutencoesDoCondo.filter(m => isVisita(m)).length}
+              </span>
+            </button>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 print:grid-cols-2 print:gap-4">

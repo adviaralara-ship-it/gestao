@@ -611,6 +611,7 @@ export default function Comunicacao() {
             body: JSON.stringify({ 
               title: `📢 ${a.tipo || 'Comunicado'}: ${a.titulo}`, 
               message: a.texto,
+              condominio: a.condominio || 'Todos',
               targetUserIds: targetEmails,
               targetUrl: window.location.origin + '/mural'
             })

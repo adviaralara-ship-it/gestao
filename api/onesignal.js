@@ -11,14 +11,14 @@ export default async function handler(req, res) {
   const user = await verifyUserAuth(req, res);
   if (!user) return;
 
-  const { title, message, targetUrl, targetUserId, targetUserIds } = req.body || {};
+  const { title, message, targetUrl, targetUserId, targetUserIds, condominio } = req.body || {};
 
   if (!title || !message) {
     return res.status(400).json({ error: 'Título e mensagem são obrigatórios.' });
   }
 
   const APP_ID = process.env.ONESIGNAL_APP_ID || '94fc5c63-540e-479f-8866-ecc43fc7915c';
-  const REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY;
+  const REST_API_KEY = (process.env.ONESIGNAL_REST_API_KEY || '').trim();
 
   if (!REST_API_KEY) {
     return res.status(500).json({ error: 'Chave REST do OneSignal não configurada no servidor.' });
@@ -31,28 +31,51 @@ export default async function handler(req, res) {
     ...(targetUrl && { url: targetUrl })
   };
 
-  if (targetUserIds && Array.isArray(targetUserIds) && targetUserIds.length > 0) {
+  // Se o comunicado for direcionado a um condomínio específico, filtra exclusivamente pela tag condominio
+  if (condominio && condominio !== 'Todos') {
+    payload.filters = [
+      { field: 'tag', key: 'condominio', relation: '=', value: String(condominio).trim() }
+    ];
+  } else if (targetUserIds && Array.isArray(targetUserIds) && targetUserIds.length > 0) {
     payload.include_external_user_ids = targetUserIds;
     payload.channel_for_external_user_ids = 'push';
   } else if (targetUserId) {
     payload.include_external_user_ids = [targetUserId];
     payload.channel_for_external_user_ids = 'push';
   } else {
-    // Comunicado geral para todos
-    payload.included_segments = ['All'];
+    // Comunicado geral para todos os inscritos
+    payload.included_segments = ['Total Subscriptions', 'Subscribed Users', 'All'];
   }
 
   try {
-    const response = await fetch('https://onesignal.com/api/v1/notifications', {
+    const authHeader = REST_API_KEY.startsWith('os_v2_') ? `Key ${REST_API_KEY}` : `Basic ${REST_API_KEY}`;
+    let response = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${REST_API_KEY}`,
+        'Authorization': authHeader,
       },
       body: JSON.stringify(payload),
     });
 
+    // Se retornar 401 ou 404 na API nova, tenta fallback na rota legada
+    if (!response.ok && response.status === 401) {
+      response = await fetch('https://onesignal.com/api/v1/notifications', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${REST_API_KEY}`,
+        },
+        body: JSON.stringify(payload),
+      });
+    }
+
     const data = await response.json();
+    return res.status(200).json({ success: response.ok, data });
+  } catch (error) {
+    console.error('Error sending push:', error);
+    return res.status(500).json({ error: 'Failed to send push notification: ' + error.message });
+  }
     return res.status(200).json({ success: true, data });
   } catch (error) {
     console.error('Error sending push:', error);

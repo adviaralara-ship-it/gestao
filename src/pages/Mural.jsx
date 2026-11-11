@@ -334,6 +334,7 @@ export default function Mural() {
         body: JSON.stringify({
           title: `📢 ${form.tipo || 'Comunicado'}: ${form.titulo}`,
           message: form.texto,
+          condominio: form.condominio || 'Todos',
           targetUserIds: targetEmails,
           targetUrl: window.location.origin + '/mural'
         })

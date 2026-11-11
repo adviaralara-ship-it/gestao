@@ -123,26 +123,9 @@ export default function Header({ onMenuClick }) {
 
   const filteredNavGroups = getFilteredNavGroups(user)
 
-  const notifications = allNotifications.filter(n => {
-    // Administrador e Financeiro recebem todas as notificações
-    if (user?.role === 'Administrador' || user?.role === 'Financeiro') return true;
-
-    // Se a notificação for marcada como exclusiva da gestão ou destinada apenas a admins/síndicos
-    if (n.somenteGestao || n.tipo === 'morador' || n.tipo === 'aprovacao_usuario') {
-      if (user?.role === 'Morador') return false;
-    }
-    if (n.destinatarios && Array.isArray(n.destinatarios) && !n.destinatarios.includes(user?.role)) {
-      return false;
-    }
-
-    if (['Síndico', 'Subsíndico', 'Conselheiro', 'Morador'].includes(user?.role)) {
-      if (n.condominio && n.condominio !== 'Todos' && n.condominio !== user?.condominio) return false;
-      if (n.moradorId && n.moradorId !== user?.id) return false;
-      if (n.moradorNome && n.moradorNome !== user?.nome) return false;
-      return true;
-    }
-    return false;
-  })
+  // As notificações do sistema aparecem estritamente para Administradores
+  const isAdmUser = user?.role === 'Administrador'
+  const notifications = isAdmUser ? allNotifications : []
 
   // Ordenar por data mais recente
   notifications.sort((a, b) => new Date(b.time || b._createdAt || 0) - new Date(a.time || a._createdAt || 0))
@@ -180,7 +163,7 @@ export default function Header({ onMenuClick }) {
   }
 
   const pageName = pageNames[location.pathname] || 'Sistema'
-  const podeVerNotif = true
+  const podeVerNotif = isAdmUser
 
   // Fecha menus ao clicar fora
   React.useEffect(() => {

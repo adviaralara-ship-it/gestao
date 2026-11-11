@@ -172,8 +172,27 @@ export function AuthProvider({ children }) {
           setUser(profile) // null se conta ainda não aprovada
           if (profile?.id) {
             window.OneSignalDeferred = window.OneSignalDeferred || [];
-            window.OneSignalDeferred.push(function(OneSignal) {
-              OneSignal.login(profile.email).catch(e => console.warn('OneSignal login error', e));
+            window.OneSignalDeferred.push(async function(OneSignal) {
+              try {
+                if (profile.email) {
+                  await OneSignal.login(profile.email);
+                }
+                // Segmentação por condomínio: garante que avisos só cheguem ao condomínio do morador
+                if (profile.condominio) {
+                  await OneSignal.User.addTag('condominio', profile.condominio);
+                }
+                if (profile.role) {
+                  await OneSignal.User.addTag('role', profile.role);
+                }
+                // Exibe prompt amigável solicitando autorização de push se ainda não ativo
+                if (OneSignal.Notifications && OneSignal.Notifications.permission !== true) {
+                  setTimeout(() => {
+                    OneSignal.Slidedown.promptPush().catch(() => {});
+                  }, 2500);
+                }
+              } catch (e) {
+                console.warn('OneSignal setup error:', e);
+              }
             });
           }
         } else {

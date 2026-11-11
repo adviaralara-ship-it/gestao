@@ -73,33 +73,46 @@ export async function verificarEDispararLembretesManutencao(isManual = false) {
         }
       })
 
-      // CASO 1: Lembrete de Véspera (1 dia antes / D-1) - Apenas Sininho do sistema (WhatsApp apenas no dia do vencimento)
-      const jaEnviouD1 = m.notifD1 === hojeStr || m.lembreteVesperaEnviadoEm === hojeStr
-      if (diffDays === 1 && !jaEnviouD1) {
+      // CASO 1: Aviso com 3 dias de antecedência (D-3) para os moradores se prepararem
+      const jaEnviouD3 = m.notifD3 === hojeStr || m.lembrete3DiasEnviadoEm === hojeStr
+      if (diffDays === 3 && !jaEnviouD3) {
         // 1. Atualiza flag no Firestore
         try {
           await updateDoc(doc(db, 'manutencoes', m.id), {
-            notifD1: hojeStr,
-            lembreteVesperaEnviadoEm: hojeStr
+            notifD3: hojeStr,
+            lembrete3DiasEnviadoEm: hojeStr
           })
         } catch (errUpd) {
-          console.warn('Permissão insuficiente ou falha ao atualizar flag notifD1:', errUpd)
+          console.warn('Permissão insuficiente ou falha ao atualizar flag notifD3:', errUpd)
           continue
         }
 
         // 2. Grava no Sininho
         try {
           await addDoc(collection(db, 'notificacoes'), {
-            text: `⚠️ LEMBRETE DE VÉSPERA: Manutenção "${m.titulo}" agendada para AMANHÃ (${dataFmt}) no ${m.condominio || 'Condomínio'}.`,
-            titulo: `⚠️ Lembrete Amanhã: ${m.titulo}`,
+            text: `🔔 AVISO (3 DIAS ANTES): Manutenção "${m.titulo}" agendada para ${dataFmt} no ${m.condominio || 'Condomínio'}.`,
+            titulo: `🔔 Manutenção em 3 dias: ${m.titulo}`,
             time: new Date().toISOString(),
-            tipo: 'manutencao_vespera',
+            tipo: 'manutencao_antecipada',
             condominio: m.condominio || 'Todos',
             lida: false,
             link: '/manutencoes',
             _createdAt: serverTimestamp()
           })
         } catch(e) {}
+
+        // 3. Disparo no Grupo de WhatsApp do Condomínio com 3 dias de antecedência
+        if (m.condominio) {
+          const condoDoc = condominios.find(c => c.nome === m.condominio)
+          if (condoDoc?.grupoWhatsapp) {
+            try {
+              await enviarManutencaoWhatsAppGrupo(m, condoDoc, false)
+              disparosRealizados++
+            } catch(e) {
+              console.warn('Erro envio grupo WhatsApp manutenção D-3:', e)
+            }
+          }
+        }
       }
 
       // CASO 2: Lembrete do Dia (Hoje / D-0)
