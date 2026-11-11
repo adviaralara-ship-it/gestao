@@ -222,10 +222,24 @@ function ModalNota({ data, user, condominiosDisponiveis, tipoInicial = 'Nota Fis
               className="input p-2 bg-white w-full border-brand-300 text-xs" 
               disabled={isExtracting || isUploading} 
             />
-            {form.arquivoNome && !isExtracting && (
-              <p className="text-[11px] text-emerald-700 mt-1.5 font-bold flex items-center gap-1">
-                ✓ Arquivo carregado: {form.arquivoNome}
-              </p>
+            {(form.arquivoNome || form.arquivoUrl) && !isExtracting && (
+              <div className="mt-1.5 flex items-center justify-between bg-white p-2 rounded-xl border border-brand-200 text-xs">
+                <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                  ✓ Arquivo carregado: {form.arquivoNome || 'Documento Anexado'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Deseja remover o arquivo anexado a este documento?')) {
+                      setForm(prev => ({ ...prev, arquivoUrl: '', arquivoNome: '' }))
+                    }
+                  }}
+                  className="text-rose-600 hover:text-rose-800 font-bold hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
+                  title="Remover arquivo anexado"
+                >
+                  <Trash2 size={12} /> Apagar Arquivo
+                </button>
+              </div>
             )}
             <p className="text-[10px] text-gray-500 mt-1">
               Envie o cupom, recibo, comprovante PIX ou nota fiscal. Os campos abaixo serão extraídos automaticamente.

@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Wallet, FileText, CreditCard, LayoutDashboard, Calendar, ShieldAlert, Calculator, FileCheck, DollarSign, Upload, Eye, Download, Copy, Check, Sparkles, Loader2, Repeat, ExternalLink, Crown, Building2, Droplet, Shield, Landmark } from 'lucide-react'
+import { Plus, Wallet, FileText, CreditCard, LayoutDashboard, Calendar, ShieldAlert, Calculator, FileCheck, DollarSign, Upload, Eye, Download, Copy, Check, Sparkles, Loader2, Repeat, ExternalLink, Crown, Building2, Droplet, Shield, Landmark, Trash2 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import RepassesAlphaModal from '../components/RepassesAlphaModal'
@@ -115,10 +115,7 @@ function ModalLancamento({ data, allLancamentos = [], user, condominiosDisponive
 
         // Fallback apenas para arquivos bem pequenos (< 150KB) se o storage falhou
         if (!storageUrl && file.size < 150000) {
-          setForm(prev => {
-            if (!prev.arquivoUrl) return { ...prev, arquivoUrl: base64Data }
-            return prev
-          })
+          setForm(prev => ({ ...prev, arquivoUrl: base64Data }))
         }
 
         try {
@@ -229,6 +226,18 @@ function ModalLancamento({ data, allLancamentos = [], user, condominiosDisponive
                   >
                     <Download size={12} /> Baixar
                   </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Deseja remover o arquivo anexado a esta despesa?\n\nOs dados digitados (valor, vencimento, fornecedor) continuarão salvos.')) {
+                        set('arquivoUrl', '')
+                      }
+                    }}
+                    className="text-rose-600 hover:text-rose-800 font-bold hover:underline flex items-center gap-1 text-xs cursor-pointer ml-1"
+                    title="Remover apenas o arquivo anexado"
+                  >
+                    <Trash2 size={12} /> Apagar Arquivo
+                  </button>
                 </div>
               </div>
             )}

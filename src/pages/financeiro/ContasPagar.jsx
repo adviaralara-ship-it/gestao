@@ -344,6 +344,29 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
     }
   }
 
+  const handleRemoverComprovante = async (lancamentoId) => {
+    if (!window.confirm('Tem certeza de que deseja apagar apenas o arquivo/comprovante anexado a esta despesa?\n\nOs dados da despesa (valor, data, fornecedor) serão mantidos intactos no sistema.')) {
+      return
+    }
+    try {
+      const itemAlvo = lancamentos.find(l => l.id === lancamentoId) || modalComprovante
+      if (itemAlvo && updateLancamento) {
+        const { id, _createdAt, ...dadosItem } = itemAlvo
+        await updateLancamento(lancamentoId, {
+          ...dadosItem,
+          comprovanteUrl: '',
+          arquivoUrl: '',
+          arquivoNome: ''
+        })
+      }
+      setModalComprovante(null)
+      alert('✓ Arquivo anexado removido com sucesso! A despesa continua registrada.')
+    } catch (err) {
+      console.error('Erro ao remover comprovante:', err)
+      alert('Erro ao remover arquivo: ' + (err.message || 'Tente novamente.'))
+    }
+  }
+
   const alternarStatusPago = async (t) => {
     try {
       setLoadingPagarId(t.id)
@@ -615,6 +638,17 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
                             >
                               <Paperclip size={12} className="text-amber-700" /> {t.comprovanteUrl ? 'Alterar' : 'Anexar'}
                             </button>
+
+                            {/* Apagar Apenas o Comprovante Anexado */}
+                            {t.comprovanteUrl && (
+                              <button
+                                onClick={() => handleRemoverComprovante(t.id)}
+                                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold flex items-center gap-1 text-[10px] cursor-pointer shadow-xs"
+                                title="Apagar apenas o arquivo/comprovante anexado a esta despesa"
+                              >
+                                <Trash2 size={12} className="text-rose-600" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -727,17 +761,27 @@ export default function ContasPagar({ lancamentos, setModalLanc, deleteLancament
               </div>
 
               {modalComprovante.comprovanteUrl && (
-                <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-center justify-between">
-                  <span className="text-emerald-800 font-bold flex items-center gap-1.5">
+                <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="text-emerald-800 font-bold flex items-center gap-1.5 text-xs">
                     <CheckCircle2 size={14} className="text-emerald-600" /> Comprovante já cadastrado
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => abrirArquivo(modalComprovante.comprovanteUrl)}
-                    className="text-xs font-black text-emerald-700 underline hover:text-emerald-900 cursor-pointer"
-                  >
-                    Visualizar Atual
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => abrirArquivo(modalComprovante.comprovanteUrl)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-xs font-black text-emerald-850 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                    >
+                      <Eye size={12} /> Visualizar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoverComprovante(modalComprovante.id)}
+                      className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-black text-rose-700 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                      title="Apagar apenas o arquivo comprovante deste lançamento"
+                    >
+                      <Trash2 size={12} className="text-rose-600" /> Apagar Arquivo
+                    </button>
+                  </div>
                 </div>
               )}
 
