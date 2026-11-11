@@ -61,7 +61,6 @@ export const navGroups = [
       { to: '/condominios',   label: 'Condomínios & Unidades', icon: Building2 },
       { to: '/documentos',    label: 'Documentos',             icon: FolderOpen },
       { to: '/regime',        label: 'Regimentos',             icon: BookOpen },
-      { to: '/contratos',     label: 'Contratos & Documentos', icon: FileSignature },
       { to: '/notas-fiscais', label: 'Notas Fiscais',          icon: Receipt },
       { to: '/seguro',        label: 'Seguros',                icon: Shield },
     ]
