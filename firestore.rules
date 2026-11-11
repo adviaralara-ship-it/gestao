@@ -103,7 +103,24 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
-    // 12. Regra Padrão Defensiva: Bloqueio Total para qualquer outra coleção
+    // 12. Leads de Diagnóstico Condominial (Formulário do Site Oficial)
+    // Criação com validação estrita de payload; leitura e edição apenas para equipe autenticada
+    match /leads_diagnosticos/{docId} {
+      allow create: if request.resource.data.keys().hasAll(['nome', 'whatsapp', 'condominio']) &&
+                       request.resource.data.nome is string &&
+                       request.resource.data.whatsapp is string &&
+                       request.resource.data.nome.size() >= 2 &&
+                       request.resource.data.nome.size() <= 120;
+      allow read, update, delete: if isAuthenticated();
+    }
+
+    // 13. Métricas e Estatísticas de Acesso do Site
+    match /site_stats/{docId} {
+      allow read: if isAuthenticated();
+      allow create, update: if true;
+    }
+
+    // 14. Regra Padrão Defensiva: Bloqueio Total para qualquer outra coleção
     // Todos os módulos sensíveis (Financeiro, Boletos, Câmeras, Contratos, etc.)
     // exigem autenticação estrita obrigatória.
     match /{document=**} {

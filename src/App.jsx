@@ -63,6 +63,7 @@ import Cotacoes from './pages/Cotacoes'
 import CheckinPrestador from './pages/CheckinPrestador'
 import PainelSeguranca from './pages/PainelSeguranca'
 import AprovarOrcamento from './pages/AprovarOrcamento'
+import LeadsMarketing from './pages/LeadsMarketing'
 
 // Spinner de carregamento enquanto o Firebase Auth verifica a sessão
 function AuthLoader() {
@@ -101,7 +102,7 @@ function AuthorizedRoute({ module, children }) {
 
   // Verifica se o usuário tem permissão para a rota específica
   const isAdmin = user.role === 'Administrador'
-  let hasPerm = user.permissoes?.includes(module) || isAdmin || module === 'pets' || module === 'alpha-ai' || module === 'cotacoes'
+  let hasPerm = user.permissoes?.includes(module) || isAdmin || module === 'pets' || module === 'alpha-ai' || module === 'cotacoes' || module === 'leads'
   if (module === 'seguranca') {
     hasPerm = isAdmin
   }
@@ -179,6 +180,7 @@ function AppRoutes() {
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<AuthorizedRoute module=""><span /></AuthorizedRoute>} />
           <Route path="dashboard" element={<AuthorizedRoute module="dashboard"><Dashboard /></AuthorizedRoute>} />
+          <Route path="leads" element={<AuthorizedRoute module="leads"><LeadsMarketing /></AuthorizedRoute>} />
           <Route path="alpha-ai" element={<AuthorizedRoute module="alpha-ai"><AlphaAIChat /></AuthorizedRoute>} />
           <Route path="whatsapp" element={<AuthorizedRoute module="whatsapp"><WhatsApp /></AuthorizedRoute>} />
           <Route path="email" element={<AuthorizedRoute module="email"><Email /></AuthorizedRoute>} />

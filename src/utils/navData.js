@@ -17,6 +17,7 @@ export const navGroups = [
     emoji: '🏠',
     items: [
       { to: '/dashboard',        label: 'Dashboard',            icon: LayoutDashboard },
+      { to: '/leads',            label: '🎯 Leads & Visitas do Site', icon: Target },
       { to: '/alpha-ai',         label: 'Alpha IA',             icon: Bot },
       { to: '/seguranca',        label: 'Segurança & Backups',  icon: ShieldAlert },
       { to: '/monitoramento-ia', label: 'Monitoramento IA',     icon: BarChart3 },
