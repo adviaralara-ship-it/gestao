@@ -617,7 +617,7 @@ export default function Comunicacao() {
           }).catch(e => console.error("Push erro", e))
 
           // 4. Disparo WhatsApp para os telefones administrativos e para os moradores cadastrados no condomínio
-          const msgAvisoWhats = `📢 *NOVO ${a.tipo ? a.tipo.toUpperCase() : 'COMUNICADO'} - ALPHA GESTÃO*\n\n📌 *Título:* ${a.titulo}\n🏢 *Condomínio:* ${a.condominio || 'Todos'}\n🎯 *Destino:* ${a.destino || 'Todos'}\n\n📝 *Mensagem:*\n${a.texto}\n\n🔗 *Acesse o Mural Completo:*\nhttps://alpha-solucoes-condominiais.vercel.app/mural`
+          const msgAvisoWhats = `ALPHA GESTÃO | Cuidando do ${a.condominio || 'Condomínio'} 🏢\n📌 *Assunto:* ${a.titulo}\n\nOlá, moradores! 👋\n\n${a.texto}\n\nQualquer dúvida ou necessidade especial, é só chamar nossa equipe por aqui. Obrigado pela parceria!\n\n*Equipe Alpha Soluções Condominiais*`
 
           // Telefones de avisos administrativos
           const telefonesAvisos = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']

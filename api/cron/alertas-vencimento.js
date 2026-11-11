@@ -307,7 +307,7 @@ export default async function handler(req, res) {
       if (!grupoJid) continue;
 
       const dataFmtManu = m.dataPrevista ? (m.dataPrevista.includes('-') ? m.dataPrevista.split('-').reverse().join('/') : m.dataPrevista) : dataFmt;
-      const msgGrupo = `🚨 *COMUNICADO DE MANUTENÇÃO HOJE - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${m.condominio}\n🛠️ *Serviço:* ${m.titulo}\n📅 *Data:* HOJE (${dataFmtManu})\n👷 *Prestador / Empresa:* ${m.fornecedor || 'Equipe Especializada'}${m.descricao ? `\n📝 *Orientações:* ${m.descricao}` : ''}\n\nℹ️ *Aos Senhores Moradores:*\nInformamos que a equipe técnica estará atuando hoje nas dependências do condomínio para a realização deste serviço preventivo.\n\nContamos com a compreensão e colaboração de todos.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`;
+      const msgGrupo = `🔔 *MANUTENÇÃO HOJE | ${m.condominio}*\n\nOlá, moradores! Passando para avisar que nossa equipe técnica já está atuando hoje no prédio:\n\n🛠️ *O que está sendo feito:* ${m.titulo}\n📅 *Quando:* HOJE (${dataFmtManu})\n👷 *Empresa responsável:* ${m.fornecedor || 'Equipe Especializada'}${m.descricao ? `\n📝 *Detalhes:* ${m.descricao}` : ''}\n\n💡 *Por que estamos fazendo isso?* Essa manutenção preventiva faz parte do nosso cuidado contínuo para manter a segurança, o conforto e o patrimônio de todos em dia.\n\nFicou com alguma dúvida? Pode falar direto com a nossa equipe!\n\nUm abraço,\n*Alpha Soluções Condominiais*`;
 
       try {
         const respGr = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE}`, {

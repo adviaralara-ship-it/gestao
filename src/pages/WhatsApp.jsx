@@ -369,13 +369,13 @@ export default function WhatsApp() {
 
       let msg = ''
       if (tipo === '5dias') {
-        msg = `Olá *${b.morador}* (Apt *${b.apt || '—'}*)!\n\nPassando para lembrar que o seu *Boleto Condominial* referente a *${b.competencia || 'Mês Vigente'}* do *${condoDoc?.nome || b.condominio}* vence em *5 dias* (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nSegue o boleto oficial em anexo com o QR Code PIX para sua comodidade. Evite multas pagando em dia!\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+        msg = `Olá, *${b.morador}* (Apt *${b.apt || '—'}*)! Tudo bem? 😊\n\nPassando para lembrar que o boleto do *${condoDoc?.nome || b.condominio}* referente a *${b.competencia || 'Mês Vigente'}* vence em *5 dias* (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nSegue o boleto oficial em anexo com o QR Code PIX para sua comodidade.\n\nSe precisar de qualquer ajuda, estamos por aqui!\n\n*Equipe Alpha Soluções Condominiais*`
       } else if (tipo === '1dia') {
-        msg = `⚠️ *Lembrete de Vencimento Amanhã*\n\nOlá *${b.morador}* (Apt *${b.apt || '—'}*)!\n\nO seu *Boleto Condominial* do *${condoDoc?.nome || b.condominio}* vence *amanhã* (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nSegue em anexo a 2ª via com o QR Code PIX para pagamento rápido pelo celular.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+        msg = `Olá, *${b.morador}* (Apt *${b.apt || '—'}*)! Tudo bem? 😊\n\nPassando para avisar que o boleto do *${condoDoc?.nome || b.condominio}* vence *amanhã* (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nSegue em anexo com o QR Code PIX para pagamento rápido pelo celular.\n\nSe precisar de algo, conte conosco!\n\n*Equipe Alpha Soluções Condominiais*`
       } else if (tipo === 'hoje') {
-        msg = `🔴 *Seu Boleto Vence HOJE*\n\nOlá *${b.morador}* (Apt *${b.apt || '—'}*)!\n\nLembramos que o seu boleto do *${condoDoc?.nome || b.condominio}* vence *hoje* (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nEfetue o pagamento via PIX no anexo para evitar a cobrança de juros e encargos.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+        msg = `Olá, *${b.morador}* (Apt *${b.apt || '—'}*)! Tudo bem? 😊\n\nLembramos que o boleto do *${condoDoc?.nome || b.condominio}* referente a *${b.competencia || 'Mês Vigente'}* vence *HOJE* (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nO documento segue em anexo com o QR Code PIX facilitado.\n\nQualquer dúvida, estamos à disposição!\n\n*Equipe Alpha Soluções Condominiais*`
       } else if (tipo === 'vencido') {
-        msg = `Prezado(a) *${b.morador}* (Apt *${b.apt || '—'}*),\n\nIdentificamos que a taxa condominial referente a *${b.competencia || 'Mês Anterior'}* do *${condoDoc?.nome || b.condominio}* encontra-se em aberto (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nPara facilitar a regularização, segue em anexo o documento atualizado com o *QR Code PIX*. Caso já tenha efetuado o pagamento, por favor desconsidere esta mensagem.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+        msg = `Olá, *${b.morador}* (Apt *${b.apt || '—'}*)! Tudo bem? 😊\n\nIdentificamos que o boleto referente a *${b.competencia || 'Mês Anterior'}* do *${condoDoc?.nome || b.condominio}* encontra-se em aberto (${vencFmt}).\n\n💰 *Valor:* R$ ${valorFmt}\n\nPara facilitar, segue em anexo a 2ª via com o QR Code PIX. Caso já tenha efetuado o pagamento, por favor desconsidere este aviso.\n\n*Equipe Alpha Soluções Condominiais*`
       }
 
       if (moradorDoc) {

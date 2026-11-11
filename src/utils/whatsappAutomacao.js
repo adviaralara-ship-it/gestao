@@ -52,8 +52,10 @@ export async function enviarBoletoWhatsAppAuto(boleto, morador, condoDoc, custom
     // 2. Monta o texto amigável
     const valorFmt = Number(boleto.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
     const vencFmt = boleto.vencimento ? (boleto.vencimento.includes('-') ? boleto.vencimento.split('-').reverse().join('/') : boleto.vencimento) : '—'
-    
-    const textoFinal = customMsg || `Olá *${boleto.morador}* (Apt *${boleto.apt || '—'}*)!\n\nSegue em anexo o seu *Boleto Condominial* referente a *${boleto.competencia || 'Mês Vigente'}* do *${condoDoc?.nome || boleto.condominio || 'seu condomínio'}*.\n\n💰 *Valor:* R$ ${valorFmt}\n📅 *Vencimento:* ${vencFmt}\n\nVocê pode efetuar o pagamento via *PIX Instantâneo* escaneando o *QR Code* no PDF ou pelo *PIX Copia e Cola*.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+    const primeiroNome = String(boleto.morador || 'Morador').trim().split(' ')[0]
+    const pixBloco = boleto.pix ? `\n\`\`\`${boleto.pix}\`\`\`\n` : ''
+
+    const textoFinal = customMsg || `Olá, *${primeiroNome}* (Apt *${boleto.apt || '—'}*)! Tudo bem? 😊\n\nO seu boleto do *${condoDoc?.nome || boleto.condominio || 'Condomínio'}* referente a *${boleto.competencia || 'Mês Atual'}* já está pronto e segue em anexo.\n\n💰 *Valor:* R$ ${valorFmt}\n📅 *Vencimento:* ${vencFmt}\n\n⚡ *Facilidade:* Você pode pagar rapidinho via PIX Instantâneo usando o QR Code no PDF${boleto.pix ? ' ou o código Copia e Cola abaixo:\n' + pixBloco : '.'}\n🔍 Quer acompanhar como a taxa do seu condomínio está sendo investida este mês? Acesse a prestação de contas transparente direto no nosso portal.\n\nSe precisar de qualquer ajuda, estamos por aqui!\n\n*Equipe Alpha Soluções Condominiais*`
 
     // 3. Envia via API serverless ou fallback direto na Evolution API com timeout de 20 segundos
     const controller = new AbortController()
@@ -227,10 +229,10 @@ export function gerarTextoManutencaoWhatsApp(manutencao, condoNome, ehHoje = fal
   const cicloInfo = manutencao?.cicloNumero && manutencao?.totalCiclos ? ` (Ciclo ${manutencao.cicloNumero} de ${manutencao.totalCiclos})` : ''
 
   if (ehHoje) {
-    return `🚨 *COMUNICADO DE MANUTENÇÃO HOJE - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${condominio}\n🛠️ *Serviço:* ${servico}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${fornecedor}${descricao ? `\n📝 *Orientações:* ${descricao}` : ''}\n\nℹ️ *Aos Senhores Moradores:*\nInformamos que a equipe técnica estará atuando hoje nas dependências do condomínio para a realização deste serviço preventivo.\n\nContamos com a compreensão e colaboração de todos.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+    return `🔔 *MANUTENÇÃO HOJE | ${condominio}*\n\nOlá, moradores! Passando para avisar que nossa equipe técnica já está atuando hoje no prédio:\n\n🛠️ *O que está sendo feito:* ${servico}\n📅 *Quando:* HOJE (${dataFmt})\n👷 *Empresa responsável:* ${fornecedor}${descricao ? `\n📝 *Detalhes:* ${descricao}` : ''}\n\n💡 *Por que estamos fazendo isso?* Essa manutenção preventiva faz parte do nosso cuidado contínuo para manter a segurança, o conforto e o patrimônio de todos em dia.\n\nFicou com alguma dúvida? Pode falar direto com a nossa equipe!\n\nUm abraço,\n*Alpha Soluções Condominiais*`
   }
 
-  return `🔔 *COMUNICADO DE AGENDAMENTO DE MANUTENÇÃO - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${condominio}\n🛠️ *Serviço:* ${servico}\n📅 *Data Programada:* ${dataFmt}\n👷 *Prestador / Empresa:* ${fornecedor}${recorrencia ? `\n🔄 *Periodicidade:* ${recorrencia}${cicloInfo}` : ''}${descricao ? `\n📝 *Observações / Detalhes:* ${descricao}` : ''}\n\nℹ️ *Prezados Moradores:*\nInformamos que esta manutenção preventiva foi incluída no cronograma oficial do condomínio para conservação patrimonial e segurança predial de todos.\n\nEm caso de dúvidas, a administração permanece à disposição.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+  return `🔔 *MANUTENÇÃO AGENDADA | ${condominio}*\n\nOlá, moradores! Passando para avisar com antecedência sobre uma melhoria no nosso prédio:\n\n🛠️ *O que será feito:* ${servico}\n📅 *Quando:* ${dataFmt}\n👷 *Empresa responsável:* ${fornecedor}${recorrencia ? `\n🔄 *Periodicidade:* ${recorrencia}${cicloInfo}` : ''}${descricao ? `\n📝 *Detalhes:* ${descricao}` : ''}\n\n💡 *Por que estamos fazendo isso?* Essa manutenção preventiva faz parte do nosso cuidado contínuo para manter a segurança, o conforto e o patrimônio de todos em dia.\n\nFicou com alguma dúvida? Pode falar direto com a nossa equipe!\n\nUm abraço,\n*Alpha Soluções Condominiais*`
 }
 
 /**
