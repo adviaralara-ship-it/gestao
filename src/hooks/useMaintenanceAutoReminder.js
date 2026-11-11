@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { collection, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
-import { enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
+import { enviarMensagemWhatsApp, enviarManutencaoWhatsAppGrupo } from '../utils/whatsappAutomacao'
 
 const LOCK_STORAGE_KEY = 'alpha_manu_lembretes_last_check'
 
@@ -27,14 +27,16 @@ export async function verificarEDispararLembretesManutencao(isManual = false) {
       localStorage.setItem(LOCK_STORAGE_KEY, String(now))
     }
 
-    // 1. Busca manutenções e usuários do Firestore
-    const [manutencoesSnap, usuariosSnap] = await Promise.all([
+    // 1. Busca manutenções, usuários e condomínios do Firestore
+    const [manutencoesSnap, usuariosSnap, condominiosSnap] = await Promise.all([
       getDocs(collection(db, 'manutencoes')),
-      getDocs(collection(db, 'usuarios'))
+      getDocs(collection(db, 'usuarios')),
+      getDocs(collection(db, 'condominios'))
     ])
 
     const manutencoes = manutencoesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     const usuarios = usuariosSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const condominios = condominiosSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
     let disparosRealizados = 0
 
@@ -141,6 +143,18 @@ export async function verificarEDispararLembretesManutencao(isManual = false) {
             })
           } catch(e) {
             console.warn('Erro envio WhatsApp lembrete D-0:', e)
+          }
+        }
+
+        // 4. Disparo no Grupo de WhatsApp do Condomínio (Moradores) se houver grupo configurado
+        if (m.condominio) {
+          const condoDoc = condominios.find(c => c.nome === m.condominio)
+          if (condoDoc?.grupoWhatsapp) {
+            try {
+              await enviarManutencaoWhatsAppGrupo(m, condoDoc, true)
+            } catch(e) {
+              console.warn('Erro envio grupo WhatsApp manutenção D-0:', e)
+            }
           }
         }
 

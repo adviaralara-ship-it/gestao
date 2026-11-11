@@ -107,18 +107,20 @@ export default async function handler(req, res) {
       }
     }
 
-    // 2. Buscar lançamentos financeiros, tarefas, manutenções e usuários
-    const [finSnap, tarefasSnap, manuSnap, usuariosSnap] = await Promise.all([
+    // 2. Buscar lançamentos financeiros, tarefas, manutenções, usuários e condomínios
+    const [finSnap, tarefasSnap, manuSnap, usuariosSnap, condominiosSnap] = await Promise.all([
       getDocs(collection(db, 'financeiro_lancamentos')),
       getDocs(collection(db, 'tarefas')),
       getDocs(collection(db, 'manutencoes')),
-      getDocs(collection(db, 'usuarios'))
+      getDocs(collection(db, 'usuarios')),
+      getDocs(collection(db, 'condominios'))
     ]);
 
     const lancamentos = finSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const tarefas = tarefasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const manutencoes = manuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     const usuarios = usuariosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const condominios = condominiosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     // 3. Filtrar itens de HOJE
     const tarefasHoje = tarefas.filter(t => {
@@ -297,7 +299,29 @@ export default async function handler(req, res) {
       }
     }
 
-    // 6.2 Atualiza status final da trava
+    // 6.2 Notificar grupos de WhatsApp dos condomínios que possuem manutenções hoje
+    for (const m of manutencoesHoje) {
+      if (!m.condominio) continue;
+      const condo = condominios.find(c => c.nome === m.condominio);
+      const grupoJid = String(condo?.grupoWhatsapp || '').trim();
+      if (!grupoJid) continue;
+
+      const dataFmtManu = m.dataPrevista ? (m.dataPrevista.includes('-') ? m.dataPrevista.split('-').reverse().join('/') : m.dataPrevista) : dataFmt;
+      const msgGrupo = `🚨 *COMUNICADO DE MANUTENÇÃO HOJE - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${m.condominio}\n🛠️ *Serviço:* ${m.titulo}\n📅 *Data:* HOJE (${dataFmtManu})\n👷 *Prestador / Empresa:* ${m.fornecedor || 'Equipe Especializada'}${m.descricao ? `\n📝 *Orientações:* ${m.descricao}` : ''}\n\nℹ️ *Aos Senhores Moradores:*\nInformamos que a equipe técnica estará atuando hoje nas dependências do condomínio para a realização deste serviço preventivo.\n\nContamos com a compreensão e colaboração de todos.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`;
+
+      try {
+        const respGr = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: API_KEY },
+          body: JSON.stringify({ number: grupoJid, text: msgGrupo })
+        });
+        if (respGr.ok) disparos++;
+      } catch(errGrupo) {
+        console.warn('Erro ao notificar grupo do condomínio na manutenção de hoje:', errGrupo.message);
+      }
+    }
+
+    // 6.3 Atualiza status final da trava
     if (!isForce) {
       try {
         if (disparos > 0) {

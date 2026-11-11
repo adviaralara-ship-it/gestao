@@ -1,23 +1,76 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase'
 import { 
   Wrench, Plus, CheckCircle, CheckCircle2, Clock, Trash2, Calendar, AlertCircle, 
   ShoppingBag, ExternalLink, Briefcase, FileText, Printer, Bell, RefreshCw, Check,
-  Send, CheckSquare, Square, Share2, ThumbsUp, X, Calculator
+  Send, CheckSquare, Square, Share2, ThumbsUp, X, Calculator, MessageSquare
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { CurrencyInput } from '../utils/currency'
 import { verificarEDispararLembretesManutencao } from '../hooks/useMaintenanceAutoReminder'
+import { enviarMensagemWhatsApp, enviarManutencaoWhatsAppGrupo } from '../utils/whatsappAutomacao'
 import OrcamentosComparativo from './OrcamentosComparativo'
 import SimulacaoRateio from './SimulacaoRateio'
 
+export function calcularProximaData(dataIsoStr, mesesAdicionar) {
+  if (!dataIsoStr) return ''
+  const parts = String(dataIsoStr).split('-').map(Number)
+  if (parts.length !== 3 || isNaN(parts[0])) return dataIsoStr
+  const ano = parts[0], mes = parts[1], dia = parts[2]
+  const targetMonth = mes - 1 + mesesAdicionar
+  const dt = new Date(ano, targetMonth, 1)
+  const maxDays = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate()
+  const safeDay = Math.min(dia, maxDays)
+  dt.setDate(safeDay)
+  const y = dt.getFullYear()
+  const m = String(dt.getMonth() + 1).padStart(2, '0')
+  const d = String(dt.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 function ModalManutencao({ data, condominios, onClose, onSave }) {
   const [form, setForm] = useState(data || {
-    titulo: '', tipo: 'Manutenção Preventiva', fornecedor: '', dataPrevista: '', custoEstimado: '', recorrencia: 'Nenhuma', status: 'Agendada', descricao: '', condominio: ''
+    titulo: '',
+    tipo: 'Manutenção Preventiva',
+    fornecedor: '',
+    dataPrevista: '',
+    custoEstimado: '',
+    recorrencia: 'Nenhuma',
+    status: 'Agendada',
+    descricao: '',
+    condominio: '',
+    qtdCiclos: 4,
+    notificarGrupoAgora: true,
+    gerarCiclosFuturos: true
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const selectedCondo = condominios?.find(c => c.nome === form.condominio)
+  const temGrupo = Boolean(selectedCondo?.grupoWhatsapp)
+
+  const handleRecorrenciaChange = (novaRec) => {
+    let ciclosDefault = 4
+    if (novaRec === 'Semestral') ciclosDefault = 4
+    else if (novaRec === 'Mensal') ciclosDefault = 12
+    else if (novaRec === 'Trimestral') ciclosDefault = 4
+    else if (novaRec === 'Anual') ciclosDefault = 3
+    setForm(f => ({ ...f, recorrencia: novaRec, qtdCiclos: ciclosDefault }))
+  }
+
+  const previewCiclos = useMemo(() => {
+    if (!form.dataPrevista || !form.recorrencia || form.recorrencia === 'Nenhuma') return []
+    const total = Number(form.qtdCiclos || (form.recorrencia === 'Semestral' ? 4 : form.recorrencia === 'Mensal' ? 12 : form.recorrencia === 'Trimestral' ? 4 : 3))
+    const intervalo = form.recorrencia === 'Mensal' ? 1 : form.recorrencia === 'Trimestral' ? 3 : form.recorrencia === 'Semestral' ? 6 : 12
+    const list = []
+    for (let i = 0; i < total; i++) {
+      const dt = calcularProximaData(form.dataPrevista, i * intervalo)
+      const dataBr = dt.split('-').reverse().join('/')
+      list.push({ ciclo: i + 1, dataIso: dt, dataBr, ehInicial: i === 0 })
+    }
+    return list
+  }, [form.dataPrevista, form.recorrencia, form.qtdCiclos])
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -60,11 +113,12 @@ function ModalManutencao({ data, condominios, onClose, onSave }) {
           </div>
           <div>
             <label className="label">Recorrência</label>
-            <select className="input" value={form.recorrencia} onChange={e => set('recorrencia', e.target.value)}>
-              <option>Nenhuma</option>
-              <option>Mensal</option>
-              <option>Semestral</option>
-              <option>Anual</option>
+            <select className="input font-semibold" value={form.recorrencia || 'Nenhuma'} onChange={e => handleRecorrenciaChange(e.target.value)}>
+              <option value="Nenhuma">Nenhuma (Avulsa)</option>
+              <option value="Mensal">Mensal (a cada 1 mês)</option>
+              <option value="Trimestral">Trimestral (a cada 3 meses)</option>
+              <option value="Semestral">Semestral (a cada 6 meses)</option>
+              <option value="Anual">Anual (a cada 1 ano)</option>
             </select>
           </div>
           <div>
@@ -75,14 +129,119 @@ function ModalManutencao({ data, condominios, onClose, onSave }) {
               <option>Concluída</option>
             </select>
           </div>
+
+          {/* CRONOGRAMA DE CICLOS FUTUROS (QUANDO HOUVER RECORRÊNCIA) */}
+          {form.recorrencia && form.recorrencia !== 'Nenhuma' && (
+            <div className="col-span-2 bg-blue-50/70 border border-blue-200 rounded-xl p-4 flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-black text-blue-950 flex items-center gap-1.5">
+                    <Clock size={14} className="text-blue-600" /> Cronograma de Recorrência ({form.recorrencia})
+                  </p>
+                  <p className="text-[11px] text-blue-700">
+                    O sistema registrará automaticamente os ciclos futuros no cronograma do condomínio.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-blue-900 whitespace-nowrap">Qtd. de Ciclos:</label>
+                  <select
+                    className="input py-1 px-2.5 text-xs bg-white border-blue-300 font-bold"
+                    value={form.qtdCiclos || (form.recorrencia === 'Semestral' ? 4 : form.recorrencia === 'Mensal' ? 12 : form.recorrencia === 'Trimestral' ? 4 : 3)}
+                    onChange={e => set('qtdCiclos', Number(e.target.value))}
+                  >
+                    {form.recorrencia === 'Semestral' && (
+                      <>
+                        <option value={2}>2 semestres (1 ano)</option>
+                        <option value={4}>4 semestres (2 anos - Recomendado)</option>
+                        <option value={6}>6 semestres (3 anos)</option>
+                        <option value={8}>8 semestres (4 anos)</option>
+                      </>
+                    )}
+                    {form.recorrencia === 'Mensal' && (
+                      <>
+                        <option value={6}>6 meses</option>
+                        <option value={12}>12 meses (1 ano - Recomendado)</option>
+                        <option value={24}>24 meses (2 anos)</option>
+                      </>
+                    )}
+                    {form.recorrencia === 'Trimestral' && (
+                      <>
+                        <option value={4}>4 trimestres (1 ano - Recomendado)</option>
+                        <option value={8}>8 trimestres (2 anos)</option>
+                      </>
+                    )}
+                    {form.recorrencia === 'Anual' && (
+                      <>
+                        <option value={2}>2 anos</option>
+                        <option value={3}>3 anos (Recomendado)</option>
+                        <option value={5}>5 anos</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {previewCiclos.length > 0 && (
+                <div className="bg-white rounded-lg p-2.5 border border-blue-100 flex flex-col gap-1.5 text-xs">
+                  <span className="font-bold text-gray-600 text-[11px]">
+                    📅 Cronograma que será registrado no sistema ({previewCiclos.length} manutenções):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {previewCiclos.map(c => (
+                      <span
+                        key={c.ciclo}
+                        className={`px-2 py-1 rounded-md font-semibold text-[11px] flex items-center gap-1 ${c.ehInicial ? 'bg-blue-600 text-white shadow-xs' : 'bg-blue-50 text-blue-900 border border-blue-200'}`}
+                      >
+                        {c.ehInicial ? '1º (Inicial):' : `${c.ciclo}º:`} {c.dataBr}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* NOTIFICAR GRUPO DE WHATSAPP DO CONDOMÍNIO */}
+          <div className="col-span-2 bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 flex flex-col gap-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                checked={form.notificarGrupoAgora !== false}
+                onChange={e => set('notificarGrupoAgora', e.target.checked)}
+              />
+              <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                <MessageSquare size={14} className="text-emerald-700" />
+                Notificar grupo de WhatsApp do condomínio avisando sobre esta manutenção
+              </span>
+            </label>
+            <div className="text-[11px] text-emerald-800 pl-6">
+              {form.condominio ? (
+                temGrupo ? (
+                  <span className="text-emerald-700 font-medium">
+                    ✅ Grupo conectado: <b>{selectedCondo.nome}</b>. Uma mensagem oficial da Alpha será disparada para os moradores avisando sobre o serviço.
+                  </span>
+                ) : (
+                  <span className="text-amber-800 font-medium">
+                    ⚠️ O condomínio <b>{form.condominio}</b> ainda não possui grupo de WhatsApp vinculado. O aviso será enviado para o síndico e administradora.
+                  </span>
+                )
+              ) : (
+                <span className="text-gray-600">
+                  ℹ️ Selecione um condomínio acima para enviar o comunicado direto no grupo de WhatsApp correspondente.
+                </span>
+              )}
+            </div>
+          </div>
+
           <div className="col-span-2">
-            <label className="label">Observações</label>
-            <textarea className="input min-h-[80px]" value={form.descricao} onChange={e => set('descricao', e.target.value)} />
+            <label className="label">Observações / Orientações</label>
+            <textarea className="input min-h-[80px]" value={form.descricao} onChange={e => set('descricao', e.target.value)} placeholder="Ex: Informações para os moradores, desligamento de bomba, etc..." />
           </div>
         </div>
         <div className="p-6 border-t border-cream-300 flex justify-end gap-3">
           <button onClick={onClose} className="btn-secondary">Cancelar</button>
-          <button onClick={() => { if (!form.titulo || !form.dataPrevista) return; onSave(form) }} className="btn-primary">Salvar</button>
+          <button onClick={() => { if (!form.titulo || !form.dataPrevista) return; onSave(form) }} className="btn-primary">Salvar Agendamento</button>
         </div>
       </div>
     </div>
@@ -446,10 +605,50 @@ export default function Manutencoes() {
   const handleSaveManu = async (form) => {
     try {
       const isNew = !form.id
-      if (form.id) {
+      const totalCiclos = form.recorrencia && form.recorrencia !== 'Nenhuma'
+        ? Number(form.qtdCiclos || (form.recorrencia === 'Semestral' ? 4 : form.recorrencia === 'Mensal' ? 12 : form.recorrencia === 'Trimestral' ? 4 : 3))
+        : 1
+
+      const mesesIntervalo = form.recorrencia === 'Mensal' ? 1 : form.recorrencia === 'Trimestral' ? 3 : form.recorrencia === 'Semestral' ? 6 : 12
+
+      let docIdPrincipal = form.id || null
+
+      if (isNew) {
+        if (form.recorrencia && form.recorrencia !== 'Nenhuma' && totalCiclos > 1) {
+          const grupoRecorrenciaId = 'rec_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6)
+
+          for (let i = 0; i < totalCiclos; i++) {
+            const dataCiclo = calcularProximaData(form.dataPrevista, i * mesesIntervalo)
+            const itemCiclo = {
+              titulo: form.titulo,
+              tipo: form.tipo || 'Manutenção Preventiva',
+              condominio: form.condominio || '',
+              fornecedor: form.fornecedor || '',
+              dataPrevista: dataCiclo,
+              custoEstimado: form.custoEstimado || '',
+              recorrencia: form.recorrencia,
+              status: i === 0 ? (form.status || 'Agendada') : 'Agendada',
+              descricao: form.descricao || '',
+              grupoRecorrenciaId,
+              cicloNumero: i + 1,
+              totalCiclos,
+              origemRecorrente: true
+            }
+            const docRef = await addItem(itemCiclo, true)
+            if (i === 0 && docRef?.id) docIdPrincipal = docRef.id
+          }
+        } else {
+          const { qtdCiclos, notificarGrupoAgora, gerarCiclosFuturos, ...dadosLimpos } = form
+          const docRef = await addItem(dadosLimpos)
+          if (docRef?.id) docIdPrincipal = docRef.id
+        }
+      } else {
         // Se mudou a data, reseta as flags para disparar na nova véspera/dia
         const existing = manutencoes.find(m => m.id === form.id)
         const toUpdate = { ...form }
+        delete toUpdate.qtdCiclos
+        delete toUpdate.notificarGrupoAgora
+        delete toUpdate.gerarCiclosFuturos
         if (existing && existing.dataPrevista !== form.dataPrevista) {
           delete toUpdate.notifD1
           delete toUpdate.notifD0
@@ -457,19 +656,18 @@ export default function Manutencoes() {
           delete toUpdate.lembreteHojeEnviadoEm
         }
         await updateItem(form.id, toUpdate)
-      } else {
-        await addItem(form)
       }
 
-      // 1. Gravar notificação no Sininho e disparar WhatsApp APENAS se for NOVO agendamento
+      const dataFmt = form.dataPrevista ? (form.dataPrevista.includes('-') ? form.dataPrevista.split('-').reverse().join('/') : form.dataPrevista) : 'A definir'
+      const tipoLabel = form.tipo || 'Manutenção'
+      const hojeIso = new Date().toISOString().split('T')[0]
+      const ehParaHoje = form.dataPrevista && form.dataPrevista.startsWith(hojeIso)
+
+      // 1. Gravar notificação no Sininho
       if (isNew) {
-        const dataFmt = form.dataPrevista ? (form.dataPrevista.includes('-') ? form.dataPrevista.split('-').reverse().join('/') : form.dataPrevista) : 'A definir'
-        const tipoLabel = form.tipo || 'Manutenção'
-        const textoNotif = `🔧 ${tipoLabel.toUpperCase()} AGENDADA: "${form.titulo}" no ${form.condominio || 'Condomínio'} para ${dataFmt} (Prestador: ${form.fornecedor || 'A definir'})`
-        
         try {
           await addDoc(collection(db, 'notificacoes'), {
-            text: textoNotif,
+            text: `🔧 ${tipoLabel.toUpperCase()} AGENDADA: "${form.titulo}" no ${form.condominio || 'Condomínio'} para ${dataFmt} (Prestador: ${form.fornecedor || 'A definir'})${form.recorrencia !== 'Nenhuma' && totalCiclos > 1 ? ` — ${totalCiclos} ciclos programados no sistema` : ''}`,
             titulo: `🔧 ${tipoLabel}: ${form.titulo}`,
             time: new Date().toISOString(),
             tipo: 'manutencao',
@@ -479,61 +677,165 @@ export default function Manutencoes() {
             _createdAt: serverTimestamp()
           })
         } catch(e) {}
+      }
 
-        // 2. Disparo para os números de WhatsApp dos Administradores e Síndico APENAS se for agendamento para HOJE
-        const hojeIso = new Date().toISOString().split('T')[0]
-        const ehParaHoje = form.dataPrevista && form.dataPrevista.startsWith(hojeIso)
-
-        if (ehParaHoje) {
-          const telefonesDestino = new Set()
-          telefonesDestino.add('558396885931') // Número oficial padrão da Alpha
-          telefonesDestino.add('5583996806325') // 83 99680-6325
-          telefonesDestino.add('5583999797285') // 83 99979-7285
-          telefonesDestino.add('5583998350321') // 83 99835-0321
-          telefonesDestino.add('5583998468997') // 83 99846-8997
-
-          if (allUsuarios && allUsuarios.length > 0) {
-            allUsuarios.forEach(u => {
-              const isAdm = u.role === 'Administrador' || u.role === 'Financeiro'
-              const isSindicoDesteCondo = u.role === 'Síndico' && (!form.condominio || u.condominio === form.condominio)
-              
-              if (isAdm || isSindicoDesteCondo) {
-                const rawTel = u.tel || u.telefone || u.whatsapp || u.celular || ''
-                const cleanTel = String(rawTel).replace(/\D/g, '')
-                if (cleanTel.length >= 8) {
-                  telefonesDestino.add(cleanTel.length <= 11 ? `55${cleanTel}` : cleanTel)
-                }
-              }
-            })
-          }
-
-          const custoFmt = form.custoEstimado ? Number(form.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'
-          const msgWhats = `🚨 *${tipoLabel.toUpperCase()} HOJE - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${form.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${form.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${form.fornecedor || 'Não informado'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n🔄 *Recorrência:* ${form.recorrencia || 'Nenhuma'}\n📌 *Status:* ${form.status || 'Agendada'}${form.descricao ? `\n📝 *Observações:* ${form.descricao}` : ''}\n\n✅ *Dar baixa / Concluir serviço:*\n👉 https://app.alphaadmsc.com.br/concluir/manutencao/${form.id || ''}\n\n🔗 *Acesse o cronograma completo:* https://app.alphaadmsc.com.br/manutencoes`
-
-          for (const numero of telefonesDestino) {
-            try {
-              fetch('/api/whatsapp-send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  number: numero,
-                  text: msgWhats,
-                  instance: 'InstanciaAlpha'
-                })
-              }).catch(e => console.warn('Erro envio WhatsApp manutenção:', e))
-            } catch(e) {}
+      // 2. DISPARO PARA O GRUPO DE WHATSAPP DO CONDOMÍNIO
+      let notificouGrupo = false
+      if (form.condominio && (form.notificarGrupoAgora !== false || ehParaHoje)) {
+        const condoDoc = condominios.find(c => c.nome === form.condominio)
+        if (condoDoc?.grupoWhatsapp) {
+          try {
+            await enviarManutencaoWhatsAppGrupo({
+              ...form,
+              id: docIdPrincipal || form.id,
+              totalCiclos,
+              cicloNumero: 1
+            }, condoDoc, ehParaHoje)
+            notificouGrupo = true
+          } catch(errGrupo) {
+            console.warn('Falha no envio de comunicado para grupo:', errGrupo)
           }
         }
-
-        alert(`🎉 Agendamento salvo com sucesso!\n\n🔔 Notificação adicionada no sininho.${ehParaHoje ? '\n📲 Disparo de WhatsApp enviado (agendado para hoje).' : '\n⏰ Notificação de WhatsApp programada para o dia da execução.'}`)
-      } else {
-        alert('🎉 Agendamento atualizado com sucesso!')
       }
+
+      // 3. Disparo para os números de WhatsApp dos Administradores e Síndico APENAS se for agendamento para HOJE
+      if (ehParaHoje) {
+        const telefonesDestino = new Set()
+        telefonesDestino.add('558396885931') // Número oficial padrão da Alpha
+        telefonesDestino.add('5583996806325') // 83 99680-6325
+        telefonesDestino.add('5583999797285') // 83 99979-7285
+        telefonesDestino.add('5583998350321') // 83 99835-0321
+        telefonesDestino.add('5583998468997') // 83 99846-8997
+
+        if (allUsuarios && allUsuarios.length > 0) {
+          allUsuarios.forEach(u => {
+            const isAdmRole = u.role === 'Administrador' || u.role === 'Financeiro'
+            const isSindicoDesteCondo = u.role === 'Síndico' && (!form.condominio || u.condominio === form.condominio)
+            
+            if (isAdmRole || isSindicoDesteCondo) {
+              const rawTel = u.tel || u.telefone || u.whatsapp || u.celular || ''
+              const cleanTel = String(rawTel).replace(/\D/g, '')
+              if (cleanTel.length >= 8) {
+                telefonesDestino.add(cleanTel.length <= 11 ? `55${cleanTel}` : cleanTel)
+              }
+            }
+          })
+        }
+
+        const custoFmt = form.custoEstimado ? Number(form.custoEstimado).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'
+        const msgWhats = `🚨 *${tipoLabel.toUpperCase()} HOJE - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${form.condominio || 'Todos / Geral'}\n🛠️ *Serviço:* ${form.titulo}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${form.fornecedor || 'Não informado'}\n💰 *Custo Previsto:* R$ ${custoFmt}\n🔄 *Recorrência:* ${form.recorrencia || 'Nenhuma'}\n📌 *Status:* ${form.status || 'Agendada'}${form.descricao ? `\n📝 *Observações:* ${form.descricao}` : ''}\n\n✅ *Dar baixa / Concluir serviço:*\n👉 https://app.alphaadmsc.com.br/concluir/manutencao/${docIdPrincipal || form.id || ''}\n\n🔗 *Acesse o cronograma completo:* https://app.alphaadmsc.com.br/manutencoes`
+
+        for (const numero of telefonesDestino) {
+          try {
+            await enviarMensagemWhatsApp({
+              number: numero,
+              text: msgWhats,
+              instance: 'InstanciaAlpha'
+            })
+          } catch(e) {}
+        }
+      }
+
+      let msgFinal = isNew
+        ? `🎉 Agendamento salvo com sucesso!\n\n`
+        : `🎉 Agendamento atualizado com sucesso!\n\n`
+
+      if (isNew && totalCiclos > 1) {
+        msgFinal += `🔄 Foram registrados ${totalCiclos} ciclos de ${form.recorrencia.toLowerCase()} no cronograma.\n`
+      }
+      if (notificouGrupo) {
+        msgFinal += `📲 Comunicado enviado para o grupo de WhatsApp do condomínio "${form.condominio}".\n`
+      } else if (form.condominio && form.notificarGrupoAgora) {
+        msgFinal += `ℹ️ Grupo do WhatsApp não vinculado para o condomínio "${form.condominio}".\n`
+      }
+      msgFinal += ehParaHoje
+        ? `📲 Disparo de WhatsApp enviado para Administradores e Síndico (execução hoje).`
+        : `⏰ Lembretes automáticos programados para a véspera e dia da execução.`
+
+      alert(msgFinal)
     } catch(err) {
       console.error('Erro ao salvar manutenção:', err)
       alert('Erro ao salvar: ' + err.message)
     } finally {
       setModalManu(null)
+    }
+  }
+
+  const handleNotificarGrupo = async (m) => {
+    if (!m.condominio) {
+      alert('Esta manutenção não possui condomínio vinculado. Edite o item e selecione um condomínio.')
+      return
+    }
+    const condoDoc = condominios.find(c => c.nome === m.condominio)
+    const grupoId = String(condoDoc?.grupoWhatsapp || '').trim()
+    if (!grupoId) {
+      alert(`O condomínio "${m.condominio}" ainda não possui grupo de WhatsApp vinculado.\n\nPara vincular o grupo, acesse o menu Condomínios > Editar Condomínio > Grupo de WhatsApp.`)
+      return
+    }
+
+    const dataFmt = m.dataPrevista ? (m.dataPrevista.includes('-') ? m.dataPrevista.split('-').reverse().join('/') : m.dataPrevista) : 'A definir'
+    const hojeIso = new Date().toISOString().split('T')[0]
+    const ehHoje = m.dataPrevista && m.dataPrevista.startsWith(hojeIso)
+
+    if (!window.confirm(`Deseja enviar este comunicado agora para o grupo de WhatsApp do condomínio "${m.condominio}"?`)) {
+      return
+    }
+
+    try {
+      const res = await enviarManutencaoWhatsAppGrupo(m, condoDoc, ehHoje)
+      if (res && res.success !== false) {
+        alert(`🎉 Comunicado enviado com sucesso para o grupo de WhatsApp do condomínio "${m.condominio}"!`)
+      } else {
+        alert(`⚠️ O envio retornou aviso: ${res?.error || 'Verifique a conexão da instância no WhatsApp'}`)
+      }
+    } catch (err) {
+      alert(`Erro ao enviar mensagem para o grupo: ${err.message}`)
+    }
+  }
+
+  const handleGerarCiclosFuturos = async (m) => {
+    if (!m.recorrencia || m.recorrencia === 'Nenhuma') {
+      alert('Esta manutenção não possui recorrência configurada.')
+      return
+    }
+    const mesesIntervalo = m.recorrencia === 'Semestral' ? 6 : m.recorrencia === 'Mensal' ? 1 : m.recorrencia === 'Trimestral' ? 3 : 12
+    const totalNovosCiclos = m.recorrencia === 'Semestral' ? 3 : m.recorrencia === 'Mensal' ? 11 : m.recorrencia === 'Trimestral' ? 3 : 2
+
+    const dataOrigem = m.dataPrevista || new Date().toISOString().split('T')[0]
+    const confirmMsg = `Deseja gerar os próximos ${totalNovosCiclos} ciclos ${m.recorrencia.toLowerCase()}s para "${m.titulo}" (${m.condominio || 'Geral'})?\n\nIsso criará as manutenções futuras no cronograma com intervalo de ${mesesIntervalo} meses.`
+    if (!window.confirm(confirmMsg)) return
+
+    try {
+      const idGrupo = m.grupoRecorrenciaId || ('rec_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6))
+      
+      await updateItem(m.id, {
+        grupoRecorrenciaId: idGrupo,
+        cicloNumero: 1,
+        totalCiclos: totalNovosCiclos + 1,
+        origemRecorrente: true
+      })
+
+      for (let i = 1; i <= totalNovosCiclos; i++) {
+        const novaData = calcularProximaData(dataOrigem, i * mesesIntervalo)
+        await addItem({
+          titulo: m.titulo,
+          tipo: m.tipo || 'Manutenção Preventiva',
+          condominio: m.condominio || '',
+          fornecedor: m.fornecedor || '',
+          dataPrevista: novaData,
+          custoEstimado: m.custoEstimado || '',
+          recorrencia: m.recorrencia,
+          status: 'Agendada',
+          descricao: m.descricao || '',
+          grupoRecorrenciaId: idGrupo,
+          cicloNumero: i + 1,
+          totalCiclos: totalNovosCiclos + 1,
+          origemRecorrente: true
+        }, true)
+      }
+      alert(`🎉 ${totalNovosCiclos} ciclos futuros foram gerados com sucesso e já estão no cronograma!`)
+    } catch (err) {
+      alert('Erro ao gerar ciclos futuros: ' + err.message)
     }
   }
 
@@ -789,9 +1091,9 @@ export default function Manutencoes() {
                     <span className="inline-block px-2 py-1 bg-cream-200 text-gray-600 rounded text-[10px] uppercase font-bold">
                       {m.condominio ? `🏢 ${m.condominio}` : '🌐 Todos / Geral'}
                     </span>
-                    {m.recorrencia !== 'Nenhuma' && (
+                    {m.recorrencia && m.recorrencia !== 'Nenhuma' && (
                       <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 rounded text-[10px] uppercase font-bold flex items-center gap-1">
-                        <Clock size={10}/> {m.recorrencia}
+                        <Clock size={10}/> {m.recorrencia} {m.cicloNumero && m.totalCiclos ? `(${m.cicloNumero}/${m.totalCiclos})` : ''}
                       </span>
                     )}
                   </div>
@@ -811,16 +1113,40 @@ export default function Manutencoes() {
                     </div>
                   )}
 
-                  {m.status !== 'Concluída' && (
-                    <button
-                      type="button"
-                      onClick={() => handleConcluirRapido(m)}
-                      className="mt-2 w-full btn-secondary text-xs font-bold py-1.5 flex items-center justify-center gap-1.5 bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 transition-all cursor-pointer shadow-sm"
-                      title="Marcar como concluída rapidamente"
-                    >
-                      <CheckCircle2 size={13} className="text-emerald-600" /> Marcar como Concluída
-                    </button>
-                  )}
+                  <div className="flex flex-col gap-1.5 mt-2">
+                    {m.status !== 'Concluída' && (
+                      <button
+                        type="button"
+                        onClick={() => handleConcluirRapido(m)}
+                        className="w-full btn-secondary text-xs font-bold py-1.5 flex items-center justify-center gap-1.5 bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 transition-all cursor-pointer shadow-sm"
+                        title="Marcar como concluída rapidamente"
+                      >
+                        <CheckCircle2 size={13} className="text-emerald-600" /> Marcar como Concluída
+                      </button>
+                    )}
+
+                    {m.condominio && (
+                      <button
+                        type="button"
+                        onClick={() => handleNotificarGrupo(m)}
+                        className="w-full btn-secondary text-xs font-bold py-1.5 flex items-center justify-center gap-1.5 bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-50 transition-all cursor-pointer shadow-xs"
+                        title={`Enviar aviso desta manutenção diretamente para o grupo do WhatsApp do condomínio ${m.condominio}`}
+                      >
+                        <MessageSquare size={13} className="text-emerald-600" /> Avisar Grupo no WhatsApp
+                      </button>
+                    )}
+
+                    {m.recorrencia && m.recorrencia !== 'Nenhuma' && (!m.totalCiclos || m.totalCiclos <= 1) && (
+                      <button
+                        type="button"
+                        onClick={() => handleGerarCiclosFuturos(m)}
+                        className="w-full btn-secondary text-xs font-bold py-1.5 flex items-center justify-center gap-1.5 bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 transition-all cursor-pointer shadow-xs"
+                        title={`Gerar os próximos ciclos futuros de ${m.recorrencia.toLowerCase()} no cronograma`}
+                      >
+                        <RefreshCw size={12} className="text-blue-600" /> Gerar Próximos Ciclos ({m.recorrencia})
+                      </button>
+                    )}
+                  </div>
 
                   {/* Badges de Lembretes Automáticos */}
                   {(m.notifD1 || m.notifD0) && (
@@ -931,6 +1257,30 @@ export default function Manutencoes() {
                       <span className="font-semibold text-gray-700">R$ {Number(m.custoEstimado).toLocaleString('pt-BR', {minimumFractionDigits:2})}</span>
                     </div>
                   )}
+
+                  <div className="flex flex-col gap-1.5 mt-2">
+                    {m.status !== 'Concluída' && (
+                      <button
+                        type="button"
+                        onClick={() => handleConcluirRapido(m)}
+                        className="w-full btn-secondary text-xs font-bold py-1.5 flex items-center justify-center gap-1.5 bg-purple-50 text-purple-800 border-purple-300 hover:bg-purple-100 transition-all cursor-pointer shadow-sm"
+                        title="Marcar visita técnica como concluída"
+                      >
+                        <CheckCircle2 size={13} className="text-purple-600" /> Marcar como Concluída
+                      </button>
+                    )}
+
+                    {m.condominio && (
+                      <button
+                        type="button"
+                        onClick={() => handleNotificarGrupo(m)}
+                        className="w-full btn-secondary text-xs font-bold py-1.5 flex items-center justify-center gap-1.5 bg-white text-purple-800 border border-purple-200 hover:bg-purple-50 transition-all cursor-pointer shadow-xs"
+                        title={`Enviar aviso desta visita técnica para o grupo de WhatsApp do condomínio ${m.condominio}`}
+                      >
+                        <MessageSquare size={13} className="text-purple-600" /> Avisar Grupo no WhatsApp
+                      </button>
+                    )}
+                  </div>
 
                   {/* Badges de Lembretes Automáticos */}
                   {(m.notifD1 || m.notifD0) && (

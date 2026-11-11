@@ -212,6 +212,40 @@ export async function enviarReservaWhatsAppGrupo(reserva, condoDoc) {
   return await enviarMensagemWhatsApp({ number: grupo, text: textoFinal, instance: 'InstanciaAlpha' })
 }
 
+/**
+ * Gera o texto formatado para comunicado de manutenção no grupo de WhatsApp do condomínio
+ */
+export function gerarTextoManutencaoWhatsApp(manutencao, condoNome, ehHoje = false) {
+  const condominio = condoNome || manutencao?.condominio || 'Condomínio'
+  const servico = manutencao?.titulo || 'Manutenção Predial'
+  const fornecedor = manutencao?.fornecedor || 'Equipe Especializada'
+  const descricao = manutencao?.descricao ? String(manutencao.descricao).trim() : ''
+  const dataFmt = manutencao?.dataPrevista
+    ? (String(manutencao.dataPrevista).includes('-') ? String(manutencao.dataPrevista).split('-').reverse().join('/') : String(manutencao.dataPrevista))
+    : 'A definir'
+  const recorrencia = manutencao?.recorrencia && manutencao.recorrencia !== 'Nenhuma' ? manutencao.recorrencia : null
+  const cicloInfo = manutencao?.cicloNumero && manutencao?.totalCiclos ? ` (Ciclo ${manutencao.cicloNumero} de ${manutencao.totalCiclos})` : ''
+
+  if (ehHoje) {
+    return `🚨 *COMUNICADO DE MANUTENÇÃO HOJE - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${condominio}\n🛠️ *Serviço:* ${servico}\n📅 *Data:* HOJE (${dataFmt})\n👷 *Prestador / Empresa:* ${fornecedor}${descricao ? `\n📝 *Orientações:* ${descricao}` : ''}\n\nℹ️ *Aos Senhores Moradores:*\nInformamos que a equipe técnica estará atuando hoje nas dependências do condomínio para a realização deste serviço preventivo.\n\nContamos com a compreensão e colaboração de todos.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+  }
+
+  return `🔔 *COMUNICADO DE AGENDAMENTO DE MANUTENÇÃO - ALPHA GESTÃO*\n\n🏢 *Condomínio:* ${condominio}\n🛠️ *Serviço:* ${servico}\n📅 *Data Programada:* ${dataFmt}\n👷 *Prestador / Empresa:* ${fornecedor}${recorrencia ? `\n🔄 *Periodicidade:* ${recorrencia}${cicloInfo}` : ''}${descricao ? `\n📝 *Observações / Detalhes:* ${descricao}` : ''}\n\nℹ️ *Prezados Moradores:*\nInformamos que esta manutenção preventiva foi incluída no cronograma oficial do condomínio para conservação patrimonial e segurança predial de todos.\n\nEm caso de dúvidas, a administração permanece à disposição.\n\nAtenciosamente,\n*Alpha Soluções Condominiais*`
+}
+
+/**
+ * Envia notificação de manutenção diretamente para o grupo de WhatsApp do condomínio
+ */
+export async function enviarManutencaoWhatsAppGrupo(manutencao, condoDoc, ehHoje = false) {
+  const grupo = String(condoDoc?.grupoWhatsapp || '').trim()
+  if (!grupo) {
+    return { success: false, error: 'Condomínio não possui grupo de WhatsApp configurado (campo grupoWhatsapp).' }
+  }
+
+  const textoFinal = gerarTextoManutencaoWhatsApp(manutencao, condoDoc?.nome || manutencao?.condominio, ehHoje)
+  return await enviarMensagemWhatsApp({ number: grupo, text: textoFinal, instance: 'InstanciaAlpha' })
+}
+
 export async function buscarGruposWhatsApp(instance = 'InstanciaAlpha') {
   try {
     const headers = await getAuthHeaders()
