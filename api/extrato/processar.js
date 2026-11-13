@@ -3,7 +3,7 @@ import admin from 'firebase-admin';
 import imaps from 'imap-simple';
 import { simpleParser } from 'mailparser';
 import nodemailer from 'nodemailer';
-import { applyCors, verifyUserAuth } from '../_middleware/auth.js';
+import { applyCors, verifyUserAuth, requireRole } from '../_middleware/auth.js';
 
 export const config = {
   maxDuration: 60,
@@ -227,6 +227,12 @@ export default async function handler(req, res) {
     // Autenticação obrigatória
     const user = await verifyUserAuth(req, res);
     if (!user) return;
+
+    // RBAC: Apenas Administradores e Financeiro podem acessar e-mails e processar extratos
+    const ROLES_EXTRATO = ['Administrador', 'Financeiro', 'admin'];
+    if (!requireRole(user, ROLES_EXTRATO, res)) {
+      return;
+    }
 
     const rawPass = process.env.GMAIL_APP_PASSWORD || '';
     const effectivePass = rawPass.replace(/[^a-zA-Z0-9]/g, '');

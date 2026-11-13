@@ -49,8 +49,8 @@ export default async function handler(req, res) {
   const userRoleNorm = String(user?.role || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const isAuthorizedRole = ROLES_WHATSAPP.some(r => r.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === userRoleNorm);
 
-  if (!isAuthorizedRole && (!user?.uid || !user?.email)) {
-    return res.status(403).json({ error: 'Forbidden', message: `Acesso negado: Perfil '${user?.role}' não possui privilégios para enviar WhatsApp.` });
+  if (!isAuthorizedRole && !user?.isServiceKey) {
+    return res.status(403).json({ error: 'Forbidden', message: `Acesso negado: Perfil '${user?.role || 'Desconhecido'}' não possui privilégios para enviar WhatsApp.` });
   }
 
   // Consulta de Grupos via GET

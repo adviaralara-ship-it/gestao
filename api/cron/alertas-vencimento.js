@@ -63,14 +63,7 @@ export default async function handler(req, res) {
 
   try {
     const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
-    const auth = getAuth(app);
     const db = getFirestore(app);
-
-    try {
-      await signInWithEmailAndPassword(auth, 'admin@alpha.com.br', 'admin123');
-    } catch (authErr) {
-      console.warn('Login Firebase Client fallback:', authErr.message);
-    }
 
     // 1. Data atual no fuso de Brasília (UTC-3)
     const hoje = new Date();
@@ -411,11 +404,11 @@ export default async function handler(req, res) {
         const backupModule = await import('../backup/executar.js');
         const backupReq = {
           method: 'GET',
-          headers: {},
+          headers: {
+            authorization: `Bearer ${process.env.API_SECRET_KEY || process.env.CRON_SECRET || ''}`
+          },
           query: {
-            secret: process.env.API_SECRET_KEY || 'Alpha_Sec_Backend_Token_2026_xK9pL2',
-            enviarEmail: 'true',
-            destino: 'cofrealpha29@gmail.com'
+            enviarEmail: 'true'
           }
         };
         const backupRes = {

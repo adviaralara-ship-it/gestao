@@ -2,25 +2,13 @@
 // Endpoint seguro para extração completa de dados (backup) do sistema Alpha
 // Utilizado para download direto pelo painel e para automações (n8n / Google Drive / Cron / E-mail)
 
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
-import { getFirestore, collection, getDocs } from 'firebase/firestore';
 import nodemailer from 'nodemailer';
-import { applyCors, verifyUserAuth, requireRole, safeCompare } from '../_middleware/auth.js';
+import { applyCors, verifyUserAuth, requireRole, safeCompare, getFirebaseAdmin } from '../_middleware/auth.js';
 
 export const config = {
   api: {
     responseLimit: '15mb',
   },
-};
-
-const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDj6CNYCaNSWv_tQYVjCdqFElcuG9lA1LE',
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'alphaadmsc-fdc4e.firebaseapp.com',
-  projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'alphaadmsc-fdc4e',
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'alphaadmsc-fdc4e.appspot.com',
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '30408137815',
-  appId: process.env.VITE_FIREBASE_APP_ID || '1:30408137815:web:fb091176b6d5f756088277'
 };
 
 const COLECOES_SISTEMA = [
@@ -36,17 +24,16 @@ export default async function handler(req, res) {
   // 1. Validação de Autorização Estrita
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.split('Bearer ')[1]?.trim() : '';
-  const secretKey = process.env.API_SECRET_KEY || 'Alpha_Sec_Backend_Token_2026_xK9pL2';
-  const cronSecret = process.env.CRON_SECRET || 'Cron_Alpha_Auth_Secret_2026_Secure_Key';
+  const secretKey = process.env.API_SECRET_KEY;
+  const cronSecret = process.env.CRON_SECRET;
 
-  const isSecretKey = Boolean(token && (safeCompare(token, secretKey) || safeCompare(token, cronSecret)));
-  const isQuerySecret = Boolean(req.query?.secret && safeCompare(req.query.secret, secretKey));
+  const isSecretKey = Boolean(token && ((secretKey && safeCompare(token, secretKey)) || (cronSecret && safeCompare(token, cronSecret))));
 
-  let isAuthorized = isSecretKey || isQuerySecret;
+  let isAuthorized = isSecretKey;
 
   if (!isAuthorized) {
     const user = await verifyUserAuth(req, res);
-    if (user && requireRole(user, ['Administrador', 'Síndico', 'Sindico', 'admin'], res)) {
+    if (user && requireRole(user, ['Administrador', 'admin'], res)) {
       isAuthorized = true;
     }
   }
@@ -56,22 +43,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-
-    try {
-      await signInWithEmailAndPassword(auth, 'admin@alpha.com.br', 'admin123');
-    } catch (e) {
-      // Ignora erro se já estiver autenticado
-    }
+    const adminInst = getFirebaseAdmin();
+    const db = adminInst.firestore();
 
     const dadosExportados = {};
     let totalDocs = 0;
 
     for (const colName of COLECOES_SISTEMA) {
       try {
-        const snap = await getDocs(collection(db, colName));
+        const snap = await db.collection(colName).get();
         dadosExportados[colName] = snap.docs.map(docSnap => ({
           id: docSnap.id,
           ...docSnap.data()
@@ -89,9 +69,9 @@ export default async function handler(req, res) {
     const nomeArquivo = `alpha_backup_completo_${dataIso}_${horaIso}.json`;
     const jsonStr = JSON.stringify(dadosExportados, null, 2);
 
-    // 2. Se o pedido for para envio por e-mail (para o cofre)
+    // 2. Destino do cofre é ESTRITAMENTE o endereço oficial do sistema (imune a manipulação externa)
     const deveEnviarEmail = req.query?.enviarEmail === 'true' || req.body?.enviarEmail === true;
-    const destinoEmail = req.query?.destino || req.body?.destino || 'cofrealpha29@gmail.com';
+    const destinoEmail = process.env.COFRE_EMAIL || 'cofrealpha29@gmail.com';
     let emailStatus = null;
 
     if (deveEnviarEmail) {

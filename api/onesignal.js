@@ -1,4 +1,4 @@
-import { applyCors, verifyUserAuth } from './_middleware/auth.js';
+import { applyCors, verifyUserAuth, requireRole } from './_middleware/auth.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'POST, OPTIONS')) return;
@@ -7,14 +7,23 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // Autenticação obrigatória
+  // Autenticação e RBAC obrigatórios
   const user = await verifyUserAuth(req, res);
   if (!user) return;
 
+  const ROLES_ONESIGNAL = ['Administrador', 'Síndico', 'Sindico', 'admin', 'Financeiro'];
+  if (!requireRole(user, ROLES_ONESIGNAL, res)) {
+    return;
+  }
+
   const { title, message, targetUrl, targetUserId, targetUserIds, condominio } = req.body || {};
 
-  if (!title || !message) {
-    return res.status(400).json({ error: 'Título e mensagem são obrigatórios.' });
+  if (!title || !message || typeof title !== 'string' || typeof message !== 'string') {
+    return res.status(400).json({ error: 'Título e mensagem de texto são obrigatórios.' });
+  }
+
+  if (title.length > 100 || message.length > 600) {
+    return res.status(400).json({ error: 'Título (máx 100) ou mensagem (máx 600) excedem os limites permitidos.' });
   }
 
   const APP_ID = process.env.ONESIGNAL_APP_ID || '94fc5c63-540e-479f-8866-ecc43fc7915c';

@@ -5,7 +5,7 @@ import {
   User, DollarSign, Clock, ArrowLeft, Loader2, FileText, Check, ShieldCheck
 } from 'lucide-react'
 import { doc, getDoc, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore'
-import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth'
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth'
 import { db, auth } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 
@@ -40,12 +40,11 @@ export default function ConcluirItem() {
       }
 
       try {
-        await signInWithEmailAndPassword(auth, 'servico.votacao@alphaadmsc.com.br', 'AlphaVotoPublico2026!')
-        if (isMounted) setAuthReady(true)
-      } catch (errServico) {
-        console.warn('Login de serviço fallback:', errServico.message)
-        if (isMounted) setAuthReady(true)
+        await signInAnonymously(auth)
+      } catch (errAnon) {
+        console.warn('Sessão temporária anônima fallback:', errAnon?.message)
       }
+      if (isMounted) setAuthReady(true)
     })
 
     return () => {

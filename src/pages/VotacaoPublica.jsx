@@ -5,7 +5,7 @@ import {
   User, Building, ShieldCheck, ArrowLeft, Loader2, RefreshCw
 } from 'lucide-react'
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
-import { signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth'
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth'
 import { db, auth } from '../firebase'
 import { useAuth } from '../context/AuthContext'
 
@@ -36,19 +36,13 @@ export default function VotacaoPublica() {
         return
       }
 
-      // Tenta login com a conta de serviço pública para acesso do morador sem exigir login manual
+      // Autenticação anônima temporária para votação pública isolada
       try {
-        await signInWithEmailAndPassword(auth, 'servico.votacao@alphaadmsc.com.br', 'AlphaVotoPublico2026!')
-        if (isMounted) setAuthReady(true)
-      } catch (errServico) {
-        console.warn('Login de servico falhou, tentando anonimo:', errServico.code || errServico)
-        try {
-          await signInAnonymously(auth)
-        } catch (errAnon) {
-          console.warn('Login anonimo indisponivel no Firebase:', errAnon.code || errAnon)
-        }
-        if (isMounted) setAuthReady(true)
+        await signInAnonymously(auth)
+      } catch (errAnon) {
+        console.warn('Login anonimo fallback:', errAnon?.message)
       }
+      if (isMounted) setAuthReady(true)
     })
 
     return () => {
@@ -99,10 +93,10 @@ export default function VotacaoPublica() {
       try {
         snap = await getDoc(docRef)
       } catch (firstErr) {
-        // Se a sessão expirou ou deu erro de permissão temporário, força reautenticação automática
-        if (firstErr?.code?.includes('permission-denied') || !auth.currentUser) {
+        // Se a sessão expirou ou deu erro temporário, renova a sessão anônima
+        if (!auth.currentUser) {
           try {
-            await signInWithEmailAndPassword(auth, 'servico.votacao@alphaadmsc.com.br', 'AlphaVotoPublico2026!')
+            await signInAnonymously(auth)
             snap = await getDoc(docRef)
           } catch (retryErr) {
             throw firstErr
@@ -231,8 +225,8 @@ export default function VotacaoPublica() {
           votosDetalhes: novosDetalhes
         })
       } catch (writeErr) {
-        if (writeErr?.code?.includes('permission-denied') || !auth.currentUser) {
-          await signInWithEmailAndPassword(auth, 'servico.votacao@alphaadmsc.com.br', 'AlphaVotoPublico2026!')
+        if (!auth.currentUser) {
+          await signInAnonymously(auth)
           await updateDoc(docRef, {
             votos: novosVotos,
             votosDetalhes: novosDetalhes

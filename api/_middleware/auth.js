@@ -76,84 +76,60 @@ export function applyCors(req, res, allowedMethods = 'GET, POST, OPTIONS') {
 }
 
 /**
- * Valida autenticação estrita por Bearer Token (JWT do Firebase Auth ou API_SECRET_KEY)
- * com fallback inteligente para decodificação de JWT e verificação de origem permitida.
+ * Valida autenticação estrita por Bearer Token (JWT do Firebase Auth assinado ou API_SECRET_KEY).
+ * Rejeita qualquer tentativa de spoofing por cabeçalho Origin ou tokens forjados.
  */
 export async function verifyUserAuth(req, res) {
-  const origin = req.headers.origin || req.headers.referer || '';
-  const isAllowedOrigin = ALLOWED_ORIGINS.some(o => origin.startsWith(o));
-
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.split('Bearer ')[1]?.trim() : '';
 
-  // 1. Chave de API de integração backend direta (comparação em tempo constante)
+  // 1. Chave de API de integração backend direta (comparação estrita em tempo constante)
   const secretKey = process.env.API_SECRET_KEY;
-  if (token && secretKey && safeCompare(token, secretKey)) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (token && ((secretKey && safeCompare(token, secretKey)) || (cronSecret && safeCompare(token, cronSecret)))) {
     return { uid: 'system_service', role: 'Administrador', isServiceKey: true };
   }
 
-  // 2. Validação criptográfica do Firebase ID Token (JWT)
-  if (token) {
+  // 2. Token obrigatório
+  if (!token) {
+    res.status(401).json({ error: 'Unauthorized', message: 'Token de autenticação ausente ou inválido.' });
+    return null;
+  }
+
+  // 3. Validação criptográfica do Firebase ID Token (JWT com verificação de assinatura)
+  try {
+    const { getAuth } = await import('firebase-admin/auth');
+    getFirebaseAdmin();
+    const decoded = await getAuth().verifyIdToken(token);
+
+    // Obtenção do perfil e role verificado diretamente no Firestore
     try {
-      const { getAuth } = await import('firebase-admin/auth');
-      getFirebaseAdmin();
-      const decoded = await getAuth().verifyIdToken(token);
-      
-      // Obtenção do perfil e role verificado diretamente no Firestore
-      try {
-        const db = getFirestore();
-        const userDoc = await db.collection('usuarios').doc(decoded.uid).get();
-        if (userDoc.exists) {
-          const userData = userDoc.data();
-          decoded.role = userData.role || 'Administrador';
-          decoded.condominio = userData.condominio || '';
-        } else {
-          decoded.role = 'Administrador';
-        }
-      } catch (e) {
-        decoded.role = 'Administrador';
+      const db = getFirestore();
+      const userDoc = await db.collection('usuarios').doc(decoded.uid).get();
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        decoded.role = userData.role || 'Morador';
+        decoded.condominio = userData.condominio || '';
+        decoded.ativo = userData.ativo !== false;
+      } else {
+        decoded.role = 'Morador';
+        decoded.ativo = true;
       }
-
-      return decoded;
-    } catch (err) {
-      // Fallback seguro: Decodifica o JWT do Firebase Auth
-      try {
-        const parts = token.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-          const nowSec = Math.floor(Date.now() / 1000);
-          const pId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'alphaadmsc-fdc4e';
-          const validAud = payload.aud === pId || payload.iss?.includes(pId);
-          const notExpired = payload.exp && payload.exp > nowSec;
-
-          if (validAud && notExpired && payload.sub) {
-            return {
-              uid: payload.sub,
-              email: payload.email || '',
-              role: 'Administrador',
-              condominio: payload.condominio || '',
-              tokenFallback: true
-            };
-          }
-        }
-      } catch (jwtErr) {
-        console.warn('Erro ao decodificar JWT fallback:', jwtErr);
-      }
+    } catch (e) {
+      decoded.role = decoded.role || 'Morador';
     }
-  }
 
-  // 3. Se a requisição vem diretamente do próprio domínio do app web autenticado
-  if (isAllowedOrigin) {
-    return {
-      uid: 'internal_app_user',
-      email: 'alphaadmsc@gmail.com',
-      role: 'Administrador',
-      originVerified: true
-    };
-  }
+    if (decoded.ativo === false) {
+      res.status(403).json({ error: 'Forbidden', message: 'Conta inativa ou pendente de aprovação.' });
+      return null;
+    }
 
-  res.status(401).json({ error: 'Unauthorized', message: 'Acesso não autorizado ou sessão expirada.' });
-  return null;
+    return decoded;
+  } catch (err) {
+    console.error('Falha na validação criptográfica do token:', err?.message || err);
+    res.status(401).json({ error: 'Unauthorized', message: 'Sessão inválida, token expirado ou adulterado.' });
+    return null;
+  }
 }
 
 /**

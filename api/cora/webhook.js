@@ -2,6 +2,14 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import crypto from 'crypto'
 
+function safeTimingCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 /**
  * Validação de Assinatura Criptográfica do Webhook Cora
  */
@@ -12,26 +20,28 @@ function verifyCoraWebhookSignature(req) {
     return false;
   }
   
-  // 1. Verificação por token em header ou query
+  // 1. Verificação por token em header estrito (nunca via URL query)
   const authHeader = req.headers['authorization'] || '';
   const tokenHeader = req.headers['x-cora-token'] || req.headers['x-webhook-secret'] || '';
-  const queryToken = req.query?.token || '';
 
-  if (authHeader === `Bearer ${webhookSecret}` || tokenHeader === webhookSecret || queryToken === webhookSecret) {
+  if (safeTimingCompare(authHeader, `Bearer ${webhookSecret}`) || safeTimingCompare(tokenHeader, webhookSecret)) {
     return true;
   }
 
   // 2. Verificação por assinatura HMAC se o Cora enviar x-cora-signature
   const signature = req.headers['x-cora-signature'];
   if (signature) {
-    const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    const expectedSignature = crypto
-      .createHmac('sha256', webhookSecret)
-      .update(rawBody)
-      .digest('hex');
+    try {
+      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+      const expectedSignature = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(rawBody)
+        .digest('hex');
 
-    if (crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) {
-      return true;
+      return safeTimingCompare(signature, expectedSignature);
+    } catch (e) {
+      console.warn('Erro ao verificar HMAC Cora:', e.message);
+      return false;
     }
   }
 
