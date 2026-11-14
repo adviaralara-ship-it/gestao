@@ -362,7 +362,7 @@ export default function LeadsMarketing() {
                     <div className="text-xs text-gray-600 flex flex-wrap items-center gap-x-4 gap-y-1 pt-0.5">
                       <span className="font-medium text-gray-700 flex items-center gap-1">
                         <Users size={13} className="text-gray-400" />
-                        Contato: <b>{lead.nome}</b>
+                        Contato: <b>{lead.nome}</b> {lead.cargo ? <span className="text-gray-500 font-normal">({lead.cargo})</span> : null}
                       </span>
                       <span>📱 {lead.whatsapp}</span>
                       <span>🏢 {lead.tipo} · {lead.unidades}</span>
@@ -371,12 +371,22 @@ export default function LeadsMarketing() {
                       </span>
                     </div>
 
-                    {/* DOR PRINCIPAL DECLARADA */}
-                    <div className="pt-1">
+                    {/* DADOS DE GESTÃO E DOR DECLARADA */}
+                    <div className="pt-1 flex flex-wrap gap-1.5">
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-800">
                         <AlertTriangle size={12} />
-                        Maior dor: {lead.desafio_principal} · Inadimplência: {lead.inadimplencia_estimada || 'Não informada'}
+                        Maior dor: {lead.desafio_principal}
                       </span>
+                      {lead.inadimplencia_estimada && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-gray-100 border border-gray-200 text-[11px] text-gray-700">
+                          Inadimplência: {lead.inadimplencia_estimada}
+                        </span>
+                      )}
+                      {lead.modelo_gestao && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-[11px] text-blue-700">
+                          {lead.modelo_gestao.split(' ')[0]}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -494,6 +504,7 @@ export default function LeadsMarketing() {
                 </h3>
                 <p className="text-xs text-gray-500">
                   {selectedLeadModal.bairro} · {selectedLeadModal.unidades} · {selectedLeadModal.tipo}
+                  {selectedLeadModal.cargo && <span> · <b>{selectedLeadModal.cargo}</b></span>}
                 </p>
               </div>
               <button
@@ -522,6 +533,62 @@ export default function LeadsMarketing() {
                 </p>
               </div>
             </div>
+
+            {/* Subscores por Dimensão (quando disponíveis) */}
+            {typeof selectedLeadModal.score_financeiro === 'number' && (
+              <div className="p-4 rounded-xl bg-white border border-cream-300 space-y-2.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-600">
+                  Maturidade por Pilar Técnico:
+                </h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2.5 rounded-lg bg-cream-50 border border-cream-200">
+                    <span className="text-gray-500 text-[11px]">Financeiro & Caixa:</span>
+                    <p className="font-bold text-gray-800 text-sm">{selectedLeadModal.score_financeiro}%</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-cream-50 border border-cream-200">
+                    <span className="text-gray-500 text-[11px]">Manutenção Predial:</span>
+                    <p className="font-bold text-gray-800 text-sm">{selectedLeadModal.score_manutencao}%</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-cream-50 border border-cream-200">
+                    <span className="text-gray-500 text-[11px]">Governança & Transparência:</span>
+                    <p className="font-bold text-gray-800 text-sm">{selectedLeadModal.score_governanca}%</p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-cream-50 border border-cream-200">
+                    <span className="text-gray-500 text-[11px]">Jurídico & Cobrança:</span>
+                    <p className="font-bold text-gray-800 text-sm">{selectedLeadModal.score_juridico}%</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Dossiê Técnico Fornecido */}
+            {(selectedLeadModal.modelo_gestao || selectedLeadModal.saude_financeira || selectedLeadModal.manutencao_predial) && (
+              <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200 space-y-1.5 text-xs">
+                <h4 className="font-bold text-blue-900 uppercase text-[11px] tracking-wider">
+                  Dossiê Operacional Declarado:
+                </h4>
+                {selectedLeadModal.modelo_gestao && (
+                  <p className="text-blue-950">
+                    <span className="font-semibold text-blue-800">Modelo de Gestão:</span> {selectedLeadModal.modelo_gestao}
+                  </p>
+                )}
+                {selectedLeadModal.saude_financeira && (
+                  <p className="text-blue-950">
+                    <span className="font-semibold text-blue-800">Situação do Caixa:</span> {selectedLeadModal.saude_financeira}
+                  </p>
+                )}
+                {selectedLeadModal.manutencao_predial && (
+                  <p className="text-blue-950">
+                    <span className="font-semibold text-blue-800">Manutenção / Laudos:</span> {selectedLeadModal.manutencao_predial}
+                  </p>
+                )}
+                {selectedLeadModal.inadimplencia_estimada && (
+                  <p className="text-blue-950">
+                    <span className="font-semibold text-blue-800">Inadimplência:</span> {selectedLeadModal.inadimplencia_estimada}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Resumo IA */}
             <div>
