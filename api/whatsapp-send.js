@@ -35,11 +35,6 @@ function isSafeUrl(urlStr) {
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, POST, OPTIONS')) return;
 
-  // Rate limit rigoroso para disparo de WhatsApp (15 requisições por minuto por IP)
-  if (applyRateLimit(req, res, { limit: 15, windowMs: 60 * 1000, prefix: 'whatsapp_api' })) {
-    return;
-  }
-
   // Autenticação obrigatória (JWT ou API_SECRET_KEY)
   const user = await verifyUserAuth(req, res);
   if (!user) return;
@@ -51,6 +46,13 @@ export default async function handler(req, res) {
 
   if (!isAuthorizedRole && !user?.isServiceKey) {
     return res.status(403).json({ error: 'Forbidden', message: `Acesso negado: Perfil '${user?.role || 'Desconhecido'}' não possui privilégios para enviar WhatsApp.` });
+  }
+
+  // Rate limit para disparo de WhatsApp:
+  // 60 requisições por minuto para usuários autorizados (permite fila cadenciada com delay de 2 a 5s sem throttling indevido)
+  const rateLimitConfig = user?.isServiceKey ? { limit: 120, windowMs: 60 * 1000 } : { limit: 60, windowMs: 60 * 1000, prefix: 'whatsapp_api' };
+  if (applyRateLimit(req, res, rateLimitConfig)) {
+    return;
   }
 
   // Consulta de Grupos via GET
