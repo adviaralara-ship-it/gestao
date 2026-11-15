@@ -263,11 +263,19 @@ service cloud.firestore {
       allow read: if isAdmin() || (
         isSindico() && resource.data.condominio == getUserCondo()
       );
+      // Criação inicial permitida apenas como pendente ou rascunho
       allow create: if isAdmin() || (
-        isSindico() && request.resource.data.condominio == getUserCondo()
+        isSindico() &&
+        request.resource.data.condominio == getUserCondo() &&
+        (!('status' in request.resource.data) || request.resource.data.status in ['pendente', 'rascunho'])
       );
+      // Previne falsificação de status de entrega e alteração de logs por usuários comuns/síndicos
       allow update: if isAdmin() || (
-        isSindico() && resource.data.condominio == getUserCondo() && request.resource.data.condominio == getUserCondo()
+        isSindico() &&
+        resource.data.condominio == getUserCondo() &&
+        request.resource.data.condominio == getUserCondo() &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['mensagemIdApi', 'entregueEm', 'enviadoEm']) &&
+        (request.resource.data.status in ['pendente', 'cancelado', 'pausado'])
       );
       allow delete: if isAdmin();
     }

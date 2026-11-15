@@ -251,13 +251,189 @@ _Alpha Soluções Condominiais • Programa Recicla +_`,
 
 /**
  * Interpola variáveis de mensagem dinâmicas: {{nome_morador}} e {{nome_condominio}}
+ * Suporta espaços internos opcionais como {{ nome_morador }} e insensibilidade a maiúsculas
  */
 export function interpolarMensagem(texto = '', { nomeMorador = 'Morador(a)', nomeCondominio = 'Condomínio' } = {}) {
   if (!texto) return ''
-  const primeiroNome = String(nomeMorador).trim().split(' ')[0] || 'Morador(a)'
+  
+  // Tratamento refinado do nome do morador (remove títulos comuns se houver segundo nome)
+  let primeiroNome = 'Morador(a)'
+  if (nomeMorador && typeof nomeMorador === 'string') {
+    const partes = nomeMorador.trim().split(/\s+/).filter(Boolean)
+    if (partes.length > 0) {
+      const primeiro = partes[0]
+      const titulos = ['sr', 'sra', 'sr.', 'sra.', 'dr', 'dra', 'dr.', 'dra.', 'dona', 'seu']
+      if (titulos.includes(primeiro.toLowerCase()) && partes.length > 1) {
+        primeiroNome = `${primeiro} ${partes[1]}`
+      } else {
+        primeiroNome = primeiro
+      }
+    }
+  }
+
+  const condoNome = (nomeCondominio && typeof nomeCondominio === 'string' && nomeCondominio.trim())
+    ? nomeCondominio.trim()
+    : 'Condomínio'
+
   return texto
-    .replace(/\{\{nome_morador\}\}/gi, primeiroNome)
-    .replace(/\{\{nome_condominio\}\}/gi, nomeCondominio || 'Condomínio')
+    .replace(/\{\{\s*nome_morador\s*\}\}/gi, primeiroNome)
+    .replace(/\{\{\s*nome_condominio\s*\}\}/gi, condoNome)
+}
+
+/**
+ * Normaliza e sanitiza número de telefone celular brasileiro para o padrão E.164 (55 + DDD + 9 dígitos)
+ * Trata automaticamente operadoras de longa distância (ex: 015, 021), zeros à esquerda e DDI 55.
+ */
+export function normalizarTelefone(numero = '') {
+  if (!numero) return ''
+  let digits = String(numero).replace(/\D/g, '')
+
+  if (!digits || digits.length < 10) return ''
+
+  // Se tiver 13 dígitos e começar com 55 (formato E.164 já pronto)
+  if (digits.length === 13 && digits.startsWith('55')) {
+    return digits
+  }
+
+  // Se tiver 12 dígitos e começar com 55 (formato legado de 8 dígitos)
+  if (digits.length === 12 && digits.startsWith('55')) {
+    return digits
+  }
+
+  // Se o número tiver mais de 11 dígitos (por exemplo com prefixo de operadora 015, 021, ou 55 com operadora),
+  // no Brasil o telefone celular é composto exatamente pelos últimos 11 dígitos (DDD de 2 dígitos + celular de 9 dígitos).
+  if (digits.length >= 11) {
+    const ultimos11 = digits.slice(-11)
+    // Verifica se os últimos 11 começam com DDD válido (11 a 99) e celular iniciando com 9
+    const ddd = parseInt(ultimos11.slice(0, 2), 10)
+    const primeiroDigitoCelular = ultimos11[2]
+    if (ddd >= 11 && ddd <= 99 && primeiroDigitoCelular === '9') {
+      return `55${ultimos11}`
+    }
+  }
+
+  // Telefone fixo ou formato legado de 10 dígitos (DDD + 8 dígitos)
+  if (digits.length === 10) {
+    return `55${digits}`
+  }
+
+  // Se começar com zero e tiver 11 dígitos (ex: 0 + DDD + 8 dígitos)
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return `55${digits.slice(1)}`
+  }
+
+  return ''
+}
+
+/**
+ * Validação rigorosa de telefone para recebimento de WhatsApp
+ */
+export function validarTelefoneWhatsApp(numero = '') {
+  if (!numero || String(numero).trim() === '') {
+    return { valido: false, numeroE164: '', motivo: 'Telefone ausente' }
+  }
+
+  const e164 = normalizarTelefone(numero)
+  if (!e164) {
+    return { valido: false, numeroE164: '', motivo: 'Formato inválido ou incompleto (menos de 10 dígitos)' }
+  }
+
+  // Analisa código de área e prefixo
+  // Exemplo E.164: 55 83 988887777 -> ddd: 83, numeroLocal: 988887777
+  const ddd = e164.slice(2, 4)
+  const local = e164.slice(4)
+
+  // DDDs válidos no Brasil variam de 11 a 99
+  const dddNum = parseInt(ddd, 10)
+  if (isNaN(dddNum) || dddNum < 11 || dddNum > 99) {
+    return { valido: false, numeroE164: e164, motivo: `DDD (${ddd}) inexistente no Brasil` }
+  }
+
+  // Celulares no Brasil possuem 9 dígitos e começam com o dígito 9
+  if (local.length === 8) {
+    const primeiroDigito = local[0]
+    if (['2', '3', '4', '5'].includes(primeiroDigito)) {
+      return { valido: false, numeroE164: e164, motivo: 'Telefone fixo residencial (não suporta WhatsApp)' }
+    }
+    return { valido: false, numeroE164: e164, motivo: 'Número celular incompleto (formato antigo de 8 dígitos)' }
+  }
+
+  if (local.length === 9) {
+    if (local[0] !== '9') {
+      return { valido: false, numeroE164: e164, motivo: 'Número inválido (celular brasileiro deve iniciar com 9)' }
+    }
+    return { valido: true, numeroE164: e164, motivo: 'Válido' }
+  }
+
+  return { valido: false, numeroE164: e164, motivo: 'Extensão de dígitos incompatível' }
+}
+
+/**
+ * Filtra e higieniza lista de moradores para disparos seguros:
+ * - Exclui moradores com opt-out ativo (LGPD)
+ * - Exclui telefones ausentes, fixos ou inválidos
+ * - Remove duplicações de telefone no mesmo condomínio (evita mensagens repetidas para a mesma linha)
+ */
+export function filtrarMoradoresElegiveis(moradoresList = [], optoutSet = new Set()) {
+  const elegiveis = []
+  const bloqueadosOptOut = []
+  const telefonesInvalidos = []
+  const telefonesDuplicados = []
+  const telefonesProcessados = new Set()
+
+  for (const m of moradoresList) {
+    const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || ''
+    const telLimpo = String(rawTel).replace(/\D/g, '')
+    const telE164 = normalizarTelefone(rawTel)
+
+    // 1. Checagem de Opt-out (pelo ID do morador OU pelo telefone)
+    const isOptOut = optoutSet.has(String(m.id)) ||
+                     (telLimpo && optoutSet.has(telLimpo)) ||
+                     (telE164 && optoutSet.has(telE164))
+
+    if (isOptOut) {
+      bloqueadosOptOut.push({ ...m, motivoBloqueio: 'Opt-out solicitado (LGPD)' })
+      continue
+    }
+
+    // 2. Validação do Telefone
+    const validacao = validarTelefoneWhatsApp(rawTel)
+    if (!validacao.valido) {
+      telefonesInvalidos.push({ ...m, motivoInvalido: validacao.motivo, telefoneOriginal: rawTel })
+      continue
+    }
+
+    // 3. Controle de Duplicidade (mesmo telefone celular para múltiplos moradores do condomínio)
+    if (telefonesProcessados.has(validacao.numeroE164)) {
+      telefonesDuplicados.push({
+        ...m,
+        motivoDuplicado: 'Telefone compartilhado já listado para disparo neste lote',
+        telefoneE164: validacao.numeroE164
+      })
+      continue
+    }
+
+    // Adiciona aos elegíveis e registra telefone processado
+    telefonesProcessados.add(validacao.numeroE164)
+    elegiveis.push({
+      ...m,
+      telefoneE164: validacao.numeroE164
+    })
+  }
+
+  return {
+    elegiveis,
+    bloqueadosOptOut,
+    telefonesInvalidos,
+    telefonesDuplicados,
+    estatisticas: {
+      totalCadastrados: moradoresList.length,
+      elegiveisCount: elegiveis.length,
+      optOutCount: bloqueadosOptOut.length,
+      invalidosCount: telefonesInvalidos.length,
+      duplicadosCount: telefonesDuplicados.length
+    }
+  }
 }
 
 /**
@@ -266,14 +442,4 @@ export function interpolarMensagem(texto = '', { nomeMorador = 'Morador(a)', nom
 export function gerarChaveIdempotencia(campanhaId, moradorId, telefone) {
   const telLimpo = String(telefone || '').replace(/\D/g, '')
   return `${campanhaId}_${moradorId}_${telLimpo}`
-}
-
-/**
- * Normaliza número de telefone celular brasileiro (adiciona 55 se ausente)
- */
-export function normalizarTelefone(numero = '') {
-  const digits = String(numero || '').replace(/\D/g, '')
-  if (!digits || digits.length < 10) return ''
-  if (digits.startsWith('55')) return digits
-  return `55${digits}`
 }

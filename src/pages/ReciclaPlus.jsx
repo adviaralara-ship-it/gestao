@@ -1,13 +1,13 @@
 // src/pages/ReciclaPlus.jsx
 // Módulo Recicla + — Sustentabilidade, Separação de Resíduos e Conscientização
-// Alpha Soluções Condominiais — Identidade Visual Oficial
+// Alpha Soluções Condominiais — Identidade Visual Oficial & Auditoria de Segurança
 
 import React, { useState, useMemo } from 'react'
 import {
   Recycle, Search, Plus, Filter, Smartphone, Edit2, Trash2, Copy,
   CheckCircle2, AlertCircle, Clock, ShieldCheck, Users, Building2,
   Leaf, Info, Check, X, ArrowRight, RefreshCw, Send, ChevronRight,
-  Sparkles, FileText, Share2, HelpCircle
+  Sparkles, FileText, Share2, HelpCircle, PhoneOff, PhoneForwarded, Lock
 } from 'lucide-react'
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
@@ -20,7 +20,9 @@ import {
   CAMPANHAS_PADRAO,
   interpolarMensagem,
   gerarChaveIdempotencia,
-  normalizarTelefone
+  normalizarTelefone,
+  validarTelefoneWhatsApp,
+  filtrarMoradoresElegiveis
 } from '../utils/reciclaData'
 
 export default function ReciclaPlus() {
@@ -42,32 +44,30 @@ export default function ReciclaPlus() {
   const [selectedTema, setSelectedTema] = useState('Todos')
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('Todos')
+  const [moradorSubFilter, setMoradorSubFilter] = useState('todos') // 'todos' | 'elegiveis' | 'optout' | 'invalidos' | 'duplicados'
 
   // Modais
-  const [previewModal, setPreviewModal] = useState(null) // campanha selecionada para prévia
-  const [previewMoradorExemplo, setPreviewMoradorExemplo] = useState('Dona Maria')
-  const [editModal, setEditModal] = useState(null) // null = fechado, {} = nova/editar
+  const [previewModal, setPreviewModal] = useState(null)
+  const [previewMoradorExemplo, setPreviewMoradorExemplo] = useState('Maria Silva')
+  const [editModal, setEditModal] = useState(null)
   const [copiadoFeedback, setCopiadoFeedback] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [feedbackMsg, setFeedbackMsg] = useState('')
 
-  // Notificação toast temporária
   const showFeedback = (msg) => {
     setFeedbackMsg(msg)
     setTimeout(() => setFeedbackMsg(''), 4000)
   }
 
-  // Filtragem de Campanhas por Condomínio, Tema, Busca e Status
+  // Filtragem de Campanhas por Condomínio, Tema, Busca e Status (com Isolamento de Tenant)
   const campanhasFiltradas = useMemo(() => {
     return campanhas.filter(c => {
-      // Filtro de Condomínio:
-      // Se 'Todos' selecionado no dropdown:
-      // - Admin vê todas
-      // - Síndico vê campanhas com 'Todos' OU com seu próprio condomínio
-      if (selectedCondo !== 'Todos') {
-        if (c.condominio !== 'Todos' && c.condominio !== selectedCondo) return false
-      } else if (!isAdmin && userCondo) {
+      // Isolamento de Tenant:
+      // Se Síndico: pode ver campanhas com c.condominio === 'Todos' OU c.condominio === userCondo
+      if (!isAdmin && userCondo) {
         if (c.condominio !== 'Todos' && c.condominio !== userCondo) return false
+      } else if (selectedCondo !== 'Todos') {
+        if (c.condominio !== 'Todos' && c.condominio !== selectedCondo) return false
       }
 
       // Filtro de Tema
@@ -76,7 +76,7 @@ export default function ReciclaPlus() {
       // Filtro de Status
       if (statusFilter !== 'Todos' && c.status !== statusFilter) return false
 
-      // Busca textual (nome, tema ou dica rápida)
+      // Busca textual
       if (searchTerm) {
         const termo = searchTerm.toLowerCase()
         const matchNome = (c.nome || '').toLowerCase().includes(termo)
@@ -90,26 +90,57 @@ export default function ReciclaPlus() {
   }, [campanhas, selectedCondo, selectedTema, statusFilter, searchTerm, isAdmin, userCondo])
 
   // Moradores filtrados pelo condomínio selecionado
-  const moradoresFiltrados = useMemo(() => {
+  const moradoresDoCondo = useMemo(() => {
     return moradoresList.filter(m => {
       const condoMorador = m.condominio || ''
-      if (selectedCondo !== 'Todos' && condoMorador !== selectedCondo) return false
-      if (!isAdmin && userCondo && condoMorador !== userCondo) return false
+      if (!isAdmin && userCondo) {
+        return condoMorador === userCondo
+      }
+      if (selectedCondo !== 'Todos') {
+        return condoMorador === selectedCondo
+      }
       return true
     })
   }, [moradoresList, selectedCondo, isAdmin, userCondo])
 
   // Mapa de Opt-out para checagem rápida O(1)
-  const optoutMap = useMemo(() => {
-    const map = new Set()
+  const optoutSet = useMemo(() => {
+    const set = new Set()
     optoutList.forEach(item => {
       if (item.ativo !== false) {
-        if (item.moradorId) map.add(String(item.moradorId))
-        if (item.telefone) map.add(String(item.telefone).replace(/\D/g, ''))
+        if (item.moradorId) set.add(String(item.moradorId))
+        if (item.telefone) {
+          const tClean = String(item.telefone).replace(/\D/g, '')
+          set.add(tClean)
+          const tNorm = normalizarTelefone(tClean)
+          if (tNorm) set.add(tNorm)
+        }
       }
     })
-    return map
+    return set
   }, [optoutList])
+
+  // Análise completa de elegibilidade e higienização de moradores
+  const relatorioElegibilidade = useMemo(() => {
+    return filtrarMoradoresElegiveis(moradoresDoCondo, optoutSet)
+  }, [moradoresDoCondo, optoutSet])
+
+  // Lista de moradores exibida conforme sub-filtro na aba Moradores
+  const moradoresExibidos = useMemo(() => {
+    switch (moradorSubFilter) {
+      case 'elegiveis':
+        return relatorioElegibilidade.elegiveis
+      case 'optout':
+        return relatorioElegibilidade.bloqueadosOptOut
+      case 'invalidos':
+        return relatorioElegibilidade.telefonesInvalidos
+      case 'duplicados':
+        return relatorioElegibilidade.telefonesDuplicados
+      case 'todos':
+      default:
+        return moradoresDoCondo
+    }
+  }, [moradorSubFilter, relatorioElegibilidade, moradoresDoCondo])
 
   // Métricas do Painel Principal
   const metrics = useMemo(() => {
@@ -117,22 +148,6 @@ export default function ReciclaPlus() {
     const ativas = campanhas.filter(c => c.status === 'Ativa').length
     const rascunhos = campanhas.filter(c => c.status === 'Rascunho').length
 
-    // Moradores elegíveis (com telefone válido e sem opt-out)
-    let comTelefone = 0
-    let optouts = 0
-    moradoresFiltrados.forEach(m => {
-      const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || ''
-      const tel = String(rawTel).replace(/\D/g, '')
-      const temOptOut = optoutMap.has(String(m.id)) || (tel && optoutMap.has(tel))
-
-      if (temOptOut) {
-        optouts++
-      } else if (tel.length >= 10) {
-        comTelefone++
-      }
-    })
-
-    // Disparos
     const enviadosApi = disparosList.filter(d => d.status === 'enviado_api' || d.status === 'entregue').length
     const entregues = disparosList.filter(d => d.status === 'entregue').length
     const pendentes = disparosList.filter(d => d.status === 'pendente').length
@@ -141,17 +156,23 @@ export default function ReciclaPlus() {
       totalCampanhas,
       ativas,
       rascunhos,
-      moradoresElegiveis: comTelefone,
-      moradoresOptOut: optouts,
+      moradoresElegiveis: relatorioElegibilidade.estatisticas.elegiveisCount,
+      moradoresOptOut: relatorioElegibilidade.estatisticas.optOutCount,
+      telefonesInvalidos: relatorioElegibilidade.estatisticas.invalidosCount,
       totalCondominios: condominiosList.length,
       disparosAceitos: enviadosApi,
       disparosEntregues: entregues,
       disparosPendentes: pendentes
     }
-  }, [campanhas, moradoresFiltrados, optoutMap, condominiosList, disparosList])
+  }, [campanhas, relatorioElegibilidade, condominiosList, disparosList])
 
   // Ação: Restaurar Catálogo Padrão (Semear as 10 Campanhas no Firestore)
   const handleRestaurarCatalogo = async () => {
+    if (!isAdmin) {
+      alert('Apenas administradores da Alpha podem restaurar o catálogo oficial de campanhas globais.')
+      return
+    }
+
     if (!window.confirm('Deseja semear/restaurar as 10 Campanhas Educativas Oficiais do Programa Recicla + no banco de dados?')) {
       return
     }
@@ -162,14 +183,13 @@ export default function ReciclaPlus() {
       let adicionadas = 0
 
       for (const item of CAMPANHAS_PADRAO) {
-        // Verifica se já existe uma campanha com o mesmo temaId ou idPadrao
         const jaExiste = campanhas.some(c => c.idPadrao === item.idPadrao || (c.temaId === item.temaId && c.condominio === 'Todos'))
         if (!jaExiste) {
           await addDoc(colRef, {
             ...item,
             criadoEm: serverTimestamp(),
             atualizadoEm: serverTimestamp(),
-            criadoPor: user?.email || 'sistema'
+            criadoPor: user?.email || 'admin'
           })
           adicionadas++
         }
@@ -193,6 +213,14 @@ export default function ReciclaPlus() {
       return
     }
 
+    // Regra de Segurança: Síndico só pode salvar para o seu próprio condomínio
+    if (!isAdmin) {
+      if (formData.condominio !== userCondo) {
+        alert(`Acesso não autorizado: Você só pode criar ou editar campanhas para o seu condomínio (${userCondo}).`)
+        return
+      }
+    }
+
     setActionLoading(true)
     try {
       const colRef = collection(db, 'recicla_campanhas')
@@ -204,7 +232,7 @@ export default function ReciclaPlus() {
         sugestaoMaterial: formData.sugestaoMaterial?.trim() || 'Infográfico / Card Digital',
         texto: formData.texto.trim(),
         status: formData.status || 'Ativa',
-        condominio: formData.condominio || (isAdmin ? 'Todos' : userCondo),
+        condominio: isAdmin ? (formData.condominio || 'Todos') : userCondo,
         atualizadoEm: serverTimestamp()
       }
 
@@ -229,27 +257,42 @@ export default function ReciclaPlus() {
     }
   }
 
-  // Ação: Duplicar Campanha
+  // Ação: Duplicar Campanha (Sem mutar o modelo global e sem undefined em campos)
   const handleDuplicarCampanha = async (campanha) => {
-    const novoNome = `${campanha.nome} (Cópia)`
-    const destinoCondo = prompt(`Duplicar campanha para qual condomínio? (Deixe "Todos" para global ou digite o nome)`, campanha.condominio || 'Todos')
-    if (!destinoCondo) return
+    let destinoCondo = ''
+
+    if (isAdmin) {
+      destinoCondo = prompt(`Duplicar campanha para qual condomínio? (Deixe "Todos" para cópia global ou digite o nome)`, campanha.condominio || 'Todos')
+      if (!destinoCondo) return
+    } else {
+      if (!userCondo) {
+        alert('Seu usuário de Síndico não possui um condomínio vinculado para personalizar campanhas.')
+        return
+      }
+      destinoCondo = userCondo
+      if (!window.confirm(`Deseja criar uma cópia personalizada desta campanha para o condomínio "${userCondo}"?`)) {
+        return
+      }
+    }
+
+    const novoNome = `${campanha.nome} (${destinoCondo === 'Todos' ? 'Cópia' : destinoCondo})`
 
     setActionLoading(true)
     try {
       const colRef = collection(db, 'recicla_campanhas')
+      // Remove campos de controle específicos para não enviar undefined ao Firestore
+      const { id, idPadrao, _createdAt, _updatedAt, ...dadosLimpos } = campanha
+
       await addDoc(colRef, {
-        ...campanha,
-        id: undefined,
-        idPadrao: undefined,
+        ...dadosLimpos,
         nome: novoNome,
         condominio: destinoCondo,
-        status: 'Rascunho',
+        status: 'Rascunho', // Duplica sempre como rascunho para revisão
         criadoEm: serverTimestamp(),
         atualizadoEm: serverTimestamp(),
         criadoPor: user?.email || 'sistema'
       })
-      showFeedback('Campanha duplicada com sucesso como rascunho!')
+      showFeedback(`Campanha personalizada duplicada com sucesso para ${destinoCondo}!`)
     } catch (err) {
       alert(`Erro ao duplicar: ${err.message}`)
     } finally {
@@ -259,6 +302,11 @@ export default function ReciclaPlus() {
 
   // Ação: Excluir Campanha
   const handleExcluirCampanha = async (campanha) => {
+    if (campanha.condominio === 'Todos' && !isAdmin) {
+      alert('Modelos globais oficiais da Alpha não podem ser excluídos por síndicos.')
+      return
+    }
+
     if (!window.confirm(`Tem certeza que deseja excluir a campanha "${campanha.nome}"? Esta ação é irreversível.`)) {
       return
     }
@@ -277,9 +325,14 @@ export default function ReciclaPlus() {
   // Ação: Alternar Opt-out (LGPD / Preferência de Comunicação)
   const handleToggleOptOut = async (morador) => {
     const rawTel = morador.tel || morador.telefone || morador.whatsapp || morador.celular || ''
-    const tel = String(rawTel).replace(/\D/g, '')
-    const idChave = `${morador.condominio || 'Geral'}_${morador.id}`
-    const isAtualmenteBloqueado = optoutMap.has(String(morador.id)) || (tel && optoutMap.has(tel))
+    const telLimpo = String(rawTel).replace(/\D/g, '')
+    const telE164 = normalizarTelefone(rawTel)
+    const condoNome = morador.condominio || userCondo || 'Geral'
+    const idChave = `${condoNome.replace(/[^a-zA-Z0-9]/g, '_')}_${morador.id}`
+
+    const isAtualmenteBloqueado = optoutSet.has(String(morador.id)) ||
+                                 (telLimpo && optoutSet.has(telLimpo)) ||
+                                 (telE164 && optoutSet.has(telE164))
 
     setActionLoading(true)
     try {
@@ -289,8 +342,8 @@ export default function ReciclaPlus() {
         await setDoc(docRef, {
           moradorId: String(morador.id),
           moradorNome: morador.nome || 'Morador',
-          condominio: morador.condominio || '',
-          telefone: tel,
+          condominio: condoNome,
+          telefone: telE164 || telLimpo,
           ativo: false,
           atualizadoEm: serverTimestamp(),
           atualizadoPor: user?.email || 'sistema'
@@ -301,14 +354,14 @@ export default function ReciclaPlus() {
         await setDoc(docRef, {
           moradorId: String(morador.id),
           moradorNome: morador.nome || 'Morador',
-          condominio: morador.condominio || '',
-          telefone: tel,
+          condominio: condoNome,
+          telefone: telE164 || telLimpo,
           ativo: true,
           motivo: 'Solicitação do morador (LGPD)',
           dataOptOut: serverTimestamp(),
           atualizadoPor: user?.email || 'sistema'
         })
-        showFeedback(`Opt-out ativado para ${morador.nome}. Mensagens futuras bloqueadas.`)
+        showFeedback(`Opt-out ativado para ${morador.nome}. Mensagens futuras bloqueadas com segurança jurídica.`)
       }
     } catch (err) {
       alert(`Erro ao alterar preferência: ${err.message}`)
@@ -317,7 +370,6 @@ export default function ReciclaPlus() {
     }
   }
 
-  // Copiar prévia para clipboard
   const handleCopiarMensagem = (texto) => {
     navigator.clipboard.writeText(texto)
     setCopiadoFeedback(true)
@@ -336,7 +388,6 @@ export default function ReciclaPlus() {
 
       {/* ─── CABEÇALHO DO MÓDULO (IDENTIDADE ALPHA) ────────────────────── */}
       <div className="bg-gradient-to-br from-[#233044] to-[#1a2535] rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
-        {/* Elemento de iluminação suave sage green */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-[#6E8B85]/15 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-10 -left-10 w-72 h-72 bg-[#DCE8E3]/10 rounded-full blur-2xl pointer-events-none" />
 
@@ -346,7 +397,7 @@ export default function ReciclaPlus() {
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#DCE8E3]/20 border border-[#A8BCB9]/40 text-[#DCE8E3] text-xs font-semibold uppercase tracking-wider">
                 <Leaf size={14} className="text-[#A8BCB9]" /> Sustentabilidade Alpha
               </span>
-              <span className="text-xs text-slate-300 font-mono">Etapas 1 e 2 • Estrutura & Catálogo</span>
+              <span className="text-xs text-slate-300 font-mono">Etapas 1 e 2 • Estrutura & Auditoria</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
               <span className="p-2.5 bg-[#6E8B85]/20 rounded-2xl border border-[#A8BCB9]/30 inline-flex text-[#DCE8E3]">
@@ -379,21 +430,23 @@ export default function ReciclaPlus() {
                 </select>
               ) : (
                 <span className="text-xs font-semibold text-white px-2 py-0.5">
-                  {userCondo || 'Condomínio Vinculado'}
+                  Condomínio: {userCondo || 'Vinculado'}
                 </span>
               )}
             </div>
 
-            {/* Botão de Semear / Restaurar Catálogo */}
-            <button
-              onClick={handleRestaurarCatalogo}
-              disabled={actionLoading}
-              className="px-4 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-2xl text-xs font-semibold transition-all flex items-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
-              title="Restaurar o catálogo oficial de 10 campanhas da Alpha no Firestore"
-            >
-              <RefreshCw size={14} className={actionLoading ? 'animate-spin' : ''} />
-              <span>Restaurar Catálogo Padrão</span>
-            </button>
+            {/* Botão de Semear / Restaurar Catálogo (Apenas Admin) */}
+            {isAdmin && (
+              <button
+                onClick={handleRestaurarCatalogo}
+                disabled={actionLoading}
+                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-2xl text-xs font-semibold transition-all flex items-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
+                title="Restaurar o catálogo oficial de 10 campanhas da Alpha no Firestore"
+              >
+                <RefreshCw size={14} className={actionLoading ? 'animate-spin' : ''} />
+                <span>Restaurar Catálogo Oficial</span>
+              </button>
+            )}
 
             {/* Botão Nova Campanha */}
             <button
@@ -404,9 +457,9 @@ export default function ReciclaPlus() {
                 sugestaoMaterial: 'Infográfico / Card Digital',
                 texto: '',
                 status: 'Ativa',
-                condominio: selectedCondo === 'Todos' ? (isAdmin ? 'Todos' : userCondo) : selectedCondo
+                condominio: isAdmin ? (selectedCondo === 'Todos' ? 'Todos' : selectedCondo) : userCondo
               })}
-              className="px-4 py-2.5 bg-[#6E8B85] hover:bg-[#5a736e] text-white rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shadow-md cursor-pointer hover:shadow-lg hover:scale-102"
+              className="px-4 py-2.5 bg-[#6E8B85] hover:bg-[#5a736e] text-white rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shadow-md cursor-pointer hover:shadow-lg"
             >
               <Plus size={16} strokeWidth={2.5} />
               <span>Nova Campanha</span>
@@ -440,20 +493,20 @@ export default function ReciclaPlus() {
           <div className="mt-2">
             <div className="text-2xl font-extrabold text-[#233044]">{metrics.totalCondominios}</div>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Foco atual: <span className="font-semibold text-slate-800">{selectedCondo === 'Todos' ? 'Global' : selectedCondo}</span>
+              Recorte: <span className="font-semibold text-slate-800">{isAdmin ? selectedCondo : userCondo}</span>
             </p>
           </div>
         </div>
 
-        {/* KPI 3: Moradores com WhatsApp */}
+        {/* KPI 3: Moradores Aptos (com WhatsApp Válido) */}
         <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between hover:border-[#6E8B85]/40 transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Com WhatsApp</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Aptos p/ Disparo</span>
             <span className="p-2 bg-emerald-50 text-emerald-700 rounded-xl"><Smartphone size={18} /></span>
           </div>
           <div className="mt-2">
             <div className="text-2xl font-extrabold text-emerald-700">{metrics.moradoresElegiveis}</div>
-            <p className="text-[11px] text-slate-500 mt-0.5">Moradores elegíveis no recorte</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">Celulares válidos sem opt-out</p>
           </div>
         </div>
 
@@ -469,7 +522,7 @@ export default function ReciclaPlus() {
           </div>
         </div>
 
-        {/* KPI 5: Disparos & Status */}
+        {/* KPI 5: Entregas & Fila */}
         <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between hover:border-[#6E8B85]/40 transition-colors col-span-2 lg:col-span-1">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Entregas</span>
@@ -507,7 +560,7 @@ export default function ReciclaPlus() {
           }`}
         >
           <Users size={16} />
-          <span>Moradores & Elegibilidade ({moradoresFiltrados.length})</span>
+          <span>Moradores & Elegibilidade ({moradoresDoCondo.length})</span>
         </button>
 
         <button
@@ -542,7 +595,6 @@ export default function ReciclaPlus() {
         <div className="space-y-4">
           {/* Barra de Filtros e Busca */}
           <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-center gap-3">
-            {/* Campo de Busca */}
             <div className="relative flex-1 w-full">
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -562,7 +614,6 @@ export default function ReciclaPlus() {
               )}
             </div>
 
-            {/* Filtro por Tema */}
             <div className="flex items-center gap-2 w-full md:w-auto">
               <Filter size={16} className="text-slate-400 shrink-0" />
               <select
@@ -578,7 +629,6 @@ export default function ReciclaPlus() {
                 ))}
               </select>
 
-              {/* Filtro de Status */}
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -607,11 +657,11 @@ export default function ReciclaPlus() {
                 <h3 className="text-base font-bold text-slate-800">Nenhuma campanha encontrada</h3>
                 <p className="text-xs text-slate-500">
                   {campanhas.length === 0
-                    ? 'O banco ainda não possui campanhas cadastradas. Clique abaixo para carregar as 10 campanhas oficiais da Alpha.'
+                    ? 'O banco ainda não possui campanhas cadastradas.'
                     : 'Nenhum resultado corresponde aos filtros aplicados.'}
                 </p>
               </div>
-              {campanhas.length === 0 && (
+              {campanhas.length === 0 && isAdmin && (
                 <button
                   onClick={handleRestaurarCatalogo}
                   className="px-5 py-2.5 bg-[#233044] text-white rounded-2xl text-xs font-bold hover:bg-[#1a2535] transition-colors inline-flex items-center gap-2 cursor-pointer shadow-md"
@@ -626,6 +676,8 @@ export default function ReciclaPlus() {
               {campanhasFiltradas.map((campanha) => {
                 const isRascunho = campanha.status === 'Rascunho'
                 const isPausada = campanha.status === 'Pausada'
+                const isModeloGlobal = campanha.condominio === 'Todos'
+                const isReadOnlyParaUsuario = isModeloGlobal && !isAdmin
 
                 return (
                   <div
@@ -641,11 +693,16 @@ export default function ReciclaPlus() {
                         </span>
 
                         <div className="flex items-center gap-1.5">
-                          {campanha.condominio && campanha.condominio !== 'Todos' && (
+                          {isModeloGlobal ? (
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 text-[10px] font-bold border border-emerald-200 flex items-center gap-1">
+                              <Sparkles size={10} /> Modelo Oficial Alpha
+                            </span>
+                          ) : (
                             <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
-                              {campanha.condominio}
+                              🏢 {campanha.condominio}
                             </span>
                           )}
+
                           <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
                             isRascunho
                               ? 'bg-amber-50 text-amber-700 border-amber-200'
@@ -671,7 +728,7 @@ export default function ReciclaPlus() {
                         </div>
                       )}
 
-                      {/* Trecho da Mensagem com Destaque de Variáveis */}
+                      {/* Trecho da Mensagem */}
                       <div className="bg-[#F8FAFC] p-3 rounded-xl border border-slate-100 text-xs text-slate-600 font-mono line-clamp-3 leading-relaxed whitespace-pre-wrap">
                         {campanha.texto}
                       </div>
@@ -696,27 +753,42 @@ export default function ReciclaPlus() {
                       </button>
 
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => setEditModal(campanha)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-[#233044] hover:bg-slate-100 transition-colors cursor-pointer"
-                          title="Editar campanha"
-                        >
-                          <Edit2 size={15} />
-                        </button>
-                        <button
-                          onClick={() => handleDuplicarCampanha(campanha)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
-                          title="Duplicar para outro condomínio"
-                        >
-                          <Copy size={15} />
-                        </button>
-                        <button
-                          onClick={() => handleExcluirCampanha(campanha)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer"
-                          title="Excluir campanha"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        {isReadOnlyParaUsuario ? (
+                          // Síndico vendo modelo global: Proteção de Leitura + Botão de Personalização
+                          <button
+                            onClick={() => handleDuplicarCampanha(campanha)}
+                            className="px-2.5 py-1.5 rounded-xl bg-[#DCE8E3]/80 hover:bg-[#DCE8E3] text-[#233044] text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                            title="Criar uma cópia personalizada deste modelo para o seu condomínio"
+                          >
+                            <Copy size={13} />
+                            <span>Personalizar Cópia</span>
+                          </button>
+                        ) : (
+                          // Administrador ou Síndico dono da campanha do condomínio
+                          <>
+                            <button
+                              onClick={() => setEditModal(campanha)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-[#233044] hover:bg-slate-100 transition-colors cursor-pointer"
+                              title="Editar campanha"
+                            >
+                              <Edit2 size={15} />
+                            </button>
+                            <button
+                              onClick={() => handleDuplicarCampanha(campanha)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
+                              title="Duplicar para outro condomínio"
+                            >
+                              <Copy size={15} />
+                            </button>
+                            <button
+                              onClick={() => handleExcluirCampanha(campanha)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer"
+                              title="Excluir campanha"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -728,7 +800,7 @@ export default function ReciclaPlus() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* ABA 2: MORADORES & ELEGIBILIDADE (PREVENÇÃO LGPD)                 */}
+      {/* ABA 2: MORADORES & ELEGIBILIDADE (PREVENÇÃO LGPD E HIGIENIZAÇÃO)  */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'moradores' && (
         <div className="space-y-4">
@@ -742,27 +814,76 @@ export default function ReciclaPlus() {
             </div>
           </div>
 
+          {/* Sub-filtros de Diagnóstico da Base */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setMoradorSubFilter('todos')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                moradorSubFilter === 'todos' ? 'bg-[#233044] text-white' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              Todos ({relatorioElegibilidade.estatisticas.totalCadastrados})
+            </button>
+            <button
+              onClick={() => setMoradorSubFilter('elegiveis')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                moradorSubFilter === 'elegiveis' ? 'bg-emerald-700 text-white' : 'bg-white border border-slate-200 text-emerald-800 hover:bg-emerald-50'
+              }`}
+            >
+              ✅ Aptos para Disparo ({relatorioElegibilidade.estatisticas.elegiveisCount})
+            </button>
+            <button
+              onClick={() => setMoradorSubFilter('optout')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                moradorSubFilter === 'optout' ? 'bg-amber-700 text-white' : 'bg-white border border-slate-200 text-amber-800 hover:bg-amber-50'
+              }`}
+            >
+              🚫 Opt-out Ativo ({relatorioElegibilidade.estatisticas.optOutCount})
+            </button>
+            <button
+              onClick={() => setMoradorSubFilter('invalidos')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                moradorSubFilter === 'invalidos' ? 'bg-rose-700 text-white' : 'bg-white border border-slate-200 text-rose-800 hover:bg-rose-50'
+              }`}
+            >
+              ⚠️ Inválidos / Fixos ({relatorioElegibilidade.estatisticas.invalidosCount})
+            </button>
+            {relatorioElegibilidade.estatisticas.duplicadosCount > 0 && (
+              <button
+                onClick={() => setMoradorSubFilter('duplicados')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  moradorSubFilter === 'duplicados' ? 'bg-purple-700 text-white' : 'bg-white border border-slate-200 text-purple-800 hover:bg-purple-50'
+                }`}
+              >
+                👥 Linhas Compartilhadas ({relatorioElegibilidade.estatisticas.duplicadosCount})
+              </button>
+            )}
+          </div>
+
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50">
               <h3 className="font-extrabold text-slate-800 text-sm">
-                Lista de Moradores ({moradoresFiltrados.length}) — {selectedCondo === 'Todos' ? 'Todos os Condomínios' : selectedCondo}
+                Lista de Moradores ({moradoresExibidos.length}) — {isAdmin ? selectedCondo : userCondo}
               </h3>
               <span className="text-xs text-slate-500">
-                {metrics.moradoresElegiveis} aptos para envio • {metrics.moradoresOptOut} com opt-out
+                {relatorioElegibilidade.estatisticas.elegiveisCount} aptos • {relatorioElegibilidade.estatisticas.optOutCount} com opt-out • {relatorioElegibilidade.estatisticas.invalidosCount} inválidos
               </span>
             </div>
 
             <div className="divide-y divide-slate-100 max-h-[550px] overflow-y-auto">
-              {moradoresFiltrados.length === 0 ? (
+              {moradoresExibidos.length === 0 ? (
                 <div className="p-8 text-center text-xs text-slate-500">
-                  Nenhum morador encontrado para o filtro selecionado.
+                  Nenhum morador encontrado nesta categoria de diagnóstico.
                 </div>
               ) : (
-                moradoresFiltrados.map((m) => {
-                  const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || ''
-                  const tel = String(rawTel).replace(/\D/g, '')
-                  const temTelValido = tel.length >= 10
-                  const temOptOut = optoutMap.has(String(m.id)) || (tel && optoutMap.has(tel))
+                moradoresExibidos.map((m) => {
+                  const rawTel = m.tel || m.telefone || m.whatsapp || m.celular || m.telefoneOriginal || ''
+                  const telLimpo = String(rawTel).replace(/\D/g, '')
+                  const telE164 = normalizarTelefone(rawTel)
+                  const validacao = validarTelefoneWhatsApp(rawTel)
+                  const temOptOut = optoutSet.has(String(m.id)) ||
+                                   (telLimpo && optoutSet.has(telLimpo)) ||
+                                   (telE164 && optoutSet.has(telE164))
 
                   return (
                     <div key={m.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 transition-colors">
@@ -776,16 +897,16 @@ export default function ReciclaPlus() {
                         </div>
                         <div className="flex items-center gap-3 text-xs text-slate-500">
                           <span className="flex items-center gap-1 font-mono">
-                            <Smartphone size={13} className={temTelValido ? 'text-emerald-600' : 'text-slate-300'} />
-                            {temTelValido ? rawTel : 'Telefone não cadastrado'}
+                            <Smartphone size={13} className={validacao.valido ? 'text-emerald-600' : 'text-slate-300'} />
+                            {validacao.valido ? rawTel : (rawTel ? `${rawTel} (${validacao.motivo})` : 'Telefone não cadastrado')}
                           </span>
                         </div>
                       </div>
 
                       {/* Controle de Opt-out */}
                       <div className="flex items-center gap-3">
-                        <span className={`text-xs font-semibold ${temOptOut ? 'text-amber-700' : 'text-emerald-700'}`}>
-                          {temOptOut ? '🚫 Bloqueado (Opt-out)' : '✅ Elegível'}
+                        <span className={`text-xs font-semibold ${temOptOut ? 'text-amber-700' : (validacao.valido ? 'text-emerald-700' : 'text-slate-400')}`}>
+                          {temOptOut ? '🚫 Bloqueado (Opt-out)' : (validacao.valido ? '✅ Apto p/ WhatsApp' : '⚠️ Inelegível')}
                         </span>
                         <button
                           onClick={() => handleToggleOptOut(m)}
@@ -930,7 +1051,6 @@ export default function ReciclaPlus() {
             className="bg-white max-w-md w-full rounded-3xl shadow-2xl border border-slate-200 flex flex-col max-h-[92vh] overflow-hidden animate-scale-up"
             onClick={e => e.stopPropagation()}
           >
-            {/* Header do Modal */}
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
               <div className="flex items-center gap-2">
                 <Smartphone size={18} className="text-[#6E8B85]" />
@@ -946,7 +1066,6 @@ export default function ReciclaPlus() {
               </button>
             </div>
 
-            {/* Configuração de Simulação Dinâmica */}
             <div className="p-3 bg-slate-100/70 border-b border-slate-200 text-xs flex items-center gap-2 shrink-0">
               <span className="text-slate-500 font-medium">Simular para:</span>
               <input
@@ -962,9 +1081,7 @@ export default function ReciclaPlus() {
               </span>
             </div>
 
-            {/* Conteúdo do Smartphone (Visual WhatsApp) */}
             <div className="p-4 overflow-y-auto bg-[#ECE5DD] flex-1 space-y-3 font-sans">
-              {/* Topo do Chat do WhatsApp */}
               <div className="bg-[#075E54] text-white p-3 rounded-2xl flex items-center gap-3 shadow-sm">
                 <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-sm">
                   A
@@ -977,14 +1094,11 @@ export default function ReciclaPlus() {
                 </div>
               </div>
 
-              {/* Balão da Mensagem */}
               <div className="bg-white rounded-2xl rounded-tl-sm p-4 shadow-sm border border-black/5 text-xs text-slate-800 space-y-3 leading-relaxed relative">
-                {/* Banner de tema decorativo */}
                 <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#DCE8E3] text-[#233044] text-[10px] font-bold">
                   🌱 {previewModal.tema}
                 </div>
 
-                {/* Texto Interpolado */}
                 <div className="whitespace-pre-wrap font-sans text-[12px] leading-relaxed text-slate-900">
                   {interpolarMensagem(previewModal.texto, {
                     nomeMorador: previewMoradorExemplo || 'Morador(a)',
@@ -992,7 +1106,6 @@ export default function ReciclaPlus() {
                   })}
                 </div>
 
-                {/* Hora e Checkmarks do WhatsApp */}
                 <div className="flex items-center justify-end gap-1 text-[10px] text-slate-400 pt-1">
                   <span>09:00</span>
                   <span className="text-blue-500 font-bold">✓✓</span>
@@ -1000,7 +1113,6 @@ export default function ReciclaPlus() {
               </div>
             </div>
 
-            {/* Rodapé do Modal com Ação de Copiar */}
             <div className="p-4 border-t border-slate-200 bg-white flex items-center justify-between shrink-0">
               <span className="text-[11px] text-slate-500">
                 Variáveis substituídas em tempo real.
@@ -1055,7 +1167,6 @@ function CampanhaModal({ data, condominiosList, isAdmin, userCondo, onClose, onS
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  // Helper para inserir tags dinâmicas no texto
   const inserirTag = (tag) => {
     setForm(f => ({
       ...f,
@@ -1093,7 +1204,6 @@ function CampanhaModal({ data, condominiosList, isAdmin, userCondo, onClose, onS
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4 text-xs text-slate-700">
-          {/* Nome da Campanha */}
           <div>
             <label className="block font-bold text-slate-800 mb-1">Nome da Campanha *</label>
             <input
@@ -1107,7 +1217,6 @@ function CampanhaModal({ data, condominiosList, isAdmin, userCondo, onClose, onS
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Tema Oficial */}
             <div>
               <label className="block font-bold text-slate-800 mb-1">Tema Educativo</label>
               <select
@@ -1128,7 +1237,6 @@ function CampanhaModal({ data, condominiosList, isAdmin, userCondo, onClose, onS
               </select>
             </div>
 
-            {/* Condomínio Alvo */}
             <div>
               <label className="block font-bold text-slate-800 mb-1">Condomínio Destino</label>
               {isAdmin ? (
@@ -1156,7 +1264,6 @@ function CampanhaModal({ data, condominiosList, isAdmin, userCondo, onClose, onS
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Status */}
             <div>
               <label className="block font-bold text-slate-800 mb-1">Status</label>
               <select
@@ -1170,7 +1277,6 @@ function CampanhaModal({ data, condominiosList, isAdmin, userCondo, onClose, onS
               </select>
             </div>
 
-            {/* Sugestão de Material */}
             <div>
               <label className="block font-bold text-slate-800 mb-1">Sugestão de Material / Card</label>
               <input
@@ -1183,7 +1289,6 @@ function CampanhaModal({ data, condominiosList, isAdmin, userCondo, onClose, onS
             </div>
           </div>
 
-          {/* Dica Rápida */}
           <div>
             <label className="block font-bold text-slate-800 mb-1">Dica de Ouro (Destaque Rápido)</label>
             <input
@@ -1195,7 +1300,6 @@ function CampanhaModal({ data, condominiosList, isAdmin, userCondo, onClose, onS
             />
           </div>
 
-          {/* Texto da Mensagem */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="block font-bold text-slate-800">Texto da Mensagem (WhatsApp) *</label>
@@ -1231,7 +1335,6 @@ function CampanhaModal({ data, condominiosList, isAdmin, userCondo, onClose, onS
             </div>
           </div>
 
-          {/* Botões do Rodapé */}
           <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2 shrink-0">
             <button
               type="button"
