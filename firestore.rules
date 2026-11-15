@@ -30,6 +30,17 @@ service cloud.firestore {
       );
     }
 
+    // Validação de perfil de Síndico / Subsíndico
+    function isSindico() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
+        getUserData().role in ['Síndico', 'Sindico', 'Subsíndico', 'Subsindico'];
+    }
+
+    // Obtenção do condomínio vinculado ao usuário autenticado
+    function getUserCondo() {
+      return getUserData().condominio;
+    }
+
     // Valida se o documento não tenta injetar campos de senha ou privilégios proibidos
     function hasValidUserFields() {
       return !('senha' in request.resource.data) &&
@@ -227,7 +238,55 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
-    // ─── 15. Regra Padrão Defensiva: Default Deny Absoluto ───
+    // ─── 15. Módulo Recicla + (Sustentabilidade, Fila de Disparos e LGPD) ───
+    match /recicla_campanhas/{campanhaId} {
+      // Leitura: Admin global; Síndico lê apenas do seu condomínio ou campanhas públicas/globais ('Todos')
+      allow read: if isAdmin() || (
+        isSindico() && (resource.data.condominio == 'Todos' || resource.data.condominio == getUserCondo())
+      );
+      // Criação: Admin para qualquer condomínio; Síndico exclusivamente para o seu condomínio
+      allow create: if isAdmin() || (
+        isSindico() && request.resource.data.condominio == getUserCondo()
+      );
+      // Atualização: Admin ou Síndico do condomínio
+      allow update: if isAdmin() || (
+        isSindico() && resource.data.condominio == getUserCondo() && request.resource.data.condominio == getUserCondo()
+      );
+      // Exclusão: Admin ou Síndico do condomínio
+      allow delete: if isAdmin() || (
+        isSindico() && resource.data.condominio == getUserCondo()
+      );
+    }
+
+    match /recicla_disparos/{disparoId} {
+      // Registros individuais e fila de disparos (isolamento estrito de tenant)
+      allow read: if isAdmin() || (
+        isSindico() && resource.data.condominio == getUserCondo()
+      );
+      allow create: if isAdmin() || (
+        isSindico() && request.resource.data.condominio == getUserCondo()
+      );
+      allow update: if isAdmin() || (
+        isSindico() && resource.data.condominio == getUserCondo() && request.resource.data.condominio == getUserCondo()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /recicla_optout/{optoutId} {
+      // Preferências de comunicação dos moradores (LGPD / bloqueio de comunicados)
+      allow read: if isAdmin() || (
+        isSindico() && resource.data.condominio == getUserCondo()
+      );
+      allow create: if isAdmin() || (
+        isSindico() && request.resource.data.condominio == getUserCondo()
+      );
+      allow update: if isAdmin() || (
+        isSindico() && resource.data.condominio == getUserCondo() && request.resource.data.condominio == getUserCondo()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ─── 16. Regra Padrão Defensiva: Default Deny Absoluto ───
     // Bloqueia qualquer coleção não expressamente autorizada acima
     match /{document=**} {
       allow read, write: if false;

@@ -67,9 +67,8 @@ export function useFirestore(colName) {
           docs = docs.filter(d => {
             // Se for a coleção de condomínios, o campo a verificar é "nome"
             if (colName === 'condominios') return d.nome === user.condominio;
-            // Para notificações e outras globais sem vínculo, podemos exibir para todos,
-            // mas o ideal é que notificações também tivessem condomínio. Por ora, exibe as que são do condomínio ou globais (sem condomínio definido).
-            return !d.condominio || d.condominio === user.condominio;
+            // Para notificações e outras globais sem vínculo ou marcadas como "Todos", exibe para o condomínio
+            return !d.condominio || d.condominio === user.condominio || d.condominio === 'Todos';
           })
         }
 

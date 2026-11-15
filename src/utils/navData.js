@@ -7,7 +7,7 @@ import {
   CreditCard, Target, Scale, Building, Calculator,
   CalendarCheck as Reservas, Wrench, DoorOpen, Package, QrCode, Car, Camera,
   Briefcase, UserCog, Settings, MessageCircleCode, Mail, UserCog as Usuarios2,
-  FileSpreadsheet, Clock, ShieldAlert
+  FileSpreadsheet, Clock, ShieldAlert, Recycle
 } from 'lucide-react'
 
 export const navGroups = [
@@ -42,6 +42,14 @@ export const navGroups = [
       { to: '/enquetes',     label: '↳ Enquetes',            icon: PieChart },
       { to: '/classificados',label: '↳ Classificados',       icon: ShoppingBag },
       { to: '/mediacao',     label: 'Mediação & ODR',        icon: Handshake },
+    ]
+  },
+  // 🌱 Sustentabilidade
+  {
+    label: '🌱 Sustentabilidade',
+    emoji: '🌱',
+    items: [
+      { to: '/recicla',      label: 'Recicla +',             icon: Recycle },
     ]
   },
   // 📅 Eventos & Reuniões
@@ -203,6 +211,13 @@ export function getFilteredNavGroups(user) {
           { to: '/conviver',     label: 'Conviver+',             icon: HeartHandshake },
           { to: '/mural',        label: 'Mural de Recados',      icon: Megaphone },
           { to: '/enquetes',     label: 'Enquetes',              icon: PieChart },
+        ]
+      },
+      {
+        label: '🌱 Sustentabilidade',
+        emoji: '🌱',
+        items: [
+          { to: '/recicla',      label: 'Recicla +',             icon: Recycle },
         ]
       },
       {

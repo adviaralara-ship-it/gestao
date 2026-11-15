@@ -64,6 +64,7 @@ import CheckinPrestador from './pages/CheckinPrestador'
 import PainelSeguranca from './pages/PainelSeguranca'
 import AprovarOrcamento from './pages/AprovarOrcamento'
 import LeadsMarketing from './pages/LeadsMarketing'
+import ReciclaPlus from './pages/ReciclaPlus'
 
 // Spinner de carregamento enquanto o Firebase Auth verifica a sessão
 function AuthLoader() {
@@ -226,6 +227,7 @@ function AppRoutes() {
           <Route path="cameras" element={<AuthorizedRoute module="cameras"><Cameras /></AuthorizedRoute>} />
           <Route path="calculadora" element={<AuthorizedRoute module="calculadora"><Calculadora /></AuthorizedRoute>} />
           <Route path="seguranca" element={<AuthorizedRoute module="seguranca"><PainelSeguranca /></AuthorizedRoute>} />
+          <Route path="recicla" element={<AuthorizedRoute module="recicla"><ReciclaPlus /></AuthorizedRoute>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

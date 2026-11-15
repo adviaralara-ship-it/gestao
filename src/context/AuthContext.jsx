@@ -11,10 +11,10 @@ import { auth, db } from '../firebase'
 const AuthContext = createContext(null)
 
 // ─── Permissões por role ───────────────────────────────────────────────────
-export const allModulesPerms = ['dashboard','whatsapp','email','condominios','moradores','rh','prestadores','usuarios','financeiro','boletos','notas-fiscais','assembleias','ocorrencias','reservas','eventos','portaria','veiculos','cameras','calculadora','encomendas','visitantes','enquetes','classificados','seguro','regime','documentos','comunicacao','tarefas','relatorios','propostas','cotacoes','recrutamento','conferencias','monitoramento-ia','radar','conviver','mediacao','locacao','manutencoes','seguranca']
+export const allModulesPerms = ['dashboard','whatsapp','email','condominios','moradores','rh','prestadores','usuarios','financeiro','boletos','notas-fiscais','assembleias','ocorrencias','reservas','eventos','portaria','veiculos','cameras','calculadora','encomendas','visitantes','enquetes','classificados','seguro','regime','documentos','comunicacao','tarefas','relatorios','propostas','cotacoes','recrutamento','conferencias','monitoramento-ia','radar','conviver','mediacao','locacao','manutencoes','seguranca','recicla']
 export const sindicoPerms = [
   'dashboard', 'alpha-ai', 'moradores', 'pets', 'usuarios', 'ocorrencias', 'conviver',
-  'comunicacao', 'mural', 'enquetes', 'classificados',
+  'comunicacao', 'mural', 'enquetes', 'classificados', 'recicla',
   'assembleias', 'conferencias', 'eventos', 'documentos', 'regime', 'contratos',
   'notas-fiscais', 'seguro', 'financeiro', 'plano-contas', 'boletos', 'inadimplencia',
   'locacao', 'calculadora', 'reservas', 'manutencoes', 'portaria', 'encomendas',
@@ -72,7 +72,7 @@ async function fetchUserProfile(firebaseUser) {
           ensure('dashboard') // Todos precisam do dashboard (tela mobile)
           if (data.role === 'Administrador' || data.role === 'Síndico') ensure('email')
           if (data.role === 'Síndico') {
-            ensure('relatorios'); ensure('visitantes'); ensure('encomendas'); ensure('portaria'); ensure('eventos');
+            ensure('relatorios'); ensure('visitantes'); ensure('encomendas'); ensure('portaria'); ensure('eventos'); ensure('recicla');
           } else if (data.role === 'Morador') {
             ensure('portaria'); ensure('visitantes'); ensure('encomendas'); ensure('eventos');
           } else if (data.role === 'Porteiro') {
@@ -110,7 +110,7 @@ async function fetchUserProfile(firebaseUser) {
         ensure('dashboard') // Todos precisam do dashboard (tela mobile)
         if (data.role === 'Administrador' || data.role === 'Síndico' || data.role === 'Subsíndico') ensure('email')
         if (data.role === 'Síndico' || data.role === 'Subsíndico') {
-          ensure('relatorios'); ensure('visitantes'); ensure('encomendas'); ensure('portaria'); ensure('eventos'); ensure('manutencoes'); ensure('cotacoes');
+          ensure('relatorios'); ensure('visitantes'); ensure('encomendas'); ensure('portaria'); ensure('eventos'); ensure('manutencoes'); ensure('cotacoes'); ensure('recicla');
         } else if (data.role === 'Morador') {
           ensure('portaria'); ensure('visitantes'); ensure('encomendas'); ensure('eventos');
         } else if (data.role === 'Porteiro') {
