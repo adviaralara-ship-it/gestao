@@ -840,11 +840,7 @@ export default function Manutencoes() {
 
       for (const num of telefonesAlvo) {
         try {
-          fetch('/api/whatsapp-send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ number: num, text: txt, instance: 'InstanciaAlpha' })
-          }).catch(e => console.warn(e))
+          enviarMensagemWhatsApp({ number: num, text: txt, instance: 'InstanciaAlpha' }).catch(e => console.warn(e))
         } catch(e) {}
       }
 

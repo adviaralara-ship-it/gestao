@@ -226,7 +226,10 @@ export default function WhatsApp() {
         setArquivoPdfBase64(null)
         setArquivoPdfNome('')
       } else {
-        alert(`Erro ao enviar: ${data?.error || 'Verifique se o WhatsApp está conectado na instância.'}`)
+        const errMsg = data?.error === 'Unauthorized'
+          ? 'Sessão expirada. Por favor, recarregue a página para revalidar a autenticação.'
+          : (data?.error || 'Verifique se o WhatsApp está conectado na instância.')
+        alert(`Erro ao enviar: ${errMsg}`)
       }
     } catch (err) {
       console.error(err)

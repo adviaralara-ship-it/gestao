@@ -720,6 +720,15 @@ export default function ReciclaPlus() {
               )}
             </div>
 
+            <button
+              onClick={() => setEditModal({})}
+              className="px-4 py-2.5 bg-white text-[#233044] hover:bg-slate-100 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm cursor-pointer hover:shadow"
+              title="Criar nova campanha educativa personalizada"
+            >
+              <Plus size={16} strokeWidth={2.5} />
+              <span>Nova Campanha</span>
+            </button>
+
             {isAdmin && (
               <button
                 onClick={handleRestaurarCatalogo}
@@ -920,6 +929,15 @@ export default function ReciclaPlus() {
                 <option value="Rascunho">Rascunhos</option>
                 <option value="Pausada">Pausadas</option>
               </select>
+
+              <button
+                onClick={() => setEditModal({})}
+                className="py-2 px-3.5 bg-[#233044] hover:bg-[#1a2433] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm whitespace-nowrap cursor-pointer shrink-0 hover:shadow"
+                title="Criar nova campanha educativa personalizada"
+              >
+                <Plus size={14} strokeWidth={2.5} />
+                <span>Nova Campanha</span>
+              </button>
             </div>
           </div>
 
@@ -935,7 +953,26 @@ export default function ReciclaPlus() {
               </div>
               <div className="max-w-md mx-auto space-y-1">
                 <h3 className="text-base font-bold text-slate-800">Nenhuma campanha encontrada</h3>
-                <p className="text-xs text-slate-500">Nenhum resultado corresponde aos filtros aplicados.</p>
+                <p className="text-xs text-slate-500">Nenhum resultado corresponde aos filtros aplicados. Crie uma nova campanha ou restaure os modelos oficiais.</p>
+              </div>
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  onClick={() => setEditModal({})}
+                  className="px-4 py-2.5 bg-[#233044] hover:bg-[#1a2433] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-sm hover:shadow"
+                >
+                  <Plus size={15} strokeWidth={2.5} />
+                  <span>Criar Nova Campanha</span>
+                </button>
+                {isAdmin && (
+                  <button
+                    onClick={handleRestaurarCatalogo}
+                    disabled={actionLoading}
+                    className="px-4 py-2.5 bg-[#6E8B85] hover:bg-[#5a736e] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-sm hover:shadow"
+                  >
+                    <RefreshCw size={14} className={actionLoading ? 'animate-spin' : ''} />
+                    <span>Restaurar 10 Modelos Padrão</span>
+                  </button>
+                )}
               </div>
             </div>
           ) : (

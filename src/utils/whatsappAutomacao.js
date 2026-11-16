@@ -12,12 +12,15 @@ async function getAuthHeaders() {
           unsub?.()
           resolve()
         })
-        setTimeout(() => { unsub?.(); resolve() }, 1000)
+        setTimeout(() => { unsub?.(); resolve() }, 1500)
       })
     }
 
     if (currentUser) {
-      const token = await currentUser.getIdToken(false)
+      // Forçar atualização do token para garantir JWT sempre válido e não expirado
+      const token = await currentUser.getIdToken(true).catch(async () => {
+        return await currentUser.getIdToken(false).catch(() => null)
+      })
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
       }

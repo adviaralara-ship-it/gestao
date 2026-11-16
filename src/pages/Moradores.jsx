@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, setDoc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db, secondaryAuth } from '../firebase'
 import { createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth'
+import { enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
 
 function MoradorModal({ data, onClose, onSave, isMorador, currentUser, initialApt, initialBloco, initialCondo, condominiosList = [] }) {
   const [form, setForm] = useState(() => (data ? { ...data } : {
@@ -1355,16 +1356,16 @@ export default function Moradores() {
         .replace(/\{condominio\}/gi, m.condominio || '')
 
       try {
-        await fetch('/api/whatsapp-send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            number: foneWhats,
-            text: msgPersonalizada,
-            instance: 'InstanciaAlpha'
-          })
+        const resEnv = await enviarMensagemWhatsApp({
+          number: foneWhats,
+          text: msgPersonalizada,
+          instance: 'InstanciaAlpha'
         })
-        enviados++
+        if (resEnv && resEnv.success) {
+          enviados++
+        } else {
+          console.warn(`Falha no envio WhatsApp para ${m.nome}:`, resEnv?.error)
+        }
       } catch (err) {
         console.warn(`Falha no envio WhatsApp para ${m.nome}:`, err)
       }
