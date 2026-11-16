@@ -38,9 +38,7 @@ export const moradorPerms = [
 const MASTER_PROFILES = {
   'admin@alpha.com.br':        { id: '1', nome: 'Admin Master',       role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
   'master@alpha.com.br':       { id: '8', nome: 'Acesso Master',      role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
-  'iaralara1812@gmail.com':    { id: '2', nome: 'Iara Lara',          role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
   'adviaralara@gmail.com':     { id: '7', nome: 'Iara Lara',          role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
-  'iaralara@gmail.com':        { id: '9', nome: 'Iara Lara',          role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
   'maiaral19@gmail.com':       { id: '10', nome: 'Maiara Lara',       role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
   'alphapriscila03@gmail.com': { id: '11', nome: 'Priscila Carvalho', role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
   'roberto@jardins.com.br':    { id: '3', nome: 'Roberto Souza',      role: 'Síndico',       permissoes: sindicoPerms, condominio: 'Jardins' },

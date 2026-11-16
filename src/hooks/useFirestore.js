@@ -203,30 +203,31 @@ const cleanFirestorePayload = (obj) => {
       await deleteDoc(doc(db, colName, id))
       await logAudit('DELETE', id)
 
-      // ALARME: Rastreio de Apagamento em Massa
-      // Monitora se mais de 10 exclusões ocorreram nos últimos 5 minutos
-      const delHistory = JSON.parse(sessionStorage.getItem('delete_history') || '[]')
-      const fiveMinAgo = Date.now() - 5 * 60 * 1000
-      const recentDels = delHistory.filter(ts => ts > fiveMinAgo)
-      recentDels.push(Date.now())
-      sessionStorage.setItem('delete_history', JSON.stringify(recentDels))
+      // ALARME: Rastreio de Apagamento em Massa (apenas para usuários não-administradores)
+      if (user?.role !== 'Administrador') {
+        const delHistory = JSON.parse(sessionStorage.getItem('delete_history') || '[]')
+        const fiveMinAgo = Date.now() - 5 * 60 * 1000
+        const recentDels = delHistory.filter(ts => ts > fiveMinAgo)
+        recentDels.push(Date.now())
+        sessionStorage.setItem('delete_history', JSON.stringify(recentDels))
 
-      if (recentDels.length >= 10) {
-        const lastDelAlarm = Number(sessionStorage.getItem('last_alarm_mass_del') || 0)
-        if (Date.now() - lastDelAlarm > 5 * 60 * 1000) {
-          sessionStorage.setItem('last_alarm_mass_del', Date.now())
-          dispararAlarmeSeguranca({
-            tipo: 'APAGAMENTO_MASSA',
-            titulo: 'Apagamento em Massa Detectado',
-            detalhes: `Detectado apagamento sequencial de ${recentDels.length} registros na coleção "${colName}" pelo usuário "${user?.nome || 'Anônimo'}" (${user?.email || 'N/A'}).`,
-            userEmail: user?.email,
-            metadata: {
-              colecao: colName,
-              quantidade: recentDels.length,
-              usuario: user?.nome,
-              perfil: user?.role
-            }
-          }).catch(() => {})
+        if (recentDels.length >= 10) {
+          const lastDelAlarm = Number(sessionStorage.getItem('last_alarm_mass_del') || 0)
+          if (Date.now() - lastDelAlarm > 5 * 60 * 1000) {
+            sessionStorage.setItem('last_alarm_mass_del', Date.now())
+            dispararAlarmeSeguranca({
+              tipo: 'APAGAMENTO_MASSA',
+              titulo: 'Apagamento em Massa Detectado',
+              detalhes: `Detectado apagamento sequencial de ${recentDels.length} registros na coleção "${colName}" pelo usuário "${user?.nome || 'Anônimo'}" (${user?.email || 'N/A'}).`,
+              userEmail: user?.email,
+              metadata: {
+                colecao: colName,
+                quantidade: recentDels.length,
+                usuario: user?.nome,
+                perfil: user?.role
+              }
+            }).catch(() => {})
+          }
         }
       }
     } catch (err) {

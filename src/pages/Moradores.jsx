@@ -1295,20 +1295,28 @@ export default function Moradores() {
 
     try {
       const moradoresParaExcluir = moradores.filter(m => selectedIds.includes(m.id))
-      for (const m of moradoresParaExcluir) {
-        if (String(m.id).startsWith('usr_')) {
-          const uId = String(m.id).replace(/^usr_/, '')
-          await deleteDoc(doc(db, 'usuarios', uId)).catch(() => {})
-        } else {
-          await deleteItem(m.id)
-        }
-        if (m.email) {
+      const BATCH_SIZE = 10
+      for (let i = 0; i < moradoresParaExcluir.length; i += BATCH_SIZE) {
+        const chunk = moradoresParaExcluir.slice(i, i + BATCH_SIZE)
+        await Promise.all(chunk.map(async (m) => {
           try {
-            const qU = query(collection(db, 'usuarios'), where('email', '==', m.email.toLowerCase().trim()))
-            const sU = await getDocs(qU)
-            sU.forEach(async d => await deleteDoc(d.ref))
-          } catch(e) {}
-        }
+            if (String(m.id).startsWith('usr_')) {
+              const uId = String(m.id).replace(/^usr_/, '')
+              await deleteDoc(doc(db, 'usuarios', uId)).catch(() => {})
+            } else {
+              await deleteItem(m.id).catch(() => {})
+            }
+            if (m.email) {
+              const qU = query(collection(db, 'usuarios'), where('email', '==', m.email.toLowerCase().trim()))
+              const sU = await getDocs(qU).catch(() => null)
+              if (sU && sU.docs) {
+                await Promise.all(sU.docs.map(d => deleteDoc(d.ref).catch(() => {})))
+              }
+            }
+          } catch (e) {
+            console.warn('Falha ao excluir registro:', m.id, e)
+          }
+        }))
       }
       setSelectedIds([])
       alert(`✅ ${total} morador(es) foram excluídos com sucesso.`)

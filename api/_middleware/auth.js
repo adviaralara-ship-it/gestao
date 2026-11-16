@@ -105,7 +105,7 @@ export async function verifyUserAuth(req, res) {
     // Obtenção do perfil e role verificado diretamente no Firestore
     const MASTER_ADMIN_EMAILS = [
       'admin@alpha.com.br', 'master@alpha.com.br',
-      'iaralara1812@gmail.com', 'adviaralara@gmail.com', 'iaralara@gmail.com',
+      'adviaralara@gmail.com',
       'maiaral19@gmail.com', 'alphapriscila03@gmail.com'
     ];
 
