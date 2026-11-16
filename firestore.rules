@@ -24,7 +24,7 @@ service cloud.firestore {
       return isAuthenticated() && (
         (request.auth.token.email != null && request.auth.token.email in [
           'admin@alpha.com.br', 'master@alpha.com.br',
-          'adviaralara@gmail.com',
+          'adviaralara@gmail.com', 'iaralara1812@gmail.com', 'iaralara@gmail.com',
           'maiaral19@gmail.com', 'alphapriscila03@gmail.com'
         ]) ||
         (exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
@@ -249,6 +249,22 @@ service cloud.firestore {
     }
 
     match /financeiro_receitas/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /financeiro_contas/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /locacao_contratos/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /locacao_repasses/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /portaria_visitantes/{id} {
       allow read, write: if isAuthenticated();
     }
 
