@@ -19,11 +19,13 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
     }
 
-    // Validação de privilégio de Administrador Master
+    // Validação de privilégio de Administrador Master (Iara, Maiara, Priscila e Masters)
     function isAdmin() {
       return isAuthenticated() && (
         (request.auth.token.email != null && request.auth.token.email in [
-          'admin@alpha.com.br', 'master@alpha.com.br', 'iaralara1812@gmail.com', 'adviaralara@gmail.com'
+          'admin@alpha.com.br', 'master@alpha.com.br',
+          'iaralara1812@gmail.com', 'adviaralara@gmail.com', 'iaralara@gmail.com',
+          'maiaral19@gmail.com', 'alphapriscila03@gmail.com'
         ]) ||
         (exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
          getUserData().role == 'Administrador')
@@ -191,6 +193,134 @@ service cloud.firestore {
     }
 
     match /cotacoes/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /orcamentos_comparativos/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /orcamentos/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /simulacoes_rateio/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /propostas_fornecedores/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /demandas_cotacao/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /prestadores/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /prestadores_atendimentos/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /portaria_prestadores/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /portaria_livro/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /plano_contas/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /financeiro/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /financeiro_config/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /financeiro_despesas/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /financeiro_receitas/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /rateios_agua/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /rh/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /folhas_pagamento/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /pontos/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /fechamento_ponto/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /solicitacoes_ajuste/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /juridico/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /vagas/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /eventos/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /convidados/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /ai_chats/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /ai_knowledge/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /alarmes_seguranca/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /classificados/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /mural/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /mensagens/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /emails_enviados/{id} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /atas/{id} {
       allow read, write: if isAuthenticated();
     }
 

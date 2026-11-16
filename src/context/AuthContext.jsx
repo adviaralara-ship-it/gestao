@@ -36,14 +36,17 @@ export const moradorPerms = [
 // ─── Perfis de usuários master (dados de perfil, SEM senha) ───────────────
 // As senhas ficam APENAS no Firebase Authentication (servidor do Google, criptografadas)
 const MASTER_PROFILES = {
-  'admin@alpha.com.br':        { id: '1', nome: 'Admin Master',     role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
-  'master@alpha.com.br':       { id: '8', nome: 'Acesso Master',    role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
-  'iaralara1812@gmail.com':    { id: '2', nome: 'Iara Lara',        role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
-  'adviaralara@gmail.com':     { id: '7', nome: 'Iara Lara',        role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
-  'roberto@jardins.com.br':    { id: '3', nome: 'Roberto Souza',    role: 'Síndico',       permissoes: sindicoPerms, condominio: 'Jardins' },
-  'ana@primavera.com.br':      { id: '4', nome: 'Ana Lima',         role: 'Síndico',       permissoes: sindicoPerms, condominio: 'Primavera' },
-  'financeiro@alpha.com.br':   { id: '5', nome: 'Paulo Financeiro', role: 'Financeiro',    permissoes: financeiroPerms, condominio: '' },
-  'portaria@jardins.com.br':   { id: '6', nome: 'João Porteiro',    role: 'Porteiro',      permissoes: porteiroPerms, condominio: 'Jardins' },
+  'admin@alpha.com.br':        { id: '1', nome: 'Admin Master',       role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
+  'master@alpha.com.br':       { id: '8', nome: 'Acesso Master',      role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
+  'iaralara1812@gmail.com':    { id: '2', nome: 'Iara Lara',          role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
+  'adviaralara@gmail.com':     { id: '7', nome: 'Iara Lara',          role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
+  'iaralara@gmail.com':        { id: '9', nome: 'Iara Lara',          role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
+  'maiaral19@gmail.com':       { id: '10', nome: 'Maiara Lara',       role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
+  'alphapriscila03@gmail.com': { id: '11', nome: 'Priscila Carvalho', role: 'Administrador', permissoes: allModulesPerms, condominio: '' },
+  'roberto@jardins.com.br':    { id: '3', nome: 'Roberto Souza',      role: 'Síndico',       permissoes: sindicoPerms, condominio: 'Jardins' },
+  'ana@primavera.com.br':      { id: '4', nome: 'Ana Lima',           role: 'Síndico',       permissoes: sindicoPerms, condominio: 'Primavera' },
+  'financeiro@alpha.com.br':   { id: '5', nome: 'Paulo Financeiro',   role: 'Financeiro',    permissoes: financeiroPerms, condominio: '' },
+  'portaria@jardins.com.br':   { id: '6', nome: 'João Porteiro',      role: 'Porteiro',      permissoes: porteiroPerms, condominio: 'Jardins' },
 }
 
 // Busca perfil do usuário no Firestore ou nos MASTER_PROFILES

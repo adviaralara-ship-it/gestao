@@ -103,20 +103,32 @@ export async function verifyUserAuth(req, res) {
     const decoded = await getAuth().verifyIdToken(token);
 
     // Obtenção do perfil e role verificado diretamente no Firestore
-    try {
-      const db = getFirestore();
-      const userDoc = await db.collection('usuarios').doc(decoded.uid).get();
-      if (userDoc.exists) {
-        const userData = userDoc.data();
-        decoded.role = userData.role || 'Morador';
-        decoded.condominio = userData.condominio || '';
-        decoded.ativo = userData.ativo !== false;
-      } else {
-        decoded.role = 'Morador';
-        decoded.ativo = true;
+    const MASTER_ADMIN_EMAILS = [
+      'admin@alpha.com.br', 'master@alpha.com.br',
+      'iaralara1812@gmail.com', 'adviaralara@gmail.com', 'iaralara@gmail.com',
+      'maiaral19@gmail.com', 'alphapriscila03@gmail.com'
+    ];
+
+    if (decoded.email && MASTER_ADMIN_EMAILS.includes(decoded.email.toLowerCase())) {
+      decoded.role = 'Administrador';
+      decoded.ativo = true;
+      decoded.condominio = '';
+    } else {
+      try {
+        const db = getFirestore();
+        const userDoc = await db.collection('usuarios').doc(decoded.uid).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          decoded.role = userData.role || 'Morador';
+          decoded.condominio = userData.condominio || '';
+          decoded.ativo = userData.ativo !== false;
+        } else {
+          decoded.role = 'Morador';
+          decoded.ativo = true;
+        }
+      } catch (e) {
+        decoded.role = decoded.role || 'Morador';
       }
-    } catch (e) {
-      decoded.role = decoded.role || 'Morador';
     }
 
     if (decoded.ativo === false) {
