@@ -114,20 +114,20 @@ export default function Mural() {
     }))
   }, [avisos])
 
-  // Formulário de Novo Recado
+  // Formulário de Novo Recado (Inicia SEM condomínio pré-selecionado para forçar escolha consciente)
   const [form, setForm] = useState({
     titulo: '',
     tipo: 'Comunicado', // 'Aviso', 'Comunicado', 'Convocação', 'Urgente'
-    condominio: user?.condominio || 'Todos',
+    condominio: user?.role === 'Síndico' ? (user?.condominio || '') : '',
     destino: 'Todos', // 'Todos', 'Moradores', 'Colaboradores'
     texto: '',
-    dispararWhatsApp: true
+    dispararWhatsApp: false // SEGURO: desmarcado por padrão para impedir disparos acidentais
   })
 
   // Formulário de Disparo Rápido por Residencial
   const [formDisparo, setFormDisparo] = useState({
     recadoId: '', // ID do recado selecionado, se houver
-    condominio: user?.condominio || (condominios[0]?.nome || 'Todos'),
+    condominio: user?.role === 'Síndico' ? (user?.condominio || '') : '',
     titulo: '',
     mensagem: '',
     tipo: 'Comunicado'
@@ -137,7 +137,7 @@ export default function Mural() {
   const abrirDisparoParaRecado = (recado) => {
     setFormDisparo({
       recadoId: recado.id,
-      condominio: recado.condominio && recado.condominio !== 'Todos' ? recado.condominio : (user?.condominio || condominios[0]?.nome || 'Todos'),
+      condominio: recado.condominio && recado.condominio !== 'Todos' ? recado.condominio : (user?.role === 'Síndico' ? user?.condominio : ''),
       titulo: recado.titulo || '',
       mensagem: recado.texto || '',
       tipo: recado.tipo || 'Comunicado'
@@ -179,21 +179,44 @@ export default function Mural() {
   const [audioObj, setAudioObj] = useState(null)
   const [carregandoAudioId, setCarregandoAudioId] = useState(null)
 
-  // Moradores alvo de acordo com o condomínio selecionado no form de novo recado
-  const moradoresAlvoRecado = (moradores || []).filter(m => {
-    if (!form.condominio || form.condominio === 'Todos') return true
-    const mCondo = normalizar(m.condominio)
+  // Moradores alvo de acordo com o condomínio selecionado no form de novo recado (ISOLAMENTO ESTRITO - SEM .INCLUDES VAZIO)
+  const moradoresAlvoRecado = React.useMemo(() => {
+    if (!form.condominio) return []
+    if (form.condominio === 'Todos') {
+      return (moradores || []).filter(m => {
+        const rawTel = String(m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || '').replace(/\D/g, '')
+        return rawTel.length >= 8
+      })
+    }
     const fCondo = normalizar(form.condominio)
-    return mCondo === fCondo || mCondo.includes(fCondo) || fCondo.includes(mCondo)
-  })
+    if (!fCondo) return []
+    return (moradores || []).filter(m => {
+      const rawCondo = m.condominio || m.condominioNome || ''
+      const mCondo = normalizar(rawCondo)
+      if (!mCondo) return false
+      // Comparação estrita para isolamento total de condomínio (impede vazamento para outros residenciais)
+      return mCondo === fCondo
+    })
+  }, [moradores, form.condominio])
 
-  // Moradores alvo para o modal de disparo rápido
-  const moradoresAlvoDisparo = (moradores || []).filter(m => {
-    if (!formDisparo.condominio || formDisparo.condominio === 'Todos') return true
-    const mCondo = normalizar(m.condominio)
+  // Moradores alvo para o modal de disparo rápido (ISOLAMENTO ESTRITO)
+  const moradoresAlvoDisparo = React.useMemo(() => {
+    if (!formDisparo.condominio) return []
+    if (formDisparo.condominio === 'Todos') {
+      return (moradores || []).filter(m => {
+        const rawTel = String(m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || '').replace(/\D/g, '')
+        return rawTel.length >= 8
+      })
+    }
     const fCondo = normalizar(formDisparo.condominio)
-    return mCondo === fCondo || mCondo.includes(fCondo) || fCondo.includes(mCondo)
-  })
+    if (!fCondo) return []
+    return (moradores || []).filter(m => {
+      const rawCondo = m.condominio || m.condominioNome || ''
+      const mCondo = normalizar(rawCondo)
+      if (!mCondo) return false
+      return mCondo === fCondo
+    })
+  }, [moradores, formDisparo.condominio])
 
   const toggleAudio = (id, texto) => {
     if (audioTocandoId === id && audioObj) {
@@ -276,36 +299,63 @@ export default function Mural() {
       return
     }
 
+    if (!form.condominio) {
+      alert('⚠️ Atenção: Por favor, selecione expressamente o Residencial/Condomínio para o qual este recado se destina.')
+      return
+    }
+
+    // Se marcou 'Todos os Condomínios' com WhatsApp ligado, exige confirmação expressa para evitar envios acidentais
+    if (form.condominio === 'Todos' && form.dispararWhatsApp) {
+      const confirmaTodos = window.confirm(
+        `🚨 CONFIRMAÇÃO DE DISPARO GERAL:\n\nVocê selecionou "Todos os Condomínios" com o envio de WhatsApp ATIVADO.\n\nEsta mensagem será disparada para ${moradoresAlvoRecado.length} moradores de TODOS os residenciais cadastrados no sistema.\n\nTem certeza de que deseja disparar para a base completa?`
+      )
+      if (!confirmaTodos) return
+    }
+
     setEnviandoRecado(true)
     try {
+      const autorIdentificado = user?.nome || user?.email?.split('@')[0] || 'Administração'
+      const dataHojeFormatada = format(new Date(), 'dd/MM/yyyy')
+      const horaAtual = format(new Date(), 'HH:mm')
+      const dataHoraCompleta = format(new Date(), 'dd/MM/yyyy HH:mm:ss')
+
       await addAviso({
-        titulo: form.titulo,
+        titulo: form.titulo.trim(),
         tipo: form.tipo,
-        condominio: form.condominio || 'Todos',
+        condominio: form.condominio,
         destino: form.destino || 'Todos',
-        texto: form.texto,
-        autor: user?.nome || 'Administração',
-        data: format(new Date(), 'dd/MM/yyyy'),
+        texto: form.texto.trim(),
+        autor: autorIdentificado,
+        autorNome: user?.nome || autorIdentificado,
+        autorEmail: user?.email || '',
+        autorRole: user?.role || 'Administrador',
+        autorUid: user?.uid || '',
+        data: dataHojeFormatada,
+        hora: horaAtual,
+        dataHoraFormatada: dataHoraCompleta,
         createdAt: new Date().toISOString(),
-        _createdAt: new Date().toISOString()
+        _createdAt: serverTimestamp()
       })
 
-      // 1. Notificação geral / administrativa no sistema
+      // 1. Notificação geral / administrativa no sistema com identificação do autor
       await addDoc(collection(db, 'notificacoes'), {
-        text: `📢 Novo comunicado no Mural: "${form.titulo}" – para ${form.destino}${form.condominio !== 'Todos' ? ` (${form.condominio})` : ''}`,
+        text: `📢 Novo comunicado no Mural: "${form.titulo.trim()}" – para ${form.destino}${form.condominio !== 'Todos' ? ` (${form.condominio})` : ' (Geral)'}`,
         time: new Date().toISOString(),
         tipo: 'comunicado',
         lida: false,
         _createdAt: serverTimestamp(),
         destino: form.destino,
-        condominio: form.condominio
+        condominio: form.condominio,
+        autorNome: user?.nome || autorIdentificado,
+        autorEmail: user?.email || '',
+        autorRole: user?.role || 'Administrador'
       })
 
       // 2. Notificações individuais no Firestore para cada morador do condomínio
       for (const m of moradoresAlvoRecado) {
         try {
           await addDoc(collection(db, 'notificacoes'), {
-            text: `📢 Novo recado no Mural: "${form.titulo}"`,
+            text: `📢 Novo recado no Mural: "${form.titulo.trim()}"`,
             time: new Date().toISOString(),
             tipo: 'comunicado',
             lida: false,
@@ -332,45 +382,69 @@ export default function Mural() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: `📢 ${form.tipo || 'Comunicado'}: ${form.titulo}`,
-          message: form.texto,
-          condominio: form.condominio || 'Todos',
+          title: `📢 ${form.tipo || 'Comunicado'}: ${form.titulo.trim()}`,
+          message: form.texto.trim(),
+          condominio: form.condominio,
           targetUserIds: targetEmails,
           targetUrl: window.location.origin + '/mural'
         })
       }).catch(e => console.error('Push erro Mural:', e))
 
-      // 4. Disparo WhatsApp para os moradores caso a opção esteja ativa
+      // 4. Disparo WhatsApp EXCLUSIVO para os moradores do condomínio selecionado
+      let disparadosCount = 0
       if (form.dispararWhatsApp) {
-        const telefonesAvisos = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
-        const msgAvisoWhats = `📢 *NOVO ${form.tipo ? form.tipo.toUpperCase() : 'COMUNICADO'} NO MURAL - ALPHA GESTÃO*\n\n📌 *Título:* ${form.titulo}\n🏢 *Condomínio:* ${form.condominio || 'Todos'}\n🎯 *Destino:* ${form.destino || 'Todos'}\n\n📝 *Mensagem:*\n${form.texto}\n\n🔗 *Acesse o Mural:* https://alpha-solucoes-condominiais.vercel.app/mural`
+        const msgAvisoWhats = `📢 *NOVO ${form.tipo ? form.tipo.toUpperCase() : 'COMUNICADO'} NO MURAL - ALPHA GESTÃO*\n\n📌 *Título:* ${form.titulo.trim()}\n🏢 *Condomínio:* ${form.condominio}\n🎯 *Destino:* ${form.destino || 'Todos'}\n\n📝 *Mensagem:*\n${form.texto.trim()}\n\n🔗 *Acesse o Mural:* https://alpha-solucoes-condominiais.vercel.app/mural`
 
         const telefonesMoradores = moradoresAlvoRecado
           .map(m => (m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || '').replace(/\D/g, ''))
           .filter(t => t && t.length >= 8)
           .map(t => t.startsWith('55') ? t : `55${t}`)
 
-        const todosTelefones = Array.from(new Set([...telefonesAvisos, ...telefonesMoradores]))
+        const todosTelefones = Array.from(new Set(telefonesMoradores))
 
-        todosTelefones.forEach(tel => {
-          enviarMensagemWhatsApp({
-            number: tel,
-            text: msgAvisoWhats,
-            instance: 'InstanciaAlpha'
-          }).catch(e => console.warn('Falha no envio de aviso WhatsApp Mural:', tel, e))
-        })
+        for (const tel of todosTelefones) {
+          try {
+            await enviarMensagemWhatsApp({
+              number: tel,
+              text: msgAvisoWhats,
+              instance: 'InstanciaAlpha'
+            })
+            disparadosCount++
+          } catch(e) {
+            console.warn('Falha no envio de aviso WhatsApp Mural:', tel, e)
+          }
+        }
       }
+
+      // 5. Registro permanente de Auditoria no banco de dados
+      await addDoc(collection(db, 'auditoria_logs'), {
+        acao: 'CRIAR_RECADO_MURAL',
+        modulo: 'Mural',
+        titulo: form.titulo.trim(),
+        tipo: form.tipo,
+        condominio: form.condominio,
+        destino: form.destino || 'Todos',
+        dispararWhatsApp: Boolean(form.dispararWhatsApp),
+        totalWhatsAppEnviados: disparadosCount,
+        autorNome: user?.nome || autorIdentificado,
+        autorEmail: user?.email || '',
+        autorRole: user?.role || 'Administrador',
+        autorUid: user?.uid || '',
+        dataHora: dataHoraCompleta,
+        timestamp: serverTimestamp(),
+        createdAt: new Date().toISOString()
+      }).catch(errAudit => console.warn('Falha ao registrar auditoria de recado:', errAudit))
 
       setModalNovoAberto(false)
       setForm({
         titulo: '',
         tipo: 'Comunicado',
-        condominio: user?.condominio || 'Todos',
+        condominio: user?.role === 'Síndico' ? (user?.condominio || '') : '',
         destino: 'Todos',
         texto: '',
-        dispararWhatsApp: true
+        dispararWhatsApp: false
       })
-      alert(`Recado publicado com sucesso no Mural!${form.dispararWhatsApp ? ' Notificações e WhatsApp disparados para os moradores.' : ''}`)
+      alert(`✅ Recado publicado com sucesso no Mural!${form.dispararWhatsApp ? ` WhatsApp disparado com sucesso para ${disparadosCount} moradores de ${form.condominio}.` : ''}`)
     } catch (e) {
       console.error(e)
       alert('Erro ao publicar recado.')
@@ -381,23 +455,43 @@ export default function Mural() {
 
   // Disparo Rápido via WhatsApp direto por Residencial
   const handleDisparoRapido = async () => {
+    if (!formDisparo.condominio) {
+      alert('⚠️ Por favor, selecione expressamente o Residencial de Destino para o disparo.')
+      return
+    }
+
     if (!formDisparo.mensagem.trim()) {
       alert('Por favor, digite a mensagem a ser disparada para os moradores.')
       return
     }
 
+    if (formDisparo.condominio === 'Todos') {
+      const confirmaTodos = window.confirm(
+        `🚨 CONFIRMAÇÃO DE DISPARO GERAL:\n\nVocê selecionou "Todos os Residenciais".\n\nEsta mensagem será enviada para ${moradoresAlvoDisparo.length} moradores de toda a base Alpha.\n\nDeseja realmente continuar?`
+      )
+      if (!confirmaTodos) return
+    }
+
     setEnviandoDisparo(true)
     setStatusEnvio('Iniciando disparos para os moradores...')
     try {
-      const msgTexto = `📢 *ALPHA GESTÃO - AVISO AOS MORADORES*\n\n🏢 *Condomínio:* ${formDisparo.condominio || 'Todos'}\n${formDisparo.titulo ? `📌 *Assunto:* ${formDisparo.titulo}\n` : ''}\n📝 *Mensagem:*\n${formDisparo.mensagem}\n\n🔗 *Acesse o Portal:* https://alpha-solucoes-condominiais.vercel.app/mural`
+      const autorIdentificado = user?.nome || user?.email?.split('@')[0] || 'Administração'
+      const dataHoraCompleta = format(new Date(), 'dd/MM/yyyy HH:mm:ss')
+      const msgTexto = `📢 *ALPHA GESTÃO - AVISO AOS MORADORES*\n\n🏢 *Condomínio:* ${formDisparo.condominio}\n${formDisparo.titulo ? `📌 *Assunto:* ${formDisparo.titulo.trim()}\n` : ''}\n📝 *Mensagem:*\n${formDisparo.mensagem.trim()}\n\n🔗 *Acesse o Portal:* https://alpha-solucoes-condominiais.vercel.app/mural`
 
-      const telefonesAvisos = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
       const telefonesMoradores = moradoresAlvoDisparo
         .map(m => (m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || '').replace(/\D/g, ''))
         .filter(t => t && t.length >= 8)
         .map(t => t.startsWith('55') ? t : `55${t}`)
 
-      const todosTelefones = Array.from(new Set([...telefonesAvisos, ...telefonesMoradores]))
+      const todosTelefones = Array.from(new Set(telefonesMoradores))
+
+      if (todosTelefones.length === 0) {
+        alert(`Nenhum morador com WhatsApp válido cadastrado no condomínio "${formDisparo.condominio}".`)
+        setEnviandoDisparo(false)
+        setStatusEnvio(null)
+        return
+      }
 
       let enviados = 0
       for (const tel of todosTelefones) {
@@ -414,25 +508,47 @@ export default function Mural() {
         }
       }
 
-      // Notificação no sistema também
+      // Notificação no sistema
       await addDoc(collection(db, 'notificacoes'), {
         text: `📲 Disparo WhatsApp para moradores: "${formDisparo.titulo || 'Comunicado'}" (${formDisparo.condominio})`,
         time: new Date().toISOString(),
         tipo: 'comunicado',
         lida: false,
         _createdAt: serverTimestamp(),
-        condominio: formDisparo.condominio
+        condominio: formDisparo.condominio,
+        autorNome: user?.nome || autorIdentificado,
+        autorEmail: user?.email || '',
+        autorRole: user?.role || 'Administrador'
       })
 
-      setStatusEnvio(`✅ Sucesso! Disparo enviado para ${todosTelefones.length} telefones (${telefonesMoradores.length} moradores de ${formDisparo.condominio}).`)
+      // Registro de Auditoria do Disparo
+      await addDoc(collection(db, 'auditoria_logs'), {
+        acao: 'DISPARO_WHATSAPP_MURAL',
+        modulo: 'Mural',
+        titulo: formDisparo.titulo || '',
+        recadoId: formDisparo.recadoId || null,
+        condominio: formDisparo.condominio,
+        totalEnviados: enviados,
+        totalAlvo: todosTelefones.length,
+        autorNome: user?.nome || autorIdentificado,
+        autorEmail: user?.email || '',
+        autorRole: user?.role || 'Administrador',
+        autorUid: user?.uid || '',
+        dataHora: dataHoraCompleta,
+        timestamp: serverTimestamp(),
+        createdAt: new Date().toISOString()
+      }).catch(errAudit => console.warn('Erro ao salvar auditoria de disparo:', errAudit))
+
+      setStatusEnvio(`✅ Sucesso! Disparo concluído para ${enviados} moradores do condomínio ${formDisparo.condominio}.`)
       setTimeout(() => {
         setModalDisparoAberto(false)
         setStatusEnvio(null)
         setFormDisparo({
-          condominio: user?.condominio || (condominios[0]?.nome || 'Todos'),
+          condominio: user?.role === 'Síndico' ? (user?.condominio || '') : '',
           titulo: '',
           mensagem: '',
-          tipo: 'Comunicado'
+          tipo: 'Comunicado',
+          recadoId: ''
         })
       }, 2500)
     } catch (e) {
@@ -561,10 +677,24 @@ export default function Mural() {
                   </div>
                   <div>
                     <h3 className="font-bold text-gray-900 text-lg leading-tight">{post.titulo}</h3>
-                    <div className="flex items-center gap-2 mt-0.5 text-xs font-medium text-gray-500">
-                      <span className="flex items-center gap-1"><User size={12}/> {post.autor || 'Administração'}</span>
+                    <div className="flex flex-wrap items-center gap-2 mt-1 text-xs font-medium text-gray-500">
+                      <span className="flex items-center gap-1 text-slate-800 font-semibold bg-slate-100 px-2 py-0.5 rounded-md">
+                        <User size={12} className="text-brand-600"/> 
+                        <span>{post.autorNome || post.autor || 'Administração'}</span>
+                        {post.autorEmail && (
+                          <span className="text-[11px] font-normal text-slate-500">({post.autorEmail})</span>
+                        )}
+                        {post.autorRole && (
+                          <span className="text-[10px] font-bold text-brand-700 bg-white px-1.5 py-0.2 rounded border border-slate-200">
+                            {post.autorRole}
+                          </span>
+                        )}
+                      </span>
                       <span>•</span>
-                      <span>{post.data || format(new Date(), 'dd/MM/yyyy')}</span>
+                      <span className="text-slate-500 flex items-center gap-1">
+                        <Calendar size={12}/>
+                        {post.dataHoraFormatada || `${post.data || ''} ${post.hora || ''}`.trim() || format(new Date(), 'dd/MM/yyyy')}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -685,50 +815,79 @@ export default function Mural() {
 
                 <div>
                   <label className="label font-bold text-gray-700 flex items-center justify-between">
-                    <span>Residencial / Condomínio</span>
-                    <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                      {moradoresAlvoRecado.length} {moradoresAlvoRecado.length === 1 ? 'morador' : 'moradores'}
-                    </span>
+                    <span>Residencial / Condomínio *</span>
+                    {form.condominio && (
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${form.condominio === 'Todos' ? 'text-amber-700 bg-amber-100 font-bold' : 'text-emerald-700 bg-emerald-50'}`}>
+                        {moradoresAlvoRecado.length} {moradoresAlvoRecado.length === 1 ? 'morador' : 'moradores'}
+                      </span>
+                    )}
                   </label>
                   <select
-                    className="input font-medium"
+                    className={`input font-medium ${!form.condominio ? 'border-amber-400 bg-amber-50/20' : ''}`}
                     value={form.condominio}
                     onChange={e => setForm({ ...form, condominio: e.target.value })}
+                    required
                   >
-                    <option value="Todos">Todos os Condomínios</option>
+                    <option value="">— Selecione o Residencial Obrigatório —</option>
                     {condominios.map(c => (
-                      <option key={c.id || c.nome} value={c.nome}>{c.nome}</option>
+                      <option key={c.id || c.nome} value={c.nome}>🏢 {c.nome}</option>
                     ))}
+                    {user?.role === 'Administrador' && (
+                      <option value="Todos">🌐 Todos os Condomínios (Geral)</option>
+                    )}
                   </select>
                 </div>
               </div>
+
+              {form.condominio === 'Todos' && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-2.5 text-[11px] text-amber-800 flex items-start gap-2 animate-fade-in">
+                  <AlertCircle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Aviso de Alcance Global:</strong> Você selecionou <strong>Todos os Condomínios</strong>. Este aviso será visível nos murais de todos os condomínios da rede Alpha.
+                    {form.dispararWhatsApp && (
+                      <span className="block mt-1 text-red-700 font-bold">
+                        ⚠️ Atenção: O WhatsApp será disparado para toda a base ({moradoresAlvoRecado.length} contatos)!
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="label font-bold text-gray-700">Mensagem / Conteúdo *</label>
                 <textarea
                   rows={4}
                   className="input font-medium resize-none"
-                  placeholder="Escreva a mensagem que todos os moradores visualizarão no mural..."
+                  placeholder="Escreva a mensagem clara que os moradores visualizarão no mural..."
                   value={form.texto}
                   onChange={e => setForm({ ...form, texto: e.target.value })}
                 />
               </div>
 
               {/* Opção de Disparo WhatsApp */}
-              <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 flex items-start gap-3">
+              <div className={`border rounded-xl p-3 flex items-start gap-3 transition-colors ${form.dispararWhatsApp ? 'bg-emerald-50/80 border-emerald-300' : 'bg-gray-50 border-gray-200'}`}>
                 <input
                   type="checkbox"
                   id="dispararWhatsCheck"
                   checked={form.dispararWhatsApp}
                   onChange={e => setForm({ ...form, dispararWhatsApp: e.target.checked })}
-                  className="mt-0.5 h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300"
+                  className="mt-0.5 h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300 cursor-pointer"
                 />
                 <label htmlFor="dispararWhatsCheck" className="text-xs text-gray-700 cursor-pointer flex-1">
-                  <span className="font-bold text-emerald-800 flex items-center gap-1.5">
-                    <Smartphone size={14} className="text-emerald-600" /> Disparar WhatsApp para os moradores deste residencial
+                  <span className="font-bold text-gray-800 flex items-center gap-1.5">
+                    <Smartphone size={14} className={form.dispararWhatsApp ? "text-emerald-600" : "text-gray-400"} /> 
+                    Disparar aviso via WhatsApp para os moradores
                   </span>
                   <p className="text-gray-500 text-[11px] mt-0.5">
-                    Envia automaticamente uma mensagem no WhatsApp para os telefones cadastrados no {form.condominio === 'Todos' ? 'todos os condomínios' : form.condominio} ({moradoresAlvoRecado.length} contatos).
+                    {form.condominio ? (
+                      form.condominio === 'Todos' ? (
+                        <span className="text-amber-700 font-semibold">⚠️ Cuidado: Disparará mensagem para {moradoresAlvoRecado.length} moradores de TODOS os condomínios.</span>
+                      ) : (
+                        <span>Envia no WhatsApp dos {moradoresAlvoRecado.length} moradores cadastrados no <strong>{form.condominio}</strong>.</span>
+                      )
+                    ) : (
+                      <span className="text-gray-400 italic">Selecione um condomínio acima para habilitar o envio.</span>
+                    )}
                   </p>
                 </label>
               </div>
@@ -816,21 +975,24 @@ export default function Mural() {
                   <span className="flex items-center gap-1.5">
                     <Building2 size={14} className="text-brand-600" /> Residencial de Destino para o Disparo *
                   </span>
-                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
-                    {moradoresAlvoDisparo.length} moradores encontrados
-                  </span>
+                  {formDisparo.condominio && (
+                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${formDisparo.condominio === 'Todos' ? 'text-amber-700 bg-amber-100' : 'text-emerald-700 bg-emerald-100'}`}>
+                      {moradoresAlvoDisparo.length} moradores encontrados
+                    </span>
+                  )}
                 </label>
                 <select
-                  className="input font-semibold text-gray-800 bg-emerald-50/40 border-emerald-300 focus:border-emerald-500 text-sm"
+                  className={`input font-semibold text-gray-800 bg-white border-emerald-300 focus:border-emerald-500 text-sm ${!formDisparo.condominio ? 'border-amber-400 bg-amber-50/20' : ''}`}
                   value={formDisparo.condominio}
                   onChange={e => setFormDisparo({ ...formDisparo, condominio: e.target.value })}
+                  required
                 >
-                  <option value="Todos">🌐 Todos os Residenciais ({moradores?.length || 0} moradores)</option>
+                  <option value="">— Selecione o Residencial Obrigatório —</option>
                   {condominios.map(c => {
                     const count = (moradores || []).filter(m => {
-                      const mCondo = normalizar(m.condominio)
+                      const mCondo = normalizar(m.condominio || m.condominioNome || '')
                       const cCondo = normalizar(c.nome)
-                      return mCondo === cCondo || mCondo.includes(cCondo) || cCondo.includes(mCondo)
+                      return mCondo && cCondo && mCondo === cCondo
                     }).length
                     return (
                       <option key={c.id || c.nome} value={c.nome}>
@@ -838,8 +1000,20 @@ export default function Mural() {
                       </option>
                     )
                   })}
+                  {user?.role === 'Administrador' && (
+                    <option value="Todos">🌐 Todos os Residenciais (Disparo Geral)</option>
+                  )}
                 </select>
               </div>
+
+              {formDisparo.condominio === 'Todos' && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-2.5 text-[11px] text-amber-800 flex items-start gap-2 animate-fade-in">
+                  <AlertCircle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Atenção ao Disparo Global:</strong> Você selecionou <strong>Todos os Residenciais</strong>. A mensagem será enviada para <strong>{moradoresAlvoDisparo.length} moradores de toda a rede Alpha</strong>.
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="label font-bold text-gray-700">Título / Assunto (Opcional)</label>

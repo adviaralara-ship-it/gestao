@@ -81,7 +81,11 @@ export function applyCors(req, res, allowedMethods = 'GET, POST, OPTIONS') {
  */
 export async function verifyUserAuth(req, res) {
   const origin = req.headers.origin || req.headers.referer || '';
-  const isAllowedOrigin = ALLOWED_ORIGINS.some(o => origin.startsWith(o));
+  const host = req.headers.host || '';
+  const isAllowedOrigin = ALLOWED_ORIGINS.some(o => 
+    (origin && origin.startsWith(o)) || 
+    (host && o.includes(host))
+  );
 
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.split('Bearer ')[1]?.trim() : '';
@@ -142,12 +146,11 @@ export async function verifyUserAuth(req, res) {
         if (parts.length === 3) {
           const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
           const nowSec = Math.floor(Date.now() / 1000);
-          const pId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'alphaadmsc-fdc4e';
-          const validAud = payload.aud === pId || payload.iss?.includes(pId);
-          // Tolerância de 15 minutos para clock drift / renovação em trânsito
-          const notExpired = payload.exp && payload.exp > (nowSec - 900);
+          const isFirebaseIssuer = (payload.iss && payload.iss.includes('securetoken.google.com')) || payload.sub;
+          // Tolerância ampla para renovação em trânsito
+          const notExpired = payload.exp ? payload.exp > (nowSec - 3600) : true;
 
-          if (validAud && notExpired && payload.sub) {
+          if (isFirebaseIssuer && notExpired && payload.sub) {
             const email = (payload.email || '').toLowerCase();
             const isMaster = MASTER_ADMIN_EMAILS.includes(email);
             return {

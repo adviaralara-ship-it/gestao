@@ -8,7 +8,8 @@ import {
 import { useFirestore } from '../hooks/useFirestore'
 import { useAuth } from '../context/AuthContext'
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
-import { storage } from '../firebase'
+import { storage, db } from '../firebase'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { enviarBoletoWhatsAppAuto, enviarMensagemWhatsApp } from '../utils/whatsappAutomacao'
@@ -41,8 +42,8 @@ export default function WhatsApp() {
   const [arquivoPdfBase64, setArquivoPdfBase64] = useState(null)
   const [arquivoPdfNome, setArquivoPdfNome] = useState('')
 
-  // Form Lote
-  const [condoLote, setCondoLote] = useState('Todos')
+  // Form Lote (Inicia sem condomínio pré-selecionado para forçar escolha consciente)
+  const [condoLote, setCondoLote] = useState(user?.role === 'Síndico' ? (user?.condominio || '') : '')
 
   // Status de Envio
   const [sending, setSending] = useState(false)
@@ -207,6 +208,29 @@ export default function WhatsApp() {
           status: 'Sucesso',
           texto: (mensagem || arquivoPdfNome) + (arquivoPdfFile || arquivoPdfBase64 ? ' 📄 [PDF Anexo]' : '')
         }, ...prev])
+
+        // Registro de auditoria com rastreabilidade completa de quem realizou o disparo
+        try {
+          await addDoc(collection(db, 'auditoria_logs'), {
+            acao: 'DISPARO_WHATSAPP_INDIVIDUAL',
+            recurso: 'whatsapp',
+            destinatario: nomeDestino ? `${nomeDestino} (${tel})` : tel,
+            condominio: condoDestino || (condoFiltro !== 'Todos' ? condoFiltro : 'Geral'),
+            apt: aptDestino || '',
+            mensagem: mensagem ? (mensagem.length > 200 ? mensagem.slice(0, 200) + '...' : mensagem) : '[Arquivo PDF]',
+            possuiAnexo: Boolean(arquivoPdfFile || arquivoPdfBase64),
+            status: 'Sucesso',
+            autorNome: user?.nome || 'Administrador',
+            autorEmail: user?.email || '',
+            autorRole: user?.role || 'Administrador',
+            autorUid: user?.uid || '',
+            dataHora: new Date().toISOString(),
+            dataHoraFormatada: new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }),
+            _createdAt: serverTimestamp()
+          })
+        } catch (eAudit) {
+          console.warn('Erro ao salvar auditoria de disparo individual:', eAudit)
+        }
         
         // Limpeza automática da nuvem: apaga o arquivo temporário após 20 segundos do envio para não ocupar espaço
         if (uploadedFileRef) {
@@ -239,10 +263,21 @@ export default function WhatsApp() {
   }
 
   const handleSendLote = async () => {
+    if (!condoLote) {
+      alert('⚠️ Por favor, selecione expressamente o Condomínio/Residencial de destino para o disparo em lote.')
+      return
+    }
+
+    const normalizar = str => (str || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const cLoteNorm = normalizar(condoLote)
+
     const listaAlvo = moradores.filter(m => {
-      const temTel = Boolean(m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero)
-      const matchCondo = condoLote === 'Todos' || m.condominio === condoLote || m.condominioNome === condoLote
-      return temTel && matchCondo
+      const rawTel = String(m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || '').replace(/\D/g, '')
+      const temTel = rawTel.length >= 8
+      if (!temTel) return false
+      if (condoLote === 'Todos') return true
+      const mCondo = normalizar(m.condominio || m.condominioNome || '')
+      return mCondo && cLoteNorm && mCondo === cLoteNorm
     })
 
     if (listaAlvo.length === 0) {
@@ -255,8 +290,14 @@ export default function WhatsApp() {
       return
     }
 
-    if (!window.confirm(`Confirma o envio automático de WhatsApp para ${listaAlvo.length} moradores do condomínio "${condoLote}"?`)) {
-      return
+    if (condoLote === 'Todos') {
+      if (!window.confirm(`⚠️ ATENÇÃO MÁXIMA: Você selecionou TODOS OS CONDOMÍNIOS para o disparo em massa (${listaAlvo.length} moradores de toda a rede Alpha).\n\nConfirma o envio de WhatsApp para TODOS os condomínios?`)) {
+        return
+      }
+    } else {
+      if (!window.confirm(`Confirma o envio automático de WhatsApp para ${listaAlvo.length} moradores do condomínio "${condoLote}"?`)) {
+        return
+      }
     }
 
     setSending(true)
@@ -305,6 +346,29 @@ export default function WhatsApp() {
       status: 'Sucesso',
       texto: mensagem + (arquivoPdfBase64 ? ' 📄 [PDF Anexo]' : '')
     }, ...prev])
+
+    // Registro de auditoria completo para o disparo em lote
+    try {
+      await addDoc(collection(db, 'auditoria_logs'), {
+        acao: 'DISPARO_WHATSAPP_LOTE',
+        recurso: 'whatsapp',
+        condominio: condoLote,
+        qtdTotalAlvo: listaAlvo.length,
+        qtdEnviados: enviados,
+        mensagem: mensagem.length > 200 ? mensagem.slice(0, 200) + '...' : mensagem,
+        possuiAnexo: Boolean(base64Lote),
+        status: 'Sucesso',
+        autorNome: user?.nome || 'Administrador',
+        autorEmail: user?.email || '',
+        autorRole: user?.role || 'Administrador',
+        autorUid: user?.uid || '',
+        dataHora: new Date().toISOString(),
+        dataHoraFormatada: new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }),
+        _createdAt: serverTimestamp()
+      })
+    } catch (eAudit) {
+      console.warn('Erro ao salvar auditoria de disparo em lote:', eAudit)
+    }
   }
 
   // ─── Cálculos da Régua de Cobrança em Tempo Real ─────────────────────────
@@ -751,13 +815,21 @@ export default function WhatsApp() {
                     <Building2 size={18} className="text-emerald-700" /> Selecionar Condomínio para Disparo em Massa:
                   </label>
                   <select 
-                    className="input text-sm font-bold text-slate-900 bg-white py-3 border-emerald-300 w-full"
+                    className={`input text-sm font-bold text-slate-900 bg-white py-3 border-emerald-300 w-full ${!condoLote ? 'border-amber-400 bg-amber-50/20' : ''}`}
                     value={condoLote}
                     onChange={e => setCondoLote(e.target.value)}
                   >
-                    <option value="Todos">Todos os Condomínios Cadastrados</option>
+                    <option value="">— Selecione o Condomínio Obrigatório —</option>
                     {condominios.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+                    {user?.role === 'Administrador' && (
+                      <option value="Todos">🌐 Todos os Condomínios (Geral da Rede)</option>
+                    )}
                   </select>
+                  {condoLote === 'Todos' && (
+                    <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-800 text-xs">
+                      ⚠️ <strong>Atenção ao Disparo Global:</strong> Você selecionou <strong>Todos os Condomínios</strong>. A mensagem será disparada para todos os moradores cadastrados em toda a rede Alpha.
+                    </div>
+                  )}
                   <p className="text-xs text-emerald-800 font-medium mt-2 leading-relaxed">
                     👥 O sistema enviará a mensagem personalizada individualmente com intervalo de segurança para todos os moradores com telefone cadastrado.
                   </p>

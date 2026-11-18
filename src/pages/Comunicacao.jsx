@@ -75,8 +75,16 @@ const mesAtualPadrao = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-function ModalComunicado({ onClose, onSave, moradores, condominios }) {
-  const [form, setForm] = useState({ titulo:'', texto:'', tipo:'Aviso', destino:'Todos', moradorEspecifico:'', condominio: 'Todos' })
+function ModalComunicado({ onClose, onSave, moradores, condominios, user }) {
+  const [form, setForm] = useState({
+    titulo: '',
+    texto: '',
+    tipo: 'Aviso',
+    destino: 'Todos',
+    moradorEspecifico: '',
+    condominio: user?.role === 'Síndico' ? (user?.condominio || '') : '',
+    dispararWhatsApp: false // SEGURO: desmarcado por padrão para impedir disparos acidentais
+  })
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
   const destinoIndividual = form.destino==='Individual'
   const [gerandoIA, setGerandoIA] = useState(false)
@@ -120,14 +128,32 @@ O tom deve ser respeitoso, claro, objetivo e amigável. Retorne apenas o texto f
               </select>
             </div>
             {!destinoIndividual && (
-              <div className="col-span-2"><label className="label">Condomínio</label>
-                {condominios.length > 1 ? (
-                  <select className="input" value={form.condominio} onChange={e=>set('condominio',e.target.value)}>
-                    <option value="Todos">Todos os Condomínios</option>
+              <div className="col-span-2">
+                <label className="label flex items-center justify-between">
+                  <span>Condomínio / Residencial Destino *</span>
+                  {!form.condominio && (
+                    <span className="text-[11px] font-bold text-amber-600 animate-pulse">Obrigatório selecionar</span>
+                  )}
+                </label>
+                {condominios.length > 0 ? (
+                  <select 
+                    className={`input font-semibold text-gray-800 ${!form.condominio ? 'border-amber-400 bg-amber-50/20' : ''}`} 
+                    value={form.condominio} 
+                    onChange={e=>set('condominio',e.target.value)}
+                  >
+                    <option value="">— Selecione o Residencial Obrigatório —</option>
                     {condominios.map(c=>(<option key={c.id} value={c.nome}>{c.nome}</option>))}
+                    {user?.role === 'Administrador' && (
+                      <option value="Todos">🌐 Todos os Condomínios (Geral)</option>
+                    )}
                   </select>
                 ) : (
                   <input className="input bg-slate-100 font-bold" value={form.condominio} readOnly />
+                )}
+                {form.condominio === 'Todos' && (
+                  <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-800 text-xs">
+                    ⚠️ <strong>Atenção ao Alcance Geral:</strong> Este comunicado será publicado para <strong>TODOS os condomínios</strong> da rede.
+                  </div>
                 )}
               </div>
             )}
@@ -138,11 +164,43 @@ O tom deve ser respeitoso, claro, objetivo e amigável. Retorne apenas o texto f
               <select className="input" value={form.moradorEspecifico} onChange={e=>set('moradorEspecifico',e.target.value)}>
                 <option value="">— Selecione o morador —</option>
                 {moradores.map(m=>(
-                  <option key={m.id} value={`${m.nome} (${m.apt||m.unidade})`}>{m.nome} – Apt {m.apt||m.unidade}</option>
+                  <option key={m.id} value={`${m.nome} (${m.apt||m.unidade})`}>{m.nome} – Apt {m.apt||m.unidade} {m.condominio ? `(${m.condominio})` : ''}</option>
                 ))}
               </select>
             </div>
           )}
+
+          {/* Opção Segura de Disparo de WhatsApp */}
+          {!destinoIndividual && (
+            <div className="pt-2 border-t border-cream-200">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.dispararWhatsApp}
+                  onChange={e => set('dispararWhatsApp', e.target.checked)}
+                  className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 mt-0.5 cursor-pointer"
+                />
+                <div>
+                  <span className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                    <Smartphone size={14} className={form.dispararWhatsApp ? "text-emerald-600" : "text-gray-400"} />
+                    Disparar aviso via WhatsApp para os moradores
+                  </span>
+                  <p className="text-gray-500 text-xs mt-0.5">
+                    {form.condominio ? (
+                      form.condominio === 'Todos' ? (
+                        <span className="text-amber-700 font-semibold">⚠️ Cuidado: Disparará mensagem para moradores de TODOS os condomínios.</span>
+                      ) : (
+                        <span>Envia no WhatsApp dos moradores cadastrados no <strong>{form.condominio}</strong>.</span>
+                      )
+                    ) : (
+                      <span className="text-gray-400 italic">Selecione um condomínio acima para habilitar o envio.</span>
+                    )}
+                  </p>
+                </div>
+              </label>
+            </div>
+          )}
+
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="label m-0">Mensagem</label>
@@ -157,10 +215,41 @@ O tom deve ser respeitoso, claro, objetivo e amigável. Retorne apenas o texto f
         <div className="p-6 border-t border-cream-300 flex gap-3 justify-end">
           <button onClick={onClose} className="btn-secondary">Cancelar</button>
           <button onClick={()=>{
-            if(!form.titulo||!form.texto)return
-            if(destinoIndividual&&!form.moradorEspecifico)return
-            onSave({...form, autor:'Administração', data:new Date().toLocaleDateString('pt-BR'),
-              destino:destinoIndividual?form.moradorEspecifico:form.destino})
+            if(!form.titulo?.trim() || !form.texto?.trim()) {
+              alert('Por favor, informe o título e o texto do comunicado.')
+              return
+            }
+            if(!destinoIndividual && !form.condominio) {
+              alert('⚠️ Atenção: Por favor, selecione expressamente o Residencial/Condomínio para o qual este comunicado se destina.')
+              return
+            }
+            if(destinoIndividual && !form.moradorEspecifico) {
+              alert('Por favor, selecione o morador de destino.')
+              return
+            }
+            if(form.condominio === 'Todos' && form.dispararWhatsApp) {
+              if(!window.confirm('⚠️ ATENÇÃO: Você selecionou TODOS OS CONDOMÍNIOS com disparo de WhatsApp ativado.\n\nA mensagem será enviada para TODOS os moradores da rede Alpha. Deseja realmente prosseguir?')) {
+                return
+              }
+            }
+
+            const agora = new Date()
+            const dataFmt = agora.toLocaleDateString('pt-BR')
+            const horaFmt = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            const dataHoraFmt = agora.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' })
+
+            onSave({
+              ...form,
+              autor: user?.nome || 'Administração',
+              autorNome: user?.nome || 'Administração',
+              autorEmail: user?.email || '',
+              autorRole: user?.role || 'Administrador',
+              autorUid: user?.uid || '',
+              data: dataFmt,
+              hora: horaFmt,
+              dataHoraFormatada: dataHoraFmt,
+              destino: destinoIndividual ? form.moradorEspecifico : form.destino
+            })
           }} className="btn-primary"><Send size={14}/>Publicar</button>
         </div>
       </div>
@@ -472,8 +561,26 @@ export default function Comunicacao() {
                 </div>
               </div>
               <p className="text-sm text-gray-600 mb-3 leading-relaxed">{a.texto}</p>
-              <div className="flex items-center justify-between text-xs text-gray-400">
-                <span>📝 {a.autor}</span><span>{a.data}</span>
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-cream-200 text-xs text-gray-500">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-700 flex items-center gap-1">
+                    <User size={13} className="text-brand-600"/>
+                    <span>Registrado por: <strong>{a.autorNome || a.autor || 'Administração'}</strong></span>
+                    {a.autorRole && (
+                      <span className="text-[10px] font-bold text-brand-700 bg-brand-50 border border-brand-200 px-1.5 py-0.2 rounded">
+                        {a.autorRole}
+                      </span>
+                    )}
+                  </span>
+                  {a.autorEmail && (
+                    <span className="text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                      {a.autorEmail}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] text-gray-400">
+                  🕒 {a.dataHoraFormatada || `${a.data || ''} ${a.hora || ''}`.trim() || 'Data registrada'}
+                </span>
               </div>
             </div>
           ))}
@@ -557,9 +664,17 @@ export default function Comunicacao() {
       )}
 
       {modal==='comunicado'&&(
-        <ModalComunicado moradores={moradores} condominios={condominios} onClose={()=>setModal(null)} onSave={async a=>{
+        <ModalComunicado moradores={moradores} condominios={condominios} user={user} onClose={()=>setModal(null)} onSave={async a=>{
           const condoFinal = !isAdm ? (user?.condominio || a.condominio) : a.condominio
-          const avisoParaSalvar = { ...a, condominio: condoFinal }
+          const avisoParaSalvar = { 
+            ...a, 
+            condominio: condoFinal,
+            autorNome: a.autorNome || user?.nome || 'Administração',
+            autorEmail: a.autorEmail || user?.email || '',
+            autorRole: a.autorRole || user?.role || 'Administrador',
+            autorUid: a.autorUid || user?.uid || '',
+            dataHoraFormatada: a.dataHoraFormatada || new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' })
+          }
           await addAviso(avisoParaSalvar)
 
           // 1. Notificação geral / administrativa no sistema
@@ -567,13 +682,18 @@ export default function Comunicacao() {
             text:`📢 Novo comunicado: "${a.titulo}" – para ${a.destino}${condoFinal !== 'Todos' ? ` (${condoFinal})` : ''}`,
             time:new Date().toISOString(),tipo:'comunicado',lida:false,_createdAt:serverTimestamp(),
             destino: a.destino,
-            condominio: condoFinal
+            condominio: condoFinal,
+            autorNome: a.autorNome || user?.nome || 'Administração',
+            autorEmail: a.autorEmail || user?.email || ''
           })
 
-          // Filtrar moradores do condomínio selecionado (ou todos caso seja 'Todos')
+          // Filtrar moradores do condomínio selecionado com ISOLAMENTO ESTRITO (sem vazamento cruzado)
+          const normalizarStr = str => (str || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
           const moradoresAlvo = moradores.filter(m => {
-            if (a.condominio && a.condominio !== 'Todos') {
-              return m.condominio === a.condominio
+            if (condoFinal && condoFinal !== 'Todos') {
+              const mCondo = normalizarStr(m.condominio || m.condominioNome || '')
+              const fCondo = normalizarStr(condoFinal)
+              return mCondo && fCondo && mCondo === fCondo
             }
             return true
           })
@@ -587,7 +707,7 @@ export default function Comunicacao() {
                 tipo: 'comunicado',
                 lida: false,
                 _createdAt: serverTimestamp(),
-                condominio: m.condominio || a.condominio,
+                condominio: m.condominio || condoFinal,
                 moradorId: m.id,
                 moradorNome: m.nome,
                 moradorEmail: m.email || '',
@@ -599,7 +719,7 @@ export default function Comunicacao() {
           }
           
           let targetEmails = null;
-          if (a.condominio && a.condominio !== 'Todos') {
+          if (condoFinal && condoFinal !== 'Todos') {
             targetEmails = moradoresAlvo.filter(m => m.email).map(m => m.email);
             if (targetEmails.length === 0) targetEmails = ['dummy_para_nao_enviar_para_todos@local.host'];
           }
@@ -611,34 +731,54 @@ export default function Comunicacao() {
             body: JSON.stringify({ 
               title: `📢 ${a.tipo || 'Comunicado'}: ${a.titulo}`, 
               message: a.texto,
-              condominio: a.condominio || 'Todos',
+              condominio: condoFinal || 'Todos',
               targetUserIds: targetEmails,
               targetUrl: window.location.origin + '/mural'
             })
           }).catch(e => console.error("Push erro", e))
 
-          // 4. Disparo WhatsApp para os telefones administrativos e para os moradores cadastrados no condomínio
-          const msgAvisoWhats = `ALPHA GESTÃO | Cuidando do ${a.condominio || 'Condomínio'} 🏢\n📌 *Assunto:* ${a.titulo}\n\nOlá, moradores! 👋\n\n${a.texto}\n\nQualquer dúvida ou necessidade especial, é só chamar nossa equipe por aqui. Obrigado pela parceria!\n\n*Equipe Alpha Soluções Condominiais*`
+          // 4. Disparo WhatsApp SEGURO: Apenas se dispararWhatsApp estiver expressamente marcado pelo usuário
+          if (a.dispararWhatsApp) {
+            const msgAvisoWhats = `ALPHA GESTÃO | Cuidando do ${condoFinal && condoFinal !== 'Todos' ? condoFinal : 'Condomínio'} 🏢\n📌 *Assunto:* ${a.titulo}\n\nOlá, moradores! 👋\n\n${a.texto}\n\nQualquer dúvida ou necessidade especial, é só chamar nossa equipe por aqui. Obrigado pela parceria!\n\n*Equipe Alpha Soluções Condominiais*`
+            
+            // Coletar telefones únicos estritamente dos moradores do condomínio selecionado
+            const telefonesMoradores = moradoresAlvo
+              .map(m => (m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || '').replace(/\D/g, ''))
+              .filter(t => t && t.length >= 8)
+              .map(t => t.startsWith('55') ? t : `55${t}`)
 
-          // Telefones de avisos administrativos
-          const telefonesAvisos = ['558396885931', '5583996806325', '5583999797285', '5583998350321', '5583998468997']
-          
-          // Coletar telefones únicos dos moradores do condomínio
-          const telefonesMoradores = moradoresAlvo
-            .map(m => (m.tel || m.telefone || m.whatsapp || m.celular || m.fone || m.contato || m.numero || '').replace(/\D/g, ''))
-            .filter(t => t && t.length >= 8)
-            .map(t => t.startsWith('55') ? t : `55${t}`)
+            const todosTelefones = Array.from(new Set(telefonesMoradores))
 
-          const todosTelefones = Array.from(new Set([...telefonesAvisos, ...telefonesMoradores]))
+            todosTelefones.forEach(tel => {
+              enviarMensagemWhatsApp({
+                number: tel,
+                text: msgAvisoWhats,
+                instance: 'InstanciaAlpha'
+              }).catch(e => console.warn('Falha no envio de aviso WhatsApp:', tel, e))
+            })
+          }
 
-          // Enviar via whatsappAutomacao (tenta endpoint da API e possui fallback direto na Evolution API)
-          todosTelefones.forEach(tel => {
-            enviarMensagemWhatsApp({
-              number: tel,
-              text: msgAvisoWhats,
-              instance: 'InstanciaAlpha'
-            }).catch(e => console.warn('Falha no envio de aviso WhatsApp:', tel, e))
-          })
+          // 5. Registro na auditoria para rastreabilidade completa de quem registrou
+          try {
+            await addDoc(collection(db, 'auditoria_logs'), {
+              acao: 'CRIAR_COMUNICADO',
+              recurso: 'comunicacao',
+              titulo: a.titulo || '',
+              condominio: condoFinal,
+              destino: a.destino || 'Todos',
+              disparouWhatsApp: Boolean(a.dispararWhatsApp),
+              qtdMoradoresAlvo: moradoresAlvo.length,
+              autorNome: a.autorNome || user?.nome || 'Administração',
+              autorEmail: a.autorEmail || user?.email || '',
+              autorRole: a.autorRole || user?.role || 'Administrador',
+              autorUid: a.autorUid || user?.uid || '',
+              dataHora: new Date().toISOString(),
+              dataHoraFormatada: a.dataHoraFormatada || new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }),
+              _createdAt: serverTimestamp()
+            })
+          } catch (eAudit) {
+            console.warn('Erro ao salvar auditoria de comunicado:', eAudit)
+          }
 
           setModal(null)
         }}/>
